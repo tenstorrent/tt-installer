@@ -13,13 +13,36 @@ LOGO=$(cat << "EOF"
 EOF
 )
 
-# Constants
-KMD_VERSION="1.31"
+# Fetch latest kmd from git tags
+TT_KMD_GIT_URL="https://github.com/tenstorrent/tt-kmd.git"
+fetch_latest_kmd_version() {
+    local latest_kmd=$(git ls-remote --tags "$TT_KMD_GIT_URL" | grep -v '\^{}' | awk -F/ '{print $NF}' | sort -V | tail -n1)
+    echo "${latest_kmd#ttkmd-}"
+}
 
-FW_VERSION="80.14.0.0"
+# Fetch lastest FW version
+TT_FW_GIT_URL="https://github.com/tenstorrent/tt-firmware.git"
+fetch_latest_fw_version() {
+    local latest_fw=$(git ls-remote --tags "$TT_FW_GIT_URL" | grep -v '\^{}' | awk -F/ '{print $NF}' | sort -V | tail -n1)
+    echo "${latest_fw#v}" # Remove 'v' prefix if present
+}
+
+# Fetch latest systools version
+# Currently unused due to systools tags being broken
+TT_SYSTOOLS_GIT_URL="https://github.com/tenstorrent/tt-system-tools.git"
+fetch_latest_systools_version() {
+    local latest_systools=$(git ls-remote --tags "$TT_SYSTOOLS_GIT_URL" | grep -v '\^{}' | awk -F/ '{print $NF}' | sort -V | tail -n1)
+    echo "${latest_systools#v}" # Remove 'upstream/' prefix
+}
+
+# Optional assignment- uses TT_ envvar version if present, otherwise latest
+KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
+FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
+# Use manual systools version for now
+SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-"1.1-5_all"}"
+
+# Update FW_FILE based on FW_VERSION
 FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
-
-SYSTOOLS_VERSION="1.1-5_all"
 
 # Working directory
 WORKDIR="/tmp/tenstorrent_install"
@@ -39,17 +62,17 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# log messages; terminal gets color and logfile gets datetime
+# log messages to both terminal (with color) and logfile (without color)
 log() {
     local msg="[INFO] $1"
-    echo -e "${GREEN}${msg}${NC}"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg" >> "$LOG_FILE"
+    echo -e "${GREEN}${msg}${NC}"  # Color output to terminal
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg" >> "$LOG_FILE"  # Plain output to logfile
 }
 
 # log errors
 error() {
     local msg="[ERROR] $1"
-    echo -e "${RED}${msg}${NC}" >&2
+    echo -e "${RED}${msg}${NC}"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg" >> "$LOG_FILE"
 }
 
@@ -60,7 +83,6 @@ warn() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg" >> "$LOG_FILE"
 }
 
-# Check if we have sudo permission
 check_has_sudo_perms() {
     if [[ ! -x "/usr/bin/sudo" ]]
     then
@@ -69,7 +91,6 @@ check_has_sudo_perms() {
     fi
 }
 
-# Function to detect Linux distribution
 detect_distro() {
     if [ -f /etc/os-release ]; then
         . /etc/os-release
@@ -124,9 +145,13 @@ main() {
         exit 1
     fi
     log "Starting installation"
+    log "Using software versions:"
+    log "  KMD: ${KMD_VERSION}"
+    log "  Firmware: ${FW_VERSION}"
+    log "  System Tools: ${SYSTOOLS_VERSION}"
 
     log "Checking for sudo permissions... (may request password)"
-    check_has_sudo_perms	
+    check_has_sudo_perms
 
     # Check distribution and install base packages
     detect_distro
