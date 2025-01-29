@@ -44,17 +44,13 @@ SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-"1.1-5_all"}"
 # Update FW_FILE based on FW_VERSION
 FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
 
-# Working directory
-WORKDIR="/tmp/tenstorrent_install"
-# Create if not exist
-mkdir -p $WORKDIR
-# Clear directory contents
-# rm in scripts will never not be scary
-# we need the -rf to remove cloned git repos
-rm -rf "$WORKDIR"/*
+# Create working directory
+TMP_DIR_TEMPLATE="tenstorrent_install_XXXXXX"
+# Use mktemp to get a temporary directory
+WORKDIR=$(mktemp -d -p /tmp "$TMP_DIR_TEMPLATE")
 
 # Initialize logging
-LOG_FILE="${WORKDIR}/install_$(date +%Y%m%d_%H%M%S).log"
+LOG_FILE="${WORKDIR}/install.log"
 
 # Color codes for output
 RED='\033[0;31m'

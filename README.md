@@ -10,9 +10,4 @@ This script is designed to be downloaded using curl (a la rustup) and be a one-s
 After running the script, the system should be in the same state as it would be after following our [public docs](https://docs.tenstorrent.com/#software-installation).
 
 ## TODO
-- tt-kmd
-- venv management
-- hugepages setup
-- tt-smi and other tools install
-- firmware updates?
 - Buda/Metalium/NN
