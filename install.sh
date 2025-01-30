@@ -211,6 +211,7 @@ main() {
         3)
             log "Checking for pipx"
             pipx ensurepath
+            INSTALLED_IN_VENV=1
             PYTHON_INSTALL_CMD="pipx install"
             ;;
         *|"2"|"")
