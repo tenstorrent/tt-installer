@@ -51,6 +51,17 @@ WORKDIR=$(mktemp -d -p /tmp "$TMP_DIR_TEMPLATE")
 
 # Initialize logging
 LOG_FILE="${WORKDIR}/install.log"
+# Redirect stdout to the logfile.
+# Removes color codes and prepends the date
+exec > >( \
+        tee >( \
+                stdbuf -o0 \
+                        sed 's/\x1B\[[0-9;]*[A-Za-z]//g' | \
+                        xargs -d '\n' -I {} date '+[%F %T] {}' \
+                > $LOG_FILE \
+                ) \
+        )
+exec 2>&1
 
 # Color codes for output
 RED='\033[0;31m'
@@ -58,25 +69,22 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# log messages to both terminal (with color) and logfile (without color)
+# log messages to terminal (with color)
 log() {
     local msg="[INFO] $1"
     echo -e "${GREEN}${msg}${NC}"  # Color output to terminal
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg" >> "$LOG_FILE"  # Plain output to logfile
 }
 
 # log errors
 error() {
     local msg="[ERROR] $1"
     echo -e "${RED}${msg}${NC}"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg" >> "$LOG_FILE"
 }
 
 # log warnings
 warn() {
     local msg="[WARNING] $1"
     echo -e "${YELLOW}${msg}${NC}"
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $msg" >> "$LOG_FILE"
 }
 
 check_has_sudo_perms() {
@@ -122,8 +130,8 @@ confirm() {
     while true; do
         read -rp "$1 [Y/n] " yn
         case $yn in
-            [Nn]* ) return 1;;
-            [Yy]* | "" ) return 0;;
+            [Nn]* ) echo && return 1;;
+            [Yy]* | "" ) echo && return 0;;
             * ) echo "Please answer yes or no.";;
         esac
     done
@@ -187,6 +195,7 @@ main() {
         echo "3. Use pipx for isolated package installation"
     fi
     read -rp "Enter your choice (1, 2...) or press enter for default: " PYTHON_CHOICE
+    echo # newline
 
     case $PYTHON_CHOICE in
         1)
