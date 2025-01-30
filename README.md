@@ -1,6 +1,4 @@
-# tt-gimme
-
-> Name WIP.
+# tt-installer
 
 This script is designed to be downloaded using curl (a la rustup) and be a one-stop-shop for installing the Kernel & User-mode driver, configuring the host system (e.g. enabling hugepages), installing tt-smi and other syseng tools, and installing our SDKs, if desired. It's designed to support two interaction modes:
 
@@ -11,3 +9,4 @@ After running the script, the system should be in the same state as it would be 
 
 ## TODO
 - Buda/Metalium/NN
+- Just-do-it mode
