@@ -35,11 +35,21 @@ fetch_latest_systools_version() {
     echo "${latest_systools#v}" # Remove 'upstream/' prefix
 }
 
+# Non-interactive mode flag (set to 0 to enable)
+NON_INTERACTIVE=${TT_NON_INTERACTIVE:-1}
+
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
 FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
 # Use manual systools version for now
 SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-"1.1-5_all"}"
+
+# Set default Python installation choice
+# 1 = Use active venv, 2 = Create new venv, 3 = Use pipx
+PYTHON_CHOICE="${TT_PYTHON_CHOICE:-2}"
+
+# Option to automatically reboot after installation
+AUTO_REBOOT="${TT_AUTO_REBOOT:-1}"
 
 # Update FW_FILE based on FW_VERSION
 FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
@@ -127,6 +137,11 @@ verify_download() {
 
 # Function to prompt for yes/no
 confirm() {
+    # In non-interactive mode, always return true
+    if [ "$NON_INTERACTIVE" = "0" ]; then
+        return 0
+    fi
+
     while true; do
         read -rp "$1 [Y/n] " yn
         case $yn in
@@ -137,12 +152,42 @@ confirm() {
     done
 }
 
+# Get Python installation choice interactively or use default
+get_python_choice() {
+    # In non-interactive mode, use the default
+    if [ "$NON_INTERACTIVE" = "0" ]; then
+        log "Non-interactive mode, using default Python installation method (option $PYTHON_CHOICE)"
+        return
+    fi
+
+    # Interactive mode
+    log "How would you like to install Python packages?"
+    echo "1. Use the active virtual environment"
+    echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ~/.tenstorrent-venv"
+    # The pipx version on ubuntu 20 is too old to install git packages. They must use a venv
+    if [[ "$IS_UBUNTU_20" != "0" ]]; then
+        echo "3. Use pipx for isolated package installation"
+    fi
+    read -rp "Enter your choice (1, 2...) or press enter for default: " user_choice
+    echo # newline
+
+    # If user provided a value, update PYTHON_CHOICE
+    if [ -n "$user_choice" ]; then
+        PYTHON_CHOICE=$user_choice
+    fi
+}
+
 # Main installation script
 main() {
     echo -e "$LOGO"
     echo # newline
     log "Welcome to tenstorrent!"
     log "Log is at ${LOG_FILE}"
+
+    if [ "$NON_INTERACTIVE" = "0" ]; then
+        log "Running in non-interactive mode"
+    fi
+
     log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
     if ! confirm "OK to continue?"; then
         error "Exiting."
@@ -180,23 +225,21 @@ main() {
             sudo dnf install -y wget git python3-pip dkms cargo rust pipx
             ;;
         *)
-            error "Unsupported distribution: $DISTRO"
+            error "Unsupported distribution: $DISTRO_ID"
             exit 1
             ;;
     esac
 
-
     # Python package installation preference
-    log "How would you like to install Python packages?"
-    echo "1. Use the active virtual environment"
-    echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ~/.tenstorrent-venv"
-    # The pipx version on ubuntu 20 is too old to install git packages. They must use a venv
-    if [[ "$IS_UBUNTU_20" != "0" ]]; then
-        echo "3. Use pipx for isolated package installation"
-    fi
-    read -rp "Enter your choice (1, 2...) or press enter for default: " PYTHON_CHOICE
-    echo # newline
+    get_python_choice
 
+    # Enforce restrictions on Ubuntu 20
+    if [[ "$IS_UBUNTU_20" = "0" && "$PYTHON_CHOICE" = "3" ]]; then
+        warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"
+        PYTHON_CHOICE=2
+    fi
+
+    # Set up Python environment based on choice
     case $PYTHON_CHOICE in
         1)
             if [ -z "${VIRTUAL_ENV:-}" ]; then
@@ -209,12 +252,12 @@ main() {
             PYTHON_INSTALL_CMD="pip install"
             ;;
         3)
-            log "Checking for pipx"
+            log "Using pipx for isolated package installation"
             pipx ensurepath
             INSTALLED_IN_VENV=1
             PYTHON_INSTALL_CMD="pipx install"
             ;;
-        *|"2"|"")
+        *|"2")
             log "Setting up new Python virtual environment"
             python3 -m venv "$HOME/.tenstorrent-venv"
             source "$HOME/.tenstorrent-venv/bin/activate"
@@ -264,8 +307,17 @@ main() {
     fi
     log "Please reboot your system to complete the setup."
 
-    if confirm "Would you like to reboot now?"; then
+    # Auto-reboot if specified
+    if [ "$AUTO_REBOOT" = "0" ]; then
+        log "Auto-reboot enabled. Rebooting now..."
         sudo reboot
+    fi
+	# Otherwise, ask if in interactive mode
+    if [ "$NON_INTERACTIVE" = 1 ]; then
+		if confirm "Would you like to reboot now?"; then
+		log "Rebooting..."
+        sudo reboot
+		fi
     fi
 }
 
