@@ -98,8 +98,7 @@ warn() {
 }
 
 check_has_sudo_perms() {
-    if [[ ! -x "/usr/bin/sudo" ]]
-    then
+	if ! sudo true; then
         error "Cannot use sudo, exiting..."
         exit 1
     fi
