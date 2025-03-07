@@ -4,6 +4,13 @@ This script is designed to be downloaded using curl (akin to rustup) and be a on
 
 After running the script, the system should be in the same state as it would be after following Tenstorrent's [Quickstart docs](https://docs.tenstorrent.com/#software-installation).
 
+## TL;DR:
+**WARNING:** doing this is potentially a security issue, you had better really trust us if you do this:
+```bash
+curl https://raw.githubusercontent.com/tenstorrent/tt-installer/refs/heads/main/install.sh | sudo bash
+```
+We would generally recommend other ways of doing this, noted below.
+
 ## Usage
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages. Curl will be the preferred usage method once this repository is public.
 
