@@ -47,8 +47,14 @@ FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
 SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-"1.1-5_all"}"
 
 # Set default Python installation choice
-# 1 = Use active venv, 2 = Create new venv, 3 = Use pipx
+# 1 = Use active venv, 2 = Create new venv, 3 = Use pipx, 4 = system level (not recommended)
 PYTHON_CHOICE="${TT_PYTHON_CHOICE:-2}"
+PYTHON_CHOICE_TXT=( \
+	"existing venv"
+	"new venv"
+	"pipx"
+	"system"
+	)
 
 # Option to automatically reboot after installation
 AUTO_REBOOT="${TT_AUTO_REBOOT:-1}"
@@ -157,7 +163,7 @@ confirm() {
 get_python_choice() {
     # In non-interactive mode, use the default
     if [ "$NON_INTERACTIVE" = "0" ]; then
-        log "Non-interactive mode, using default Python installation method (option $PYTHON_CHOICE)"
+        log "Non-interactive mode, using default Python installation method (option ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]}(${PYTHON_CHOICE})"
         return
     fi
 
@@ -169,6 +175,7 @@ get_python_choice() {
     if [[ "$IS_UBUNTU_20" != "0" ]]; then
         echo "3. Use pipx for isolated package installation"
     fi
+    echo "4. Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
     read -rp "Enter your choice (1, 2...) or press enter for default: " user_choice
     echo # newline
 
@@ -257,6 +264,11 @@ main() {
             pipx ensurepath
             INSTALLED_IN_VENV=1
             PYTHON_INSTALL_CMD="pipx install"
+            ;;
+        4)
+            log "Using system pathing"
+            INSTALLED_IN_VENV=0
+            PYTHON_INSTALL_CMD="pip install"
             ;;
         *|"2")
             log "Setting up new Python virtual environment"
