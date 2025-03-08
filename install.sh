@@ -336,3 +336,6 @@ main() {
 
 # Start installation
 main
+
+# Don't muck with this unless you know what you are doing -warthog9
+# vim: noai:ts=4:sw=4
