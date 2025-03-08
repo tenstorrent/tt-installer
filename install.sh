@@ -304,11 +304,25 @@ main() {
 	# Setup HugePages
 	log "Setting up HugePages"
 	# Ok this assumes Ubuntu and not any other distro, this needs to get more correctly sorted out and checked for somewhere
-	wget "https://github.com/tenstorrent/tt-system-tools/releases/download/upstream%2F1.1/tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-	verify_download "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-	sudo dpkg -i "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-	sudo systemctl enable --now tenstorrent-hugepages.service
-	sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+	if [[
+		"${DISTRO_ID}" == "ubuntu"
+		||
+		"${DISTRO_ID}" == "debian"
+		]]
+	then
+		wget "https://github.com/tenstorrent/tt-system-tools/releases/download/upstream%2F1.1/tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
+		verify_download "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
+		sudo dpkg -i "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
+		sudo systemctl enable --now tenstorrent-hugepages.service
+		sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+	else
+		warn ""
+		warn "****************************************************************"
+		warn "*** YOU ARE ON AN UNSUPPORTED DISTRO FOR PACKAGE INSTALL     ***"
+		warn "*** SETTING UP HUGEPAGES CANT'T BE DONE AUTOMATICALLY        ***"
+		warn "****************************************************************"
+		warn ""
+	fi
 
 	# Install TT-SMI
 	log "Installing System Management Interface"
