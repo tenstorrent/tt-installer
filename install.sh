@@ -329,8 +329,8 @@ main() {
 	# Otherwise, ask if in interactive mode
 	if [[ "${NON_INTERACTIVE}" = 1 ]]; then
 		if confirm "Would you like to reboot now?"; then
-		log "Rebooting..."
-		sudo reboot
+			log "Rebooting..."
+			sudo reboot
 		fi
 	fi
 }
