@@ -172,10 +172,10 @@ get_python_choice() {
 	echo "1. Use the active virtual environment"
 	echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ~/.tenstorrent-venv"
 	# The pipx version on ubuntu 20 is too old to install git packages. They must use a venv
+	echo "3. Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
 	if [[ "${IS_UBUNTU_20}" != "0" ]]; then
-		echo "3. Use pipx for isolated package installation"
+		echo "4. Use pipx for isolated package installation"
 	fi
-	echo "4. Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
 	read -rp "Enter your choice (1, 2...) or press enter for default: " user_choice
 	echo # newline
 
@@ -242,7 +242,7 @@ main() {
 	get_python_choice
 
 	# Enforce restrictions on Ubuntu 20
-	if [[ "${IS_UBUNTU_20}" = "0" && "${PYTHON_CHOICE}" = "3" ]]; then
+	if [[ "${IS_UBUNTU_20}" = "0" && "${PYTHON_CHOICE}" = "4" ]]; then
 		warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"
 		PYTHON_CHOICE=2
 	fi
@@ -260,15 +260,20 @@ main() {
 			PYTHON_INSTALL_CMD="pip install"
 			;;
 		3)
+			log "Using system pathing"
+			INSTALLED_IN_VENV=0
+			# If we're on a modern OS, specify we want to break sys packages
+			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
+				PYTHON_INSTALL_CMD="pip install --break-system-packages"
+			else
+				PYTHON_INSTALL_CMD="pip install"
+			fi
+			;;
+		4)
 			log "Using pipx for isolated package installation"
 			pipx ensurepath
 			INSTALLED_IN_VENV=1
 			PYTHON_INSTALL_CMD="pipx install"
-			;;
-		4)
-			log "Using system pathing"
-			INSTALLED_IN_VENV=0
-			PYTHON_INSTALL_CMD="pip install"
 			;;
 		*|"2")
 			log "Setting up new Python virtual environment"
