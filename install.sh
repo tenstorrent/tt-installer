@@ -248,14 +248,14 @@ main() {
 	fi
 
 	# Set up Python environment based on choice
-	case $PYTHON_CHOICE in
+	case ${PYTHON_CHOICE} in
 		1)
 			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
 				error "No active virtual environment detected!"
 				error "Please activate your virtual environment first and try again"
 				exit 1
 			fi
-			log "Using active virtual environment: $VIRTUAL_ENV"
+			log "Using active virtual environment: ${VIRTUAL_ENV}"
 			INSTALLED_IN_VENV=0
 			PYTHON_INSTALL_CMD="pip install"
 			;;
