@@ -7,7 +7,7 @@ After running the installer, the system should be in the same state as it would 
 ## TL;DR:
 **WARNING:** doing this is potentially a security issue! You had better really trust us if you do this:
 ```bash
-curl https://raw.githubusercontent.com/tenstorrent/tt-installer/refs/heads/main/install.sh | sudo bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tenstorrent/tt-installer/refs/heads/main/install.sh)"
 ```
 We would generally recommend other ways of doing this, noted below.
 
