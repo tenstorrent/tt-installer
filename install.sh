@@ -300,11 +300,26 @@ main() {
 	# Install TT-KMD
 	log "Installing Kernel-Mode Driver"
 	cd "${WORKDIR}"
-	git clone https://github.com/tenstorrent/tt-kmd.git
-	cd tt-kmd || exit 1
-	sudo dkms add .
-	sudo dkms install "tenstorrent/${KMD_VERSION}"
-	sudo modprobe tenstorrent
+
+	# Get the KMD version, if installed, while silencing errors
+	if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
+		warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
+		if confirm "Force KMD reinstall?"; then
+			sudo dkms remove "tenstorrent/${KMD_VERSION}"
+			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+			sudo dkms add tt-kmd
+			sudo dkms install "tenstorrent/${KMD_VERSION}"
+			sudo modprobe tenstorrent
+		else
+			warn "Skipping KMD installation."
+		fi
+	else
+		# Only install KMD if it's not already installed
+		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+		sudo dkms add tt-kmd
+		sudo dkms install "tenstorrent/${KMD_VERSION}"
+		sudo modprobe tenstorrent
+	fi
 
 	# Install TT-Flash and Firmware
 	log "Installing TT-Flash and updating firmware"
@@ -352,6 +367,7 @@ main() {
 		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent tools."
 	fi
 	log "Please reboot your system to complete the setup."
+	log "After rebooting, try running `tt-smi` to see the status of your hardware."
 
 	# Auto-reboot if specified
 	if [[ "${AUTO_REBOOT}" = "0" ]]; then
