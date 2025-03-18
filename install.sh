@@ -49,12 +49,11 @@ SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-"1.1-5_all"}"
 # Set default Python installation choice
 # 1 = Use active venv, 2 = Create new venv, 3 = Use pipx, 4 = system level (not recommended)
 PYTHON_CHOICE="${TT_PYTHON_CHOICE:-2}"
-PYTHON_CHOICE_TXT=( \
-	"existing venv"
-	"new venv"
-	"pipx"
-	"system"
-	)
+declare -A PYTHON_CHOICE_TXT
+PYTHON_CHOICE_TXT[1]="Existing venv"
+PYTHON_CHOICE_TXT[2]="New venv"
+PYTHON_CHOICE_TXT[3]="pipx"
+PYTHON_CHOICE_TXT[4]="System Python"
 
 # Option to automatically reboot after installation
 AUTO_REBOOT="${TT_AUTO_REBOOT:-1}"
@@ -163,14 +162,14 @@ confirm() {
 get_python_choice() {
 	# In non-interactive mode, use the default
 	if [[ "${NON_INTERACTIVE}" = "0" ]]; then
-		log "Non-interactive mode, using default Python installation method (option ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]}(${PYTHON_CHOICE})"
+		log "Non-interactive mode, using default Python installation method (option $PYTHON_CHOICE: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
 		return
 	fi
 
 	# Interactive mode
 	log "How would you like to install Python packages?"
 	echo "1. Use the active virtual environment"
-	echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ~/.tenstorrent-venv"
+	echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
 	# The pipx version on ubuntu 20 is too old to install git packages. They must use a venv
 	echo "3. Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
 	if [[ "${IS_UBUNTU_20}" != "0" ]]; then
@@ -182,6 +181,19 @@ get_python_choice() {
 	# If user provided a value, update PYTHON_CHOICE
 	if [[ -n "${user_choice}" ]]; then
 		PYTHON_CHOICE=${user_choice}
+	fi
+}
+
+get_new_venv_location() {
+    # If user provides path, use it
+	if [[ -v TT_NEW_VENV_LOCATION ]]; then
+		NEW_VENV_LOCATION="${TT_NEW_VENV_LOCATION}"
+	# If XDG_DATA_HOME is defined, use that
+	elif [[ -v XDG_DATA_HOME ]]; then
+		NEW_VENV_LOCATION="${XDG_DATA_HOME}/tenstorrent-venv"
+	# Fallback to ${HOME}/.tenstorrent-venv
+	else
+		NEW_VENV_LOCATION="${HOME}/.tenstorrent-venv"
 	fi
 }
 
@@ -239,6 +251,7 @@ main() {
 	esac
 
 	# Python package installation preference
+	get_new_venv_location
 	get_python_choice
 
 	# Enforce restrictions on Ubuntu 20
@@ -277,8 +290,8 @@ main() {
 			;;
 		*|"2")
 			log "Setting up new Python virtual environment"
-			python3 -m venv "${HOME}/.tenstorrent-venv"
-			source "${HOME}/.tenstorrent-venv/bin/activate"
+			python3 -m venv "${NEW_VENV_LOCATION}"
+			source "${NEW_VENV_LOCATION}/bin/activate"
 			INSTALLED_IN_VENV=0
 			PYTHON_INSTALL_CMD="pip install"
 			;;
