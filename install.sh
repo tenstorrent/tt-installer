@@ -40,6 +40,20 @@ fetch_latest_systools_version() {
 # Non-interactive mode flag (set to 0 to enable)
 NON_INTERACTIVE=${TT_NON_INTERACTIVE:-1}
 
+# Skip KMD installation flag (set to 0 to skip)
+SKIP_INSTALL_KMD=${TT_SKIP_INSTALL_KMD:-1}
+
+# Skip HugePages installation flag (set to 0 to skip)
+SKIP_INSTALL_HUGEPAGES=${TT_SKIP_INSTALL_HUGEPAGES:-1}
+
+# Container mode flag (set to 0 to enable, which skips KMD and HugePages)
+CONTAINER_MODE=${TT_CONTAINER_MODE:-1}
+# If container mode is enabled, skip KMD and HugePages
+if [[ "${CONTAINER_MODE}" = "0" ]]; then
+    SKIP_INSTALL_KMD=0
+    SKIP_INSTALL_HUGEPAGES=0
+fi
+
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
 FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
@@ -204,10 +218,6 @@ main() {
 	log "Welcome to tenstorrent!"
 	log "Log is at ${LOG_FILE}"
 
-	if [[ "${NON_INTERACTIVE}" = "0" ]]; then
-		log "Running in non-interactive mode"
-	fi
-
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
 	if ! confirm "OK to continue?"; then
 		error "Exiting."
@@ -218,6 +228,20 @@ main() {
 	log "  KMD: ${KMD_VERSION}"
 	log "  Firmware: ${FW_VERSION}"
 	log "  System Tools: ${SYSTOOLS_VERSION}"
+
+	# Log special mode settings
+	if [[ "${NON_INTERACTIVE}" = "0" ]]; then
+		warn "Running in non-interactive mode"
+	fi
+	if [[ "${CONTAINER_MODE}" = "0" ]]; then
+		warn "Running in container mode"
+	fi
+	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
+		warn "KMD installation will be skipped"
+	fi
+	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
+		warn "HugePages setup will be skipped"
+	fi
 
 	log "Checking for sudo permissions... (may request password)"
 	check_has_sudo_perms
@@ -298,27 +322,31 @@ main() {
 	esac
 
 	# Install TT-KMD
-	log "Installing Kernel-Mode Driver"
-	cd "${WORKDIR}"
-
-	# Get the KMD version, if installed, while silencing errors
-	if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
-		warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
-		if confirm "Force KMD reinstall?"; then
-			sudo dkms remove "tenstorrent/${KMD_VERSION}"
+	# Skip KMD installation if flag is set
+	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
+		log "Skipping KMD installation"
+	else
+		log "Installing Kernel-Mode Driver"
+		cd "${WORKDIR}"
+		# Get the KMD version, if installed, while silencing errors
+		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
+			warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
+			if confirm "Force KMD reinstall?"; then
+				sudo dkms remove "tenstorrent/${KMD_VERSION}"
+				git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+				sudo dkms add tt-kmd
+				sudo dkms install "tenstorrent/${KMD_VERSION}"
+				sudo modprobe tenstorrent
+			else
+				warn "Skipping KMD installation"
+			fi
+		else
+			# Only install KMD if it's not already installed
 			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
 			sudo dkms add tt-kmd
 			sudo dkms install "tenstorrent/${KMD_VERSION}"
 			sudo modprobe tenstorrent
-		else
-			warn "Skipping KMD installation."
 		fi
-	else
-		# Only install KMD if it's not already installed
-		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-		sudo dkms add tt-kmd
-		sudo dkms install "tenstorrent/${KMD_VERSION}"
-		sudo modprobe tenstorrent
 	fi
 
 	# Install TT-Flash and Firmware
@@ -335,26 +363,31 @@ main() {
 	fi
 
 	# Setup HugePages
-	log "Setting up HugePages"
-	# Ok this assumes Ubuntu and not any other distro, this needs to get more correctly sorted out and checked for somewhere
-	if [[
-		"${DISTRO_ID}" == "ubuntu"
-		||
-		"${DISTRO_ID}" == "debian"
-		]]
-	then
-		wget "https://github.com/tenstorrent/tt-system-tools/releases/download/upstream%2F1.1/tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-		verify_download "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-		sudo dpkg -i "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-		sudo systemctl enable --now tenstorrent-hugepages.service
-		sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+	# Skip HugePages installation if flag is set
+	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
+		log "Skipping HugePages setup"
 	else
-		warn ""
-		warn "****************************************************************"
-		warn "*** YOU ARE ON AN UNSUPPORTED DISTRO FOR PACKAGE INSTALL     ***"
-		warn "*** SETTING UP HUGEPAGES CANT'T BE DONE AUTOMATICALLY        ***"
-		warn "****************************************************************"
-		warn ""
+		log "Setting up HugePages"
+		# Ok this assumes Ubuntu and not any other distro, this needs to get more correctly sorted out and checked for somewhere
+		if [[
+			"${DISTRO_ID}" == "ubuntu"
+			||
+			"${DISTRO_ID}" == "debian"
+			]]
+		then
+			wget "https://github.com/tenstorrent/tt-system-tools/releases/download/upstream%2F1.1/tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
+			verify_download "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
+			sudo dpkg -i "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
+			sudo systemctl enable --now tenstorrent-hugepages.service
+			sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+		else
+			warn ""
+			warn "****************************************************************"
+			warn "*** YOU ARE ON AN UNSUPPORTED DISTRO FOR PACKAGE INSTALL     ***"
+			warn "*** SETTING UP HUGEPAGES CANT'T BE DONE AUTOMATICALLY        ***"
+			warn "****************************************************************"
+			warn ""
+		fi
 	fi
 
 	# Install TT-SMI
