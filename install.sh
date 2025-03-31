@@ -400,7 +400,7 @@ main() {
 		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent tools."
 	fi
 	log "Please reboot your system to complete the setup."
-	log "After rebooting, try running `tt-smi` to see the status of your hardware."
+	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
 
 	# Auto-reboot if specified
 	if [[ "${AUTO_REBOOT}" = "0" ]]; then
