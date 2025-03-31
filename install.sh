@@ -18,14 +18,14 @@ EOF
 # Fetch latest kmd from git tags
 TT_KMD_GIT_URL="https://github.com/tenstorrent/tt-kmd.git"
 fetch_latest_kmd_version() {
-	local latest_kmd=$(git ls-remote --tags "${TT_KMD_GIT_URL}" | grep -v '\^{}' | awk -F/ '{print $NF}' | sort -V | tail -n1)
+	local latest_kmd=$(git ls-remote --tags --refs "${TT_KMD_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
 	echo "${latest_kmd#ttkmd-}"
 }
 
 # Fetch lastest FW version
 TT_FW_GIT_URL="https://github.com/tenstorrent/tt-firmware.git"
 fetch_latest_fw_version() {
-	local latest_fw=$(git ls-remote --tags "${TT_FW_GIT_URL}" | grep -v '\^{}' | awk -F/ '{print $NF}' | sort -V | tail -n1)
+	local latest_fw=$(git ls-remote --tags --refs "${TT_FW_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
 	echo "${latest_fw#v}" # Remove 'v' prefix if present
 }
 
@@ -33,12 +33,26 @@ fetch_latest_fw_version() {
 # Currently unused due to systools tags being broken
 TT_SYSTOOLS_GIT_URL="https://github.com/tenstorrent/tt-system-tools.git"
 fetch_latest_systools_version() {
-	local latest_systools=$(git ls-remote --tags "${TT_SYSTOOLS_GIT_URL}" | grep -v '\^{}' | awk -F/ '{print $NF}' | sort -V | tail -n1)
+	local latest_systools=$(git ls-remote --tags --refs "${TT_SYSTOOLS_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
 	echo "${latest_systools#v}" # Remove 'upstream/' prefix
 }
 
 # Non-interactive mode flag (set to 0 to enable)
 NON_INTERACTIVE=${TT_NON_INTERACTIVE:-1}
+
+# Skip KMD installation flag (set to 0 to skip)
+SKIP_INSTALL_KMD=${TT_SKIP_INSTALL_KMD:-1}
+
+# Skip HugePages installation flag (set to 0 to skip)
+SKIP_INSTALL_HUGEPAGES=${TT_SKIP_INSTALL_HUGEPAGES:-1}
+
+# Container mode flag (set to 0 to enable, which skips KMD and HugePages)
+CONTAINER_MODE=${TT_CONTAINER_MODE:-1}
+# If container mode is enabled, skip KMD and HugePages
+if [[ "${CONTAINER_MODE}" = "0" ]]; then
+    SKIP_INSTALL_KMD=0
+    SKIP_INSTALL_HUGEPAGES=0
+fi
 
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
@@ -49,12 +63,11 @@ SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-"1.1-5_all"}"
 # Set default Python installation choice
 # 1 = Use active venv, 2 = Create new venv, 3 = Use pipx, 4 = system level (not recommended)
 PYTHON_CHOICE="${TT_PYTHON_CHOICE:-2}"
-PYTHON_CHOICE_TXT=( \
-	"existing venv"
-	"new venv"
-	"pipx"
-	"system"
-	)
+declare -A PYTHON_CHOICE_TXT
+PYTHON_CHOICE_TXT[1]="Existing venv"
+PYTHON_CHOICE_TXT[2]="New venv"
+PYTHON_CHOICE_TXT[3]="pipx"
+PYTHON_CHOICE_TXT[4]="System Python"
 
 # Option to automatically reboot after installation
 AUTO_REBOOT="${TT_AUTO_REBOOT:-1}"
@@ -163,14 +176,14 @@ confirm() {
 get_python_choice() {
 	# In non-interactive mode, use the default
 	if [[ "${NON_INTERACTIVE}" = "0" ]]; then
-		log "Non-interactive mode, using default Python installation method (option ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]}(${PYTHON_CHOICE})"
+		log "Non-interactive mode, using default Python installation method (option $PYTHON_CHOICE: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
 		return
 	fi
 
 	# Interactive mode
 	log "How would you like to install Python packages?"
 	echo "1. Use the active virtual environment"
-	echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ~/.tenstorrent-venv"
+	echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
 	# The pipx version on ubuntu 20 is too old to install git packages. They must use a venv
 	echo "3. Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
 	if [[ "${IS_UBUNTU_20}" != "0" ]]; then
@@ -185,16 +198,25 @@ get_python_choice() {
 	fi
 }
 
+get_new_venv_location() {
+    # If user provides path, use it
+	if [[ -v TT_NEW_VENV_LOCATION ]]; then
+		NEW_VENV_LOCATION="${TT_NEW_VENV_LOCATION}"
+	# If XDG_DATA_HOME is defined, use that
+	elif [[ -v XDG_DATA_HOME ]]; then
+		NEW_VENV_LOCATION="${XDG_DATA_HOME}/tenstorrent-venv"
+	# Fallback to ${HOME}/.tenstorrent-venv
+	else
+		NEW_VENV_LOCATION="${HOME}/.tenstorrent-venv"
+	fi
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
 	echo # newline
 	log "Welcome to tenstorrent!"
 	log "Log is at ${LOG_FILE}"
-
-	if [[ "${NON_INTERACTIVE}" = "0" ]]; then
-		log "Running in non-interactive mode"
-	fi
 
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
 	if ! confirm "OK to continue?"; then
@@ -206,6 +228,20 @@ main() {
 	log "  KMD: ${KMD_VERSION}"
 	log "  Firmware: ${FW_VERSION}"
 	log "  System Tools: ${SYSTOOLS_VERSION}"
+
+	# Log special mode settings
+	if [[ "${NON_INTERACTIVE}" = "0" ]]; then
+		warn "Running in non-interactive mode"
+	fi
+	if [[ "${CONTAINER_MODE}" = "0" ]]; then
+		warn "Running in container mode"
+	fi
+	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
+		warn "KMD installation will be skipped"
+	fi
+	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
+		warn "HugePages setup will be skipped"
+	fi
 
 	log "Checking for sudo permissions... (may request password)"
 	check_has_sudo_perms
@@ -239,6 +275,7 @@ main() {
 	esac
 
 	# Python package installation preference
+	get_new_venv_location
 	get_python_choice
 
 	# Enforce restrictions on Ubuntu 20
@@ -277,21 +314,40 @@ main() {
 			;;
 		*|"2")
 			log "Setting up new Python virtual environment"
-			python3 -m venv "${HOME}/.tenstorrent-venv"
-			source "${HOME}/.tenstorrent-venv/bin/activate"
+			python3 -m venv "${NEW_VENV_LOCATION}"
+			source "${NEW_VENV_LOCATION}/bin/activate"
 			INSTALLED_IN_VENV=0
 			PYTHON_INSTALL_CMD="pip install"
 			;;
 	esac
 
 	# Install TT-KMD
-	log "Installing Kernel-Mode Driver"
-	cd "${WORKDIR}"
-	git clone https://github.com/tenstorrent/tt-kmd.git
-	cd tt-kmd || exit 1
-	sudo dkms add .
-	sudo dkms install "tenstorrent/${KMD_VERSION}"
-	sudo modprobe tenstorrent
+	# Skip KMD installation if flag is set
+	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
+		log "Skipping KMD installation"
+	else
+		log "Installing Kernel-Mode Driver"
+		cd "${WORKDIR}"
+		# Get the KMD version, if installed, while silencing errors
+		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
+			warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
+			if confirm "Force KMD reinstall?"; then
+				sudo dkms remove "tenstorrent/${KMD_VERSION}"
+				git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+				sudo dkms add tt-kmd
+				sudo dkms install "tenstorrent/${KMD_VERSION}"
+				sudo modprobe tenstorrent
+			else
+				warn "Skipping KMD installation"
+			fi
+		else
+			# Only install KMD if it's not already installed
+			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+			sudo dkms add tt-kmd
+			sudo dkms install "tenstorrent/${KMD_VERSION}"
+			sudo modprobe tenstorrent
+		fi
+	fi
 
 	# Install TT-Flash and Firmware
 	log "Installing TT-Flash and updating firmware"
@@ -307,26 +363,31 @@ main() {
 	fi
 
 	# Setup HugePages
-	log "Setting up HugePages"
-	# Ok this assumes Ubuntu and not any other distro, this needs to get more correctly sorted out and checked for somewhere
-	if [[
-		"${DISTRO_ID}" == "ubuntu"
-		||
-		"${DISTRO_ID}" == "debian"
-		]]
-	then
-		wget "https://github.com/tenstorrent/tt-system-tools/releases/download/upstream%2F1.1/tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-		verify_download "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-		sudo dpkg -i "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-		sudo systemctl enable --now tenstorrent-hugepages.service
-		sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+	# Skip HugePages installation if flag is set
+	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
+		log "Skipping HugePages setup"
 	else
-		warn ""
-		warn "****************************************************************"
-		warn "*** YOU ARE ON AN UNSUPPORTED DISTRO FOR PACKAGE INSTALL     ***"
-		warn "*** SETTING UP HUGEPAGES CANT'T BE DONE AUTOMATICALLY        ***"
-		warn "****************************************************************"
-		warn ""
+		log "Setting up HugePages"
+		# Ok this assumes Ubuntu and not any other distro, this needs to get more correctly sorted out and checked for somewhere
+		if [[
+			"${DISTRO_ID}" == "ubuntu"
+			||
+			"${DISTRO_ID}" == "debian"
+			]]
+		then
+			wget "https://github.com/tenstorrent/tt-system-tools/releases/download/upstream%2F1.1/tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
+			verify_download "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
+			sudo dpkg -i "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
+			sudo systemctl enable --now tenstorrent-hugepages.service
+			sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+		else
+			warn ""
+			warn "****************************************************************"
+			warn "*** YOU ARE ON AN UNSUPPORTED DISTRO FOR PACKAGE INSTALL     ***"
+			warn "*** SETTING UP HUGEPAGES CANT'T BE DONE AUTOMATICALLY        ***"
+			warn "****************************************************************"
+			warn ""
+		fi
 	fi
 
 	# Install TT-SMI
@@ -339,6 +400,7 @@ main() {
 		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent tools."
 	fi
 	log "Please reboot your system to complete the setup."
+	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
 
 	# Auto-reboot if specified
 	if [[ "${AUTO_REBOOT}" = "0" ]]; then
