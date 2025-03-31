@@ -363,31 +363,33 @@ main() {
 	fi
 
 	# Setup HugePages
+	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download/upstream"
 	# Skip HugePages installation if flag is set
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
-		log "Skipping HugePages setup"
+		warn "Skipping HugePages setup"
 	else
 		log "Setting up HugePages"
-		# Ok this assumes Ubuntu and not any other distro, this needs to get more correctly sorted out and checked for somewhere
-		if [[
-			"${DISTRO_ID}" == "ubuntu"
-			||
-			"${DISTRO_ID}" == "debian"
-			]]
-		then
-			wget "https://github.com/tenstorrent/tt-system-tools/releases/download/upstream%2F1.1/tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-			verify_download "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-			sudo dpkg -i "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-			sudo systemctl enable --now tenstorrent-hugepages.service
-			sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
-		else
-			warn ""
-			warn "****************************************************************"
-			warn "*** YOU ARE ON AN UNSUPPORTED DISTRO FOR PACKAGE INSTALL     ***"
-			warn "*** SETTING UP HUGEPAGES CANT'T BE DONE AUTOMATICALLY        ***"
-			warn "****************************************************************"
-			warn ""
-		fi
+		case "${DISTRO_ID}" in
+			"ubuntu"|"debian")
+				TOOLS_URL="${BASE_TOOLS_URL}/${SYSTOOLS_VERSION}/tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
+				wget "${TOOLS_URL}"
+				verify_download "${TOOLS_URL}"
+				sudo dpkg -i "${TOOLS_URL}"
+				sudo systemctl enable --now tenstorrent-hugepages.service
+				sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+				;;
+			"fedora"|"rhel"|"centos")
+				TOOLS_URL="${BASE_TOOLS_URL}/${SYSTOOLS_VERSION}tenstorrent-tools_${SYSTOOLS_VERSION}.noarch.rpm"
+				wget "${TOOLS_URL}"
+				verify_download "${TOOLS_URL}"
+				sudo rpm install -y "${TOOLS_URL}"
+				sudo systemctl enable --now tenstorrent-hugepages.service
+				sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+				;;
+			*)
+				error "This distro is unsupported. Skipping HugePages install!"
+				;;
+		esac
 	fi
 
 	# Install TT-SMI
