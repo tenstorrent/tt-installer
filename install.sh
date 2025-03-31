@@ -261,12 +261,12 @@ main() {
 			;;
 		"fedora")
 			sudo dnf check-update
-			sudo dnf install -y wget git python3-pip dkms cargo rust pipx
+			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
 			sudo dnf check-update
-			sudo dnf install -y wget git python3-pip dkms cargo rust pipx
+			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
@@ -371,18 +371,20 @@ main() {
 		log "Setting up HugePages"
 		case "${DISTRO_ID}" in
 			"ubuntu"|"debian")
-				TOOLS_URL="${BASE_TOOLS_URL}/${SYSTOOLS_VERSION}/tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
+				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
+				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${SYSTOOLS_FILENAME}"
 				wget "${TOOLS_URL}"
-				verify_download "${TOOLS_URL}"
-				sudo dpkg -i "${TOOLS_URL}"
+				verify_download "${TOOLS_FILENAME}"
+				sudo dpkg -i "${TOOLS_FILENAME}"
 				sudo systemctl enable --now tenstorrent-hugepages.service
 				sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
 				;;
 			"fedora"|"rhel"|"centos")
-				TOOLS_URL="${BASE_TOOLS_URL}/${SYSTOOLS_VERSION}tenstorrent-tools_${SYSTOOLS_VERSION}.noarch.rpm"
+				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}.noarch.rpm"
+				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${SYSTOOLS_FILENAME}"
 				wget "${TOOLS_URL}"
-				verify_download "${TOOLS_URL}"
-				sudo rpm install -y "${TOOLS_URL}"
+				verify_download "${TOOLS_FILENAME}"
+				sudo dnf install -y "${TOOLS_FILENAME}"
 				sudo systemctl enable --now tenstorrent-hugepages.service
 				sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
 				;;
