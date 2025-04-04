@@ -60,8 +60,7 @@ fi
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
 FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
-# Use manual systools version for now
-SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-"1.1-5_all"}"
+SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-$(fetch_latest_systools_version)}"
 
 # Set default Python installation choice
 # 1 = Use active venv, 2 = Create new venv, 3 = Use pipx, 4 = system level (not recommended)
@@ -390,7 +389,7 @@ main() {
 		log "Setting up HugePages"
 		case "${DISTRO_ID}" in
 			"ubuntu"|"debian")
-				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
+				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}-1_all.deb"
 				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${SYSTOOLS_FILENAME}"
 				wget "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
@@ -399,7 +398,7 @@ main() {
 				sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
 				;;
 			"fedora"|"rhel"|"centos")
-				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}.noarch.rpm"
+				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
 				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${SYSTOOLS_FILENAME}"
 				wget "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
