@@ -269,12 +269,10 @@ main() {
 			fi
 			;;
 		"fedora")
-			sudo dnf check-update
 			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf check-update
 			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
 			;;
 		*)
@@ -345,7 +343,7 @@ main() {
 		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
 			warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
 			if confirm "Force KMD reinstall?"; then
-				sudo dkms remove "tenstorrent/${KMD_VERSION}"
+				sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}"
 				git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
 				sudo dkms add tt-kmd
 				sudo dkms install "tenstorrent/${KMD_VERSION}"
@@ -390,7 +388,7 @@ main() {
 		case "${DISTRO_ID}" in
 			"ubuntu"|"debian")
 				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}-1_all.deb"
-				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${SYSTOOLS_FILENAME}"
+				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
 				wget "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
 				sudo dpkg -i "${TOOLS_FILENAME}"
@@ -399,7 +397,7 @@ main() {
 				;;
 			"fedora"|"rhel"|"centos")
 				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
-				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${SYSTOOLS_FILENAME}"
+				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
 				wget "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
 				sudo dnf install -y "${TOOLS_FILENAME}"
