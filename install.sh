@@ -274,6 +274,10 @@ main() {
 			;;
 	esac
 
+	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
+		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
+	fi
+
 	# Python package installation preference
 	get_new_venv_location
 	get_python_choice
