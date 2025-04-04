@@ -60,8 +60,7 @@ fi
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
 FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
-# Use manual systools version for now
-SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-"1.1-5_all"}"
+SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-$(fetch_latest_systools_version)}"
 
 # Set default Python installation choice
 # 1 = Use active venv, 2 = Create new venv, 3 = Use pipx, 4 = system level (not recommended)
@@ -270,13 +269,11 @@ main() {
 			fi
 			;;
 		"fedora")
-			sudo dnf check-update
-			sudo dnf install -y wget git python3-pip dkms cargo rust pipx
+			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf check-update
-			sudo dnf install -y wget git python3-pip dkms cargo rust pipx
+			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
@@ -346,7 +343,7 @@ main() {
 		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
 			warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
 			if confirm "Force KMD reinstall?"; then
-				sudo dkms remove "tenstorrent/${KMD_VERSION}"
+				sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}"
 				git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
 				sudo dkms add tt-kmd
 				sudo dkms install "tenstorrent/${KMD_VERSION}"
@@ -382,31 +379,35 @@ main() {
 	fi
 
 	# Setup HugePages
+	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download/upstream"
 	# Skip HugePages installation if flag is set
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
-		log "Skipping HugePages setup"
+		warn "Skipping HugePages setup"
 	else
 		log "Setting up HugePages"
-		# Ok this assumes Ubuntu and not any other distro, this needs to get more correctly sorted out and checked for somewhere
-		if [[
-			"${DISTRO_ID}" == "ubuntu"
-			||
-			"${DISTRO_ID}" == "debian"
-			]]
-		then
-			wget "https://github.com/tenstorrent/tt-system-tools/releases/download/upstream%2F1.1/tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-			verify_download "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-			sudo dpkg -i "tenstorrent-tools_${SYSTOOLS_VERSION}.deb"
-			sudo systemctl enable --now tenstorrent-hugepages.service
-			sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
-		else
-			warn ""
-			warn "****************************************************************"
-			warn "*** YOU ARE ON AN UNSUPPORTED DISTRO FOR PACKAGE INSTALL     ***"
-			warn "*** SETTING UP HUGEPAGES CANT'T BE DONE AUTOMATICALLY        ***"
-			warn "****************************************************************"
-			warn ""
-		fi
+		case "${DISTRO_ID}" in
+			"ubuntu"|"debian")
+				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}-1_all.deb"
+				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
+				wget "${TOOLS_URL}"
+				verify_download "${TOOLS_FILENAME}"
+				sudo dpkg -i "${TOOLS_FILENAME}"
+				sudo systemctl enable --now tenstorrent-hugepages.service
+				sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+				;;
+			"fedora"|"rhel"|"centos")
+				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
+				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
+				wget "${TOOLS_URL}"
+				verify_download "${TOOLS_FILENAME}"
+				sudo dnf install -y "${TOOLS_FILENAME}"
+				sudo systemctl enable --now tenstorrent-hugepages.service
+				sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+				;;
+			*)
+				error "This distro is unsupported. Skipping HugePages install!"
+				;;
+		esac
 	fi
 
 	# Install TT-SMI
