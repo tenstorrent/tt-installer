@@ -187,7 +187,7 @@ get_python_choice() {
 			return
 	fi
 
-	# Interactive mode with no choice
+	# Interactive mode with no TT_PYTHON_CHOICE set
 	log "How would you like to install Python packages?"
 	echo "1. Use the active virtual environment"
 	echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
