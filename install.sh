@@ -174,13 +174,17 @@ confirm() {
 
 # Get Python installation choice interactively or use default
 get_python_choice() {
-	# In non-interactive mode, use the default
-	if [[ "${NON_INTERACTIVE}" = "0" ]]; then
-		log "Non-interactive mode, using default Python installation method (option $PYTHON_CHOICE: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
+	# If TT_PYTHON_CHOICE is set via environment variable, use that
+	if [[ -n "${TT_PYTHON_CHOICE+x}" ]]; then
+		log "Using Python installation method from environment variable (option $PYTHON_CHOICE: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
 		return
+	# Otherwise, if in non-interactive mode, use the default
+	elif [[ "${NON_INTERACTIVE}" = "0" ]]; then
+			log "Non-interactive mode, using default Python installation method (option $PYTHON_CHOICE: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
+			return
 	fi
 
-	# Interactive mode
+	# Interactive mode with no choice
 	log "How would you like to install Python packages?"
 	echo "1. Use the active virtual environment"
 	echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
