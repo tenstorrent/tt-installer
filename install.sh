@@ -46,6 +46,9 @@ SKIP_INSTALL_KMD=${TT_SKIP_INSTALL_KMD:-1}
 # Skip HugePages installation flag (set to 0 to skip)
 SKIP_INSTALL_HUGEPAGES=${TT_SKIP_INSTALL_HUGEPAGES:-1}
 
+# Skip tt-flash and firmware update flag (set to 0 to skip)
+SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
+
 # Container mode flag (set to 0 to enable, which skips KMD and HugePages)
 CONTAINER_MODE=${TT_CONTAINER_MODE:-1}
 # If container mode is enabled, skip KMD and HugePages
@@ -246,6 +249,9 @@ main() {
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
 		warn "HugePages setup will be skipped"
 	fi
+	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
+		warn "TT-Flash and firmware update will be skipped"
+	fi
 
 	log "Checking for sudo permissions... (may request password)"
 	check_has_sudo_perms
@@ -358,16 +364,21 @@ main() {
 	fi
 
 	# Install TT-Flash and Firmware
-	log "Installing TT-Flash and updating firmware"
-	cd "${WORKDIR}"
-	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git
+	# Skip tt-flash installation if flag is set
+	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
+		log "Skipping TT-Flash and firmware update installation"
+	else
+		log "Installing TT-Flash and updating firmware"
+		cd "${WORKDIR}"
+		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git
 
-	wget "https://github.com/tenstorrent/tt-firmware/raw/main/${FW_FILE}"
-	verify_download "${FW_FILE}"
+		wget "https://github.com/tenstorrent/tt-firmware/raw/main/${FW_FILE}"
+		verify_download "${FW_FILE}"
 
-	if ! tt-flash --fw-tar "${FW_FILE}"; then
-		warn "Initial firmware update failed, attempting force update"
-		tt-flash --fw-tar "${FW_FILE}" --force
+		if ! tt-flash --fw-tar "${FW_FILE}"; then
+			warn "Initial firmware update failed, attempting force update"
+			tt-flash --fw-tar "${FW_FILE}" --force
+		fi
 	fi
 
 	# Setup HugePages
