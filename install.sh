@@ -18,14 +18,16 @@ EOF
 # Fetch latest kmd from git tags
 TT_KMD_GIT_URL="https://github.com/tenstorrent/tt-kmd.git"
 fetch_latest_kmd_version() {
-	local latest_kmd=$(git ls-remote --tags --refs "${TT_KMD_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
+	local latest_kmd
+	latest_kmd=$(git ls-remote --tags --refs "${TT_KMD_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
 	echo "${latest_kmd#ttkmd-}"
 }
 
 # Fetch lastest FW version
 TT_FW_GIT_URL="https://github.com/tenstorrent/tt-firmware.git"
 fetch_latest_fw_version() {
-	local latest_fw=$(git ls-remote --tags --refs "${TT_FW_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
+	local latest_fw
+	latest_fw=$(git ls-remote --tags --refs "${TT_FW_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
 	echo "${latest_fw#v}" # Remove 'v' prefix if present
 }
 
@@ -33,7 +35,8 @@ fetch_latest_fw_version() {
 # Currently unused due to systools tags being broken
 TT_SYSTOOLS_GIT_URL="https://github.com/tenstorrent/tt-system-tools.git"
 fetch_latest_systools_version() {
-	local latest_systools=$(git ls-remote --tags --refs "${TT_SYSTOOLS_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
+	local latest_systools
+	latest_systools=$(git ls-remote --tags --refs "${TT_SYSTOOLS_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
 	echo "${latest_systools#v}" # Remove 'upstream/' prefix
 }
 
@@ -178,11 +181,11 @@ confirm() {
 get_python_choice() {
 	# If TT_PYTHON_CHOICE is set via environment variable, use that
 	if [[ -n "${TT_PYTHON_CHOICE+x}" ]]; then
-		log "Using Python installation method from environment variable (option $PYTHON_CHOICE: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
+		log "Using Python installation method from environment variable (option ${PYTHON_CHOICE}: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
 		return
 	# Otherwise, if in non-interactive mode, use the default
 	elif [[ "${NON_INTERACTIVE}" = "0" ]]; then
-			log "Non-interactive mode, using default Python installation method (option $PYTHON_CHOICE: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
+			log "Non-interactive mode, using default Python installation method (option ${PYTHON_CHOICE}: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
 			return
 	fi
 
@@ -261,11 +264,11 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
 			sudo apt update
-			# The pipx version on ubuntu 20 is too old to install git packages. It's not needed.
 			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
 				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
+			# On Ubuntu 20, install python3-venv and don't install pipx
 			else
-				sudo apt install -y wget git python3-pip dkms cargo rustc
+				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc
 			fi
 			;;
 		"fedora")
@@ -320,6 +323,8 @@ main() {
 		4)
 			log "Using pipx for isolated package installation"
 			pipx ensurepath
+			# Enable the pipx path in this shell session
+			export PATH="${PATH}:${HOME}/.local/bin/"
 			INSTALLED_IN_VENV=1
 			PYTHON_INSTALL_CMD="pipx install"
 			;;
