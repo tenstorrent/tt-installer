@@ -261,11 +261,11 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
 			sudo apt update
-			# The pipx version on ubuntu 20 is too old to install git packages. It's not needed.
 			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
 				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
+			# On Ubuntu 20, install python3-venv and don't install pipx
 			else
-				sudo apt install -y wget git python3-pip dkms cargo rustc
+				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc
 			fi
 			;;
 		"fedora")
