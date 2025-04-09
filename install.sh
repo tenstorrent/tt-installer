@@ -323,6 +323,8 @@ main() {
 		4)
 			log "Using pipx for isolated package installation"
 			pipx ensurepath
+			# Enable the pipx path in this shell session
+			export PATH="${PATH}:${HOME}/.local/bin/"
 			INSTALLED_IN_VENV=1
 			PYTHON_INSTALL_CMD="pipx install"
 			;;
