@@ -8,7 +8,12 @@ After running the installer, the system should be in the same state as it would 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tenstorrent/tt-installer/refs/heads/main/install.sh)"
 ```
-**WARNING:** doing this is potentially a security issue! You had better really trust us if you do this.
+**WARNING:** Take care with this command! Always be careful running untrusted code.
+
+## Supported Operating Systems
+We support Ubuntu 20+, Debian, Fedora, RHEL, and CentOS. Our preferred OS is Ubuntu 22.
+
+Note that Ubuntu 20 is currently deprecated by Metalium and support will be removed in the future.
 
 ## Advanced Usage
 Much of the script's behavior can be configured with environment variables- some examples are shown below. For a full list of configurable parameters, please see [this page](https://github.com/tenstorrent/tt-installer/wiki/Customizing-your-installation-with-environment-variables) on the wiki.
