@@ -40,9 +40,6 @@ fetch_latest_systools_version() {
 	echo "${latest_systools#v}" # Remove 'upstream/' prefix
 }
 
-# Non-interactive mode flag (set to 0 to enable)
-NON_INTERACTIVE=${TT_NON_INTERACTIVE:-1}
-
 # Skip KMD installation flag (set to 0 to skip)
 SKIP_INSTALL_KMD=${TT_SKIP_INSTALL_KMD:-1}
 
@@ -51,14 +48,6 @@ SKIP_INSTALL_HUGEPAGES=${TT_SKIP_INSTALL_HUGEPAGES:-1}
 
 # Skip tt-flash and firmware update flag (set to 0 to skip)
 SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
-
-# Container mode flag (set to 0 to enable, which skips KMD and HugePages)
-CONTAINER_MODE=${TT_CONTAINER_MODE:-1}
-# If container mode is enabled, skip KMD and HugePages
-if [[ "${CONTAINER_MODE}" = "0" ]]; then
-    SKIP_INSTALL_KMD=0
-    SKIP_INSTALL_HUGEPAGES=0
-fi
 
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
@@ -71,11 +60,35 @@ PYTHON_CHOICE="${TT_PYTHON_CHOICE:-2}"
 declare -A PYTHON_CHOICE_TXT
 PYTHON_CHOICE_TXT[1]="Existing venv"
 PYTHON_CHOICE_TXT[2]="New venv"
-PYTHON_CHOICE_TXT[3]="pipx"
-PYTHON_CHOICE_TXT[4]="System Python"
+PYTHON_CHOICE_TXT[3]="System Python"
+PYTHON_CHOICE_TXT[4]="pipx"
 
-# Option to automatically reboot after installation
-AUTO_REBOOT="${TT_AUTO_REBOOT:-1}"
+# Post-install reboot behavior
+# 1 = Ask the user, 2 = never, 3 = always
+REBOOT_OPTION="${TT_REBOOT_OPTION:-1}"
+declare -A REBOOT_OPTION_TXT
+REBOOT_OPTION_TXT[1]="Ask the user"
+REBOOT_OPTION_TXT[2]="Never reboot"
+REBOOT_OPTION_TXT[3]="Always reboot"
+
+# Container mode flag (set to 0 to enable, which skips KMD and HugePages and never reboots)
+CONTAINER_MODE=${TT_MODE_CONTAINER:-1}
+# If container mode is enabled, skip KMD and HugePages
+if [[ "${CONTAINER_MODE}" = "0" ]]; then
+    SKIP_INSTALL_KMD=0
+    SKIP_INSTALL_HUGEPAGES=0
+    REBOOT_OPTION=2 # Do not reboot
+fi
+
+# Non-interactive mode flag (set to 0 to enable)
+NON_INTERATIVE_MODE=${TT_MODE_NON_INTERATIVE:-1}
+if [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
+	# In non-interactive mode, we can't ask the user for anything
+	# So if they don't provide a reboot choice we will pick a default
+	if [[ "${REBOOT_OPTION}" = "1" ]]; then
+	REBOOT_OPTION=2 # Do not reboot
+	fi
+fi
 
 # Update FW_FILE based on FW_VERSION
 FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
@@ -163,7 +176,7 @@ verify_download() {
 # Function to prompt for yes/no
 confirm() {
 	# In non-interactive mode, always return true
-	if [[ "${NON_INTERACTIVE}" = "0" ]]; then
+	if [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
 		return 0
 	fi
 
@@ -184,7 +197,7 @@ get_python_choice() {
 		log "Using Python installation method from environment variable (option ${PYTHON_CHOICE}: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
 		return
 	# Otherwise, if in non-interactive mode, use the default
-	elif [[ "${NON_INTERACTIVE}" = "0" ]]; then
+	elif [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
 			log "Non-interactive mode, using default Python installation method (option ${PYTHON_CHOICE}: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
 			return
 	fi
@@ -239,7 +252,7 @@ main() {
 	log "  System Tools: ${SYSTOOLS_VERSION}"
 
 	# Log special mode settings
-	if [[ "${NON_INTERACTIVE}" = "0" ]]; then
+	if [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
 		warn "Running in non-interactive mode"
 	fi
 	if [[ "${CONTAINER_MODE}" = "0" ]]; then
@@ -312,7 +325,7 @@ main() {
 			;;
 		3)
 			log "Using system pathing"
-			INSTALLED_IN_VENV=0
+			INSTALLED_IN_VENV=1
 			# If we're on a modern OS, specify we want to break sys packages
 			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
 				PYTHON_INSTALL_CMD="pip install --break-system-packages"
@@ -428,12 +441,11 @@ main() {
 	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
 
 	# Auto-reboot if specified
-	if [[ "${AUTO_REBOOT}" = "0" ]]; then
+	if [[ "${REBOOT_OPTION}" = "3" ]]; then
 		log "Auto-reboot enabled. Rebooting now..."
 		sudo reboot
-	fi
-	# Otherwise, ask if in interactive mode
-	if [[ "${NON_INTERACTIVE}" = 1 ]]; then
+	# Otherwise, ask if specified
+	elif [[ "${REBOOT_OPTION}" = "1" ]]; then
 		if confirm "Would you like to reboot now?"; then
 			log "Rebooting..."
 			sudo reboot
