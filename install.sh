@@ -75,9 +75,9 @@ REBOOT_OPTION_TXT[3]="Always reboot"
 CONTAINER_MODE=${TT_MODE_CONTAINER:-1}
 # If container mode is enabled, skip KMD and HugePages
 if [[ "${CONTAINER_MODE}" = "0" ]]; then
-    SKIP_INSTALL_KMD=0
-    SKIP_INSTALL_HUGEPAGES=0
-    REBOOT_OPTION=2 # Do not reboot
+	SKIP_INSTALL_KMD=0
+	SKIP_INSTALL_HUGEPAGES=0
+	REBOOT_OPTION=2 # Do not reboot
 fi
 
 # Non-interactive mode flag (set to 0 to enable)
@@ -86,7 +86,7 @@ if [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
 	# In non-interactive mode, we can't ask the user for anything
 	# So if they don't provide a reboot choice we will pick a default
 	if [[ "${REBOOT_OPTION}" = "1" ]]; then
-	REBOOT_OPTION=2 # Do not reboot
+		REBOOT_OPTION=2 # Do not reboot
 	fi
 fi
 
