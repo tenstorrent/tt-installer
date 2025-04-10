@@ -77,7 +77,7 @@ CONTAINER_MODE=${TT_MODE_CONTAINER:-1}
 if [[ "${CONTAINER_MODE}" = "0" ]]; then
     SKIP_INSTALL_KMD=0
     SKIP_INSTALL_HUGEPAGES=0
-	REBOOT_OPTION=2 # Do not reboot
+    REBOOT_OPTION=2 # Do not reboot
 fi
 
 # Non-interactive mode flag (set to 0 to enable)
