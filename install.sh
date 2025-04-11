@@ -40,6 +40,15 @@ fetch_latest_systools_version() {
 	echo "${latest_systools#v}" # Remove 'upstream/' prefix
 }
 
+# Fetch latest Metalium version
+TT_METALIUM_DOCKER_URL="https://hub.docker.com/v2/repositories/tenstorrent/metalium/tags?page_size=100"
+fetch_latest_metalium_version() {
+	local latest_metalium
+	# Use curl to fetch the latest tags from Docker Hub API and extract the latest version
+	latest_metalium=$(curl -s "${TT_METALIUM_DOCKER_URL}" | grep -o '"name":"[^"]*"' | cut -d '"' -f 4 | grep -v "latest" | sort -V | tail -n1)
+	echo "${latest_metalium}"
+}
+
 # Skip KMD installation flag (set to 0 to skip)
 SKIP_INSTALL_KMD=${TT_SKIP_INSTALL_KMD:-1}
 
@@ -49,10 +58,14 @@ SKIP_INSTALL_HUGEPAGES=${TT_SKIP_INSTALL_HUGEPAGES:-1}
 # Skip tt-flash and firmware update flag (set to 0 to skip)
 SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
 
+# Skip Metalium Docker installation flag (set to 0 to skip)
+SKIP_INSTALL_METALIUM=${TT_SKIP_INSTALL_METALIUM:-1}
+
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
 FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
 SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-$(fetch_latest_systools_version)}"
+METALIUM_VERSION="${TT_METALIUM_VERSION:-$(fetch_latest_metalium_version)}"
 
 # Set default Python installation choice
 # 1 = Use active venv, 2 = Create new venv, 3 = Use pipx, 4 = system level (not recommended)
@@ -233,6 +246,127 @@ get_new_venv_location() {
 	fi
 }
 
+# Check if docker is installed and install if needed
+install_docker_if_needed() {
+	if command -v docker &> /dev/null; then
+		log "Docker is already installed"
+		
+		# Check if user is in docker group, if not add them
+		if ! groups "${USER}" | grep -q '\bdocker\b'; then
+			log "Adding user to docker group"
+			sudo usermod -aG docker "${USER}"
+			warn "You may need to log out and back in for docker group membership to take effect"
+		fi
+		
+		# Ensure docker service is running
+		if ! sudo systemctl is-active --quiet docker; then
+			log "Starting docker service"
+			sudo systemctl start docker
+			sudo systemctl enable docker
+		fi
+		
+		return 0
+	fi
+	
+	log "Installing Docker"
+	
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			# Install Docker dependencies
+			sudo apt update
+			sudo apt install -y ca-certificates curl gnupg
+			
+			# Add Docker's official GPG key
+			sudo install -m 0755 -d /etc/apt/keyrings
+			curl -fsSL https://download.docker.com/linux/${DISTRO_ID}/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+			sudo chmod a+r /etc/apt/keyrings/docker.gpg
+			
+			# Add the repository to sources list
+			echo \
+			"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DISTRO_ID} \
+			$(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+			sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+			
+			# Update and install Docker
+			sudo apt update
+			sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+			;;
+		"fedora"|"rhel"|"centos")
+			# Install Docker via DNF on Fedora/RHEL/CentOS
+			sudo dnf -y install dnf-plugins-core
+			sudo dnf config-manager --add-repo https://download.docker.com/linux/${DISTRO_ID}/docker-ce.repo
+			sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+			;;
+		*)
+			error "Unsupported distribution for Docker installation: ${DISTRO_ID}"
+			return 1
+			;;
+	esac
+	
+	# Enable and start Docker service
+	sudo systemctl enable docker
+	sudo systemctl start docker
+	
+	# Add user to docker group to run Docker without sudo
+	sudo usermod -aG docker "${USER}"
+	
+	warn "You may need to log out and back in for docker group membership to take effect"
+	
+	return 0
+}
+
+# Install TT-Metalium Docker image
+install_metalium_docker() {
+	log "Installing TT-Metalium Docker image (version ${METALIUM_VERSION})"
+	
+	# Pull the Metalium Docker image
+	docker pull tenstorrent/metalium:${METALIUM_VERSION}
+	
+	# Create metalium wrapper script in user's bin directory
+	local bin_dir="${HOME}/.local/bin"
+	mkdir -p "${bin_dir}"
+	
+	local script_path="${bin_dir}/tt-metalium"
+	cat > "${script_path}" << EOF
+#!/bin/bash
+# Wrapper script for TT-Metalium Docker container
+
+# Default image version
+METALIUM_VERSION="${METALIUM_VERSION}"
+
+# Use custom version if specified
+if [[ -n "\${TT_METALIUM_VERSION}" ]]; then
+    METALIUM_VERSION="\${TT_METALIUM_VERSION}"
+fi
+
+# Run TT-Metalium Docker container with appropriate options
+docker run --rm -it \\
+    --device=/dev/tenstorrent\\* \\
+    --cap-add=SYS_PTRACE \\
+    --security-opt seccomp=unconfined \\
+    --user="\$(id -u):\$(id -g)" \\
+    -v "\${HOME}:/home/\${USER}" \\
+    -v /tmp:/tmp \\
+    -v /dev/hugepages-1G:/dev/hugepages-1G \\
+    -w "/home/\${USER}" \\
+    -e HOME="/home/\${USER}" \\
+    -e USER="\${USER}" \\
+    tenstorrent/metalium:\${METALIUM_VERSION} "\$@"
+EOF
+	
+	chmod +x "${script_path}"
+	
+	# Add script directory to PATH if not already there
+	if ! echo "${PATH}" | grep -q "${bin_dir}"; then
+		log "Adding ${bin_dir} to PATH in .bashrc"
+		echo "export PATH=\"\${PATH}:${bin_dir}\"" >> "${HOME}/.bashrc"
+		warn "You'll need to source your .bashrc or restart your shell to use tt-metalium command"
+	fi
+	
+	log "TT-Metalium Docker image installed successfully"
+	log "You can now use 'tt-metalium' command to start a Metalium container"
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -250,6 +384,7 @@ main() {
 	log "  KMD: ${KMD_VERSION}"
 	log "  Firmware: ${FW_VERSION}"
 	log "  System Tools: ${SYSTOOLS_VERSION}"
+	log "  Metalium: ${METALIUM_VERSION}"
 
 	# Log special mode settings
 	if [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
@@ -266,6 +401,9 @@ main() {
 	fi
 	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
 		warn "TT-Flash and firmware update will be skipped"
+	fi
+	if [[ "${SKIP_INSTALL_METALIUM}" = "0" ]]; then
+		warn "TT-Metalium installation will be skipped"
 	fi
 
 	log "Checking for sudo permissions... (may request password)"
@@ -432,6 +570,19 @@ main() {
 	log "Installing System Management Interface"
 	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi
 
+	# Install TT-Metalium Docker image
+	# Skip Metalium installation if flag is set
+	if [[ "${SKIP_INSTALL_METALIUM}" = "0" ]]; then
+		log "Skipping TT-Metalium installation"
+	else
+		log "Setting up Docker for TT-Metalium"
+		if install_docker_if_needed; then
+			install_metalium_docker
+		else
+			error "Failed to install Docker. Skipping TT-Metalium installation."
+		fi
+	fi
+
 	log "Installation completed successfully!"
 	log "Installation log saved to: ${LOG_FILE}"
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
@@ -439,6 +590,10 @@ main() {
 	fi
 	log "Please reboot your system to complete the setup."
 	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
+	
+	if [[ "${SKIP_INSTALL_METALIUM}" != "0" ]]; then
+		log "To use TT-Metalium, run the 'tt-metalium' command after rebooting."
+	fi
 
 	# Auto-reboot if specified
 	if [[ "${REBOOT_OPTION}" = "3" ]]; then
