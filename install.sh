@@ -41,12 +41,10 @@ fetch_latest_systools_version() {
 }
 
 # Fetch latest Metalium version
-TT_METALIUM_DOCKER_URL="https://hub.docker.com/v2/repositories/tenstorrent/metalium/tags?page_size=100"
+TT_METALIUM_REGISTRY_URL="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-amd64-release"
 fetch_latest_metalium_version() {
-	local latest_metalium
-	# Use curl to fetch the latest tags from Docker Hub API and extract the latest version
-	latest_metalium=$(curl -s "${TT_METALIUM_DOCKER_URL}" | grep -o '"name":"[^"]*"' | cut -d '"' -f 4 | grep -v "latest" | sort -V | tail -n1)
-	echo "${latest_metalium}"
+	# Default to "latest" tag since we're using GitHub Container Registry
+	echo "latest"
 }
 
 # Skip KMD installation flag (set to 0 to skip)
@@ -60,6 +58,9 @@ SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
 
 # Skip Metalium Docker installation flag (set to 0 to skip)
 SKIP_INSTALL_METALIUM=${TT_SKIP_INSTALL_METALIUM:-1}
+
+# Developer mode for Metalium containers (set to 1 to enable extra permissions)
+METALIUM_DEV_MODE=${TT_METALIUM_DEV_MODE:-0}
 
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
@@ -86,10 +87,11 @@ REBOOT_OPTION_TXT[3]="Always reboot"
 
 # Container mode flag (set to 0 to enable, which skips KMD and HugePages and never reboots)
 CONTAINER_MODE=${TT_MODE_CONTAINER:-1}
-# If container mode is enabled, skip KMD and HugePages
+# If container mode is enabled, skip KMD, HugePages, and Metalium (to avoid Docker-in-Docker)
 if [[ "${CONTAINER_MODE}" = "0" ]]; then
 	SKIP_INSTALL_KMD=0
 	SKIP_INSTALL_HUGEPAGES=0
+	SKIP_INSTALL_METALIUM=0
 	REBOOT_OPTION=2 # Do not reboot
 fi
 
@@ -158,6 +160,7 @@ check_has_sudo_perms() {
 
 detect_distro() {
 	if [[ -f /etc/os-release ]]; then
+		# shellcheck source=/dev/null
 		. /etc/os-release
 		DISTRO_ID=${ID}
 		DISTRO_VERSION=${VERSION_ID}
@@ -246,7 +249,7 @@ get_new_venv_location() {
 	fi
 }
 
-# Check if docker is installed and install if needed
+# Check if Docker is installed and install if needed
 install_docker_if_needed() {
 	if command -v docker &> /dev/null; then
 		log "Docker is already installed"
@@ -272,19 +275,19 @@ install_docker_if_needed() {
 	
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
-			# Install Docker dependencies
+			# Install Docker dependencies (if not already part of base packages)
 			sudo apt update
 			sudo apt install -y ca-certificates curl gnupg
 			
 			# Add Docker's official GPG key
 			sudo install -m 0755 -d /etc/apt/keyrings
-			curl -fsSL https://download.docker.com/linux/${DISTRO_ID}/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+			curl -fsSL "https://download.docker.com/linux/${DISTRO_ID}/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 			sudo chmod a+r /etc/apt/keyrings/docker.gpg
 			
 			# Add the repository to sources list
 			echo \
 			"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DISTRO_ID} \
-			$(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+			$(. /etc/os-release && echo "${VERSION_CODENAME}") stable" | \
 			sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 			
 			# Update and install Docker
@@ -294,7 +297,7 @@ install_docker_if_needed() {
 		"fedora"|"rhel"|"centos")
 			# Install Docker via DNF on Fedora/RHEL/CentOS
 			sudo dnf -y install dnf-plugins-core
-			sudo dnf config-manager --add-repo https://download.docker.com/linux/${DISTRO_ID}/docker-ce.repo
+			sudo dnf config-manager --add-repo "https://download.docker.com/linux/${DISTRO_ID}/docker-ce.repo"
 			sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 			;;
 		*)
@@ -315,21 +318,20 @@ install_docker_if_needed() {
 	return 0
 }
 
-# Install TT-Metalium Docker image
-install_metalium_docker() {
-	log "Installing TT-Metalium Docker image (version ${METALIUM_VERSION})"
-	
-	# Pull the Metalium Docker image
-	docker pull tenstorrent/metalium:${METALIUM_VERSION}
-	
-	# Create metalium wrapper script in user's bin directory
+# Create a wrapper script for tt-metalium
+create_metalium_wrapper_script() {
 	local bin_dir="${HOME}/.local/bin"
 	mkdir -p "${bin_dir}"
 	
 	local script_path="${bin_dir}/tt-metalium"
-	cat > "${script_path}" << EOF
+	local metalium_image="${TT_METALIUM_REGISTRY_URL}:${METALIUM_VERSION}"
+	
+	# Create the wrapper script with appropriate options based on dev mode
+	if [[ "${METALIUM_DEV_MODE}" = "1" ]]; then
+		log "Creating tt-metalium wrapper script with developer mode enabled"
+		cat > "${script_path}" << EOF
 #!/bin/bash
-# Wrapper script for TT-Metalium Docker container
+# Wrapper script for TT-Metalium Docker container with developer mode enabled
 
 # Default image version
 METALIUM_VERSION="${METALIUM_VERSION}"
@@ -339,7 +341,7 @@ if [[ -n "\${TT_METALIUM_VERSION}" ]]; then
     METALIUM_VERSION="\${TT_METALIUM_VERSION}"
 fi
 
-# Run TT-Metalium Docker container with appropriate options
+# Run TT-Metalium Docker container with additional developer permissions
 docker run --rm -it \\
     --device=/dev/tenstorrent\\* \\
     --cap-add=SYS_PTRACE \\
@@ -351,8 +353,33 @@ docker run --rm -it \\
     -w "/home/\${USER}" \\
     -e HOME="/home/\${USER}" \\
     -e USER="\${USER}" \\
-    tenstorrent/metalium:\${METALIUM_VERSION} "\$@"
+    ${TT_METALIUM_REGISTRY_URL}:\${METALIUM_VERSION} "\$@"
 EOF
+	else
+		log "Creating standard tt-metalium wrapper script"
+		cat > "${script_path}" << EOF
+#!/bin/bash
+# Wrapper script for TT-Metalium Docker container
+
+# Default image version
+METALIUM_VERSION="${METALIUM_VERSION}"
+
+# Use custom version if specified
+if [[ -n "\${TT_METALIUM_VERSION}" ]]; then
+    METALIUM_VERSION="\${TT_METALIUM_VERSION}"
+fi
+
+# Run TT-Metalium Docker container with standard options
+docker run --rm -it \\
+    --device=/dev/tenstorrent\\* \\
+    -v "\${HOME}:/home/\${USER}" \\
+    -v /dev/hugepages-1G:/dev/hugepages-1G \\
+    -w "/home/\${USER}" \\
+    -e HOME="/home/\${USER}" \\
+    -e USER="\${USER}" \\
+    ${TT_METALIUM_REGISTRY_URL}:\${METALIUM_VERSION} "\$@"
+EOF
+	fi
 	
 	chmod +x "${script_path}"
 	
@@ -362,9 +389,67 @@ EOF
 		echo "export PATH=\"\${PATH}:${bin_dir}\"" >> "${HOME}/.bashrc"
 		warn "You'll need to source your .bashrc or restart your shell to use tt-metalium command"
 	fi
+}
+
+# Install TT-Metalium Docker image
+install_metalium_docker() {
+	log "Installing TT-Metalium Docker image (version ${METALIUM_VERSION})"
+	
+	# Pull the Metalium Docker image from the correct registry
+	docker pull "${TT_METALIUM_REGISTRY_URL}:${METALIUM_VERSION}"
+	
+	# Create the tt-metalium wrapper script
+	create_metalium_wrapper_script
 	
 	log "TT-Metalium Docker image installed successfully"
 	log "You can now use 'tt-metalium' command to start a Metalium container"
+}
+
+# Function to install base packages based on distro
+install_base_packages() {
+	log "Installing base packages"
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			sudo apt update
+			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
+				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
+				# Install Docker dependencies if we're going to install Docker
+				if [[ "${SKIP_INSTALL_METALIUM}" != "0" ]]; then
+					sudo apt install -y ca-certificates curl gnupg
+				fi
+			# On Ubuntu 20, install python3-venv and don't install pipx
+			else
+				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc
+				# Install Docker dependencies if needed
+				if [[ "${SKIP_INSTALL_METALIUM}" != "0" ]]; then
+					sudo apt install -y ca-certificates curl gnupg
+				fi
+			fi
+			;;
+		"fedora")
+			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
+			# Install Docker dependencies if needed
+			if [[ "${SKIP_INSTALL_METALIUM}" != "0" ]]; then
+				sudo dnf install -y dnf-plugins-core
+			fi
+			;;
+		"rhel"|"centos")
+			sudo dnf install -y epel-release
+			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
+			# Install Docker dependencies if needed
+			if [[ "${SKIP_INSTALL_METALIUM}" != "0" ]]; then
+				sudo dnf install -y dnf-plugins-core
+			fi
+			;;
+		*)
+			error "Unsupported distribution: ${DISTRO_ID}"
+			exit 1
+			;;
+	esac
+
+	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
+		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
+	fi
 }
 
 # Main installation script
@@ -405,39 +490,16 @@ main() {
 	if [[ "${SKIP_INSTALL_METALIUM}" = "0" ]]; then
 		warn "TT-Metalium installation will be skipped"
 	fi
+	if [[ "${METALIUM_DEV_MODE}" = "1" && "${SKIP_INSTALL_METALIUM}" != "0" ]]; then
+		warn "TT-Metalium will be installed with developer mode enabled"
+	fi
 
 	log "Checking for sudo permissions... (may request password)"
 	check_has_sudo_perms
 
 	# Check distribution and install base packages
 	detect_distro
-	log "Installing base packages"
-	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
-			sudo apt update
-			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
-				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
-			# On Ubuntu 20, install python3-venv and don't install pipx
-			else
-				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc
-			fi
-			;;
-		"fedora")
-			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
-			;;
-		"rhel"|"centos")
-			sudo dnf install -y epel-release
-			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
-			;;
-		*)
-			error "Unsupported distribution: ${DISTRO_ID}"
-			exit 1
-			;;
-	esac
-
-	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
-		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
-	fi
+	install_base_packages
 
 	# Python package installation preference
 	get_new_venv_location
@@ -491,7 +553,7 @@ main() {
 	# Install TT-KMD
 	# Skip KMD installation if flag is set
 	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
-		log "Skipping KMD installation"
+		warn "Skipping KMD installation"
 	else
 		log "Installing Kernel-Mode Driver"
 		cd "${WORKDIR}"
@@ -519,7 +581,7 @@ main() {
 	# Install TT-Flash and Firmware
 	# Skip tt-flash installation if flag is set
 	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
-		log "Skipping TT-Flash and firmware update installation"
+		warn "Skipping TT-Flash and firmware update installation"
 	else
 		log "Installing TT-Flash and updating firmware"
 		cd "${WORKDIR}"
@@ -571,9 +633,9 @@ main() {
 	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi
 
 	# Install TT-Metalium Docker image
-	# Skip Metalium installation if flag is set
+	# Skip Metalium installation if flag is set or if in container mode
 	if [[ "${SKIP_INSTALL_METALIUM}" = "0" ]]; then
-		log "Skipping TT-Metalium installation"
+		warn "Skipping TT-Metalium installation"
 	else
 		log "Setting up Docker for TT-Metalium"
 		if install_docker_if_needed; then
