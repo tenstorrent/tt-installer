@@ -1,0 +1,216 @@
+name: TT-Installer Tests
+
+on:
+  push:
+    branches: [ main, issue/12 ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      run_all_tests:
+        description: 'Run all test scenarios'
+        default: false
+        type: boolean
+
+jobs:
+  prepare-test-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      test-matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: |
+          if [[ "${{ github.event.inputs.run_all_tests }}" == "true" ]]; then
+            echo "matrix={\"os\":[\"ubuntu-20.04\",\"ubuntu-22.04\",\"fedora-latest\"],\"mode\":[\"normal\",\"container\",\"no-metalium\",\"dev-mode\"]}" >> $GITHUB_OUTPUT
+          else
+            echo "matrix={\"os\":[\"ubuntu-22.04\"],\"mode\":[\"normal\",\"container\"]}" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check log file for expected messages
+          LOG_FILE=$(find /tmp -name "install.log" | head -1)
+          if [[ -f "$LOG_FILE" ]]; then
+            echo "✅ Install log file found: $LOG_FILE"
+            
+            # Check for specific mode messages
+            if [[ "${{ matrix.mode }}" == "container" ]]; then
+              if grep -q "Running in container mode" "$LOG_FILE"; then
+                echo "✅ Container mode message found in logs"
+              else
+                echo "❌ Container mode message not found in logs"
+                exit 1
+              fi
+            fi
+            
+            if [[ "${{ matrix.mode }}" == "no-metalium" ]]; then
+              if grep -q "Skipping TT-Metalium installation" "$LOG_FILE"; then
+                echo "✅ Skip Metalium message found in logs"
+              else
+                echo "❌ Skip Metalium message not found in logs"
+                exit 1
+              fi
+            fi
+            
+            if [[ "${{ matrix.mode }}" == "dev-mode" ]]; then
+              if grep -q "developer mode enabled" "$LOG_FILE"; then
+                echo "✅ Developer mode message found in logs"
+              else
+                echo "❌ Developer mode message not found in logs"
+                exit 1
+              fi
+            fi
+          else
+            echo "❌ Install log file not found"
+            exit 1
+          fi
+
+  test-installer:
+    needs: prepare-test-matrix
+    strategy:
+      matrix: ${{ fromJson(needs.prepare-test-matrix.outputs.test-matrix) }}
+      fail-fast: false
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.os == 'fedora-latest' && 'fedora:latest' || matrix.os }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup mock environment
+        run: |
+          # Create mock devices
+          mkdir -p /dev
+          touch /dev/tenstorrent_0
+          touch /dev/tenstorrent_1
+
+          # Install basic dependencies for the test
+          if [[ "${{ matrix.os }}" == ubuntu* ]]; then
+            apt-get update
+            apt-get install -y sudo curl wget git python3 python3-pip
+          elif [[ "${{ matrix.os }}" == "fedora-latest" ]]; then
+            dnf install -y sudo curl wget git python3 python3-pip
+          fi
+
+          # Create mock scripts
+          mkdir -p /usr/local/bin
+          
+          # Mock for tt-smi
+          cat > /usr/local/bin/tt-smi << 'EOF'
+          #!/bin/bash
+          echo "TT-SMI v0.1.0"
+          echo "Found 2 Tenstorrent devices"
+          echo "Device 0: Grayskull (Serial: GS000001)"
+          echo "  PCI: 0000:01:00.0"
+          echo "  Memory: 16GB"
+          echo "  Temperature: 45°C"
+          echo "Device 1: Wormhole (Serial: WH000001)"
+          echo "  PCI: 0000:02:00.0"
+          echo "  Memory: 32GB" 
+          echo "  Temperature: 47°C"
+          EOF
+          chmod +x /usr/local/bin/tt-smi
+          
+          # Mock for tt-flash
+          cat > /usr/local/bin/tt-flash << 'EOF'
+          #!/bin/bash
+          echo "TT-Flash v0.1.0"
+          echo "Firmware update successful"
+          exit 0
+          EOF
+          chmod +x /usr/local/bin/tt-flash
+          
+          # Mock for modinfo, dkms, etc.
+          cat > /usr/local/bin/modinfo << 'EOF'
+          #!/bin/bash
+          if [[ "$1" == "-F" && "$2" == "version" && "$3" == "tenstorrent" ]]; then
+            # Emulate no driver installed
+            exit 1
+          fi
+          EOF
+          chmod +x /usr/local/bin/modinfo
+          
+          # Mock for docker
+          cat > /usr/local/bin/docker << 'EOF'
+          #!/bin/bash
+          if [[ "$1" == "pull" ]]; then
+            echo "Successfully pulled $2"
+          elif [[ "$1" == "run" ]]; then
+            echo "Would run container with args: $@"
+          fi
+          exit 0
+          EOF
+          chmod +x /usr/local/bin/docker
+
+      - name: Prepare installer script
+        run: |
+          mkdir -p tt-installer
+          cp install.sh tt-installer/
+          chmod +x tt-installer/install.sh
+
+      - name: Run installer (normal mode)
+        if: matrix.mode == 'normal'
+        run: |
+          cd tt-installer
+          export TT_NON_INTERACTIVE=0
+          export TT_AUTO_REBOOT=0
+          export TT_SKIP_INSTALL_KMD=0
+          export TT_SKIP_INSTALL_HUGEPAGES=0
+          export TT_SKIP_UPDATE_FIRMWARE=0
+          ./install.sh
+
+      - name: Run installer (container mode)
+        if: matrix.mode == 'container'
+        run: |
+          cd tt-installer
+          export TT_NON_INTERACTIVE=0
+          export TT_MODE_CONTAINER=0
+          export TT_AUTO_REBOOT=0
+          ./install.sh
+
+      - name: Run installer (no-metalium mode)
+        if: matrix.mode == 'no-metalium'
+        run: |
+          cd tt-installer
+          export TT_NON_INTERACTIVE=0
+          export TT_AUTO_REBOOT=0
+          export TT_SKIP_INSTALL_METALIUM=0
+          ./install.sh
+
+      - name: Run installer (dev-mode)
+        if: matrix.mode == 'dev-mode'
+        run: |
+          cd tt-installer
+          export TT_NON_INTERACTIVE=0
+          export TT_AUTO_REBOOT=0
+          export TT_METALIUM_DEV_MODE=1
+          ./install.sh
+
+      - name: Verify installation artifacts
+        run: |
+          # Check if tt-metalium script was created
+          if [[ "${{ matrix.mode }}" == "normal" || "${{ matrix.mode }}" == "dev-mode" ]]; then
+            if [[ -f "$HOME/.local/bin/tt-metalium" ]]; then
+              echo "✅ tt-metalium script created successfully"
+              
+              # Check content of script based on mode
+              if [[ "${{ matrix.mode }}" == "dev-mode" && $(grep -c "developer mode" "$HOME/.local/bin/tt-metalium") -gt 0 ]]; then
+                echo "✅ tt-metalium script has developer mode enabled"
+              elif [[ "${{ matrix.mode }}" == "normal" && $(grep -c "standard options" "$HOME/.local/bin/tt-metalium") -gt 0 ]]; then
+                echo "✅ tt-metalium script has standard options"
+              else
+                echo "❌ tt-metalium script content doesn't match expected mode"
+                cat "$HOME/.local/bin/tt-metalium"
+                exit 1
+              fi
+            else
+              echo "❌ tt-metalium script was not created"
+              exit 1
+            fi
+          elif [[ "${{ matrix.mode }}" == "no-metalium" || "${{ matrix.mode }}" == "container" ]]; then
+            if [[ ! -f "$HOME/.local/bin/tt-metalium" ]]; then
+              echo "✅ tt-metalium script correctly not created in skip mode"
+            else
+              echo "❌ tt-metalium script was created when it should have been skipped"
+              exit 1
+            fi
+          fi
