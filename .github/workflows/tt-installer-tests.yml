@@ -104,6 +104,38 @@ jobs:
           exit 0
           EOF
           chmod +x /usr/local/bin/docker
+          
+          # Create mock git for version fetching
+          tee /usr/local/bin/git-ls-remote.sh > /dev/null <<'EOF'
+          #!/bin/bash
+          if [[ "$@" == *"tt-kmd"* ]]; then
+            echo "refs/tags/ttkmd-1.0.0"
+          elif [[ "$@" == *"tt-firmware"* ]]; then
+            echo "refs/tags/v1.0.0"
+          elif [[ "$@" == *"tt-system-tools"* ]]; then
+            echo "refs/tags/v1.0.0"
+          fi
+          EOF
+          chmod +x /usr/local/bin/git-ls-remote.sh
+          
+          # Override git command to handle ls-remote
+          tee /usr/local/bin/git.sh > /dev/null <<'EOF'
+          #!/bin/bash
+          if [[ "$1" == "ls-remote" ]]; then
+            /usr/local/bin/git-ls-remote.sh "$@"
+          elif [[ "$1" == "clone" ]]; then
+            echo "Mocking git clone: $@"
+            mkdir -p "$3"
+          else
+            echo "Mocking git command: $@"
+          fi
+          EOF
+          chmod +x /usr/local/bin/git.sh
+          
+          # Create an alias for git to use our mock script
+          echo '#!/bin/bash' > /usr/local/bin/git
+          echo '/usr/local/bin/git.sh "$@"' >> /usr/local/bin/git
+          chmod +x /usr/local/bin/git
 
       - name: Prepare installer script
         run: |
@@ -118,8 +150,23 @@ jobs:
           TT_MODE_CONTAINER: ${{ matrix.mode == 'container' && '0' || '1' }}
           TT_SKIP_INSTALL_METALIUM: ${{ matrix.mode == 'no-metalium' && '0' || '1' }}
           TT_METALIUM_DEV_MODE: ${{ matrix.mode == 'dev-mode' && '1' || '0' }}
+          # Add fixed version variables to avoid network lookups
+          TT_KMD_VERSION: "1.0.0"
+          TT_FW_VERSION: "1.0.0"
+          TT_SYSTOOLS_VERSION: "1.0.0"
+          TT_METALIUM_VERSION: "latest"
         run: |
           cd tt-installer
+          
+          # Create home directory for the current user if it doesn't exist
+          mkdir -p $HOME/.local/bin
+          
+          # Fix any permission issues in the home directory
+          if id -u && getent passwd $(id -u); then
+            chown -R $(id -u):$(id -g) $HOME || true
+          fi
+          
+          # Run the installer
           ./install.sh
 
       - name: Verify installation
@@ -128,6 +175,7 @@ jobs:
           LOG_FILE=$(find /tmp -name "install.log" | head -1)
           if [[ -f "$LOG_FILE" ]]; then
             echo "✅ Install log found: $LOG_FILE"
+            cat "$LOG_FILE"
             
             # Verify mode-specific messages
             case "${{ matrix.mode }}" in
@@ -143,22 +191,31 @@ jobs:
             esac
           else
             echo "❌ Install log not found!"
+            # List all log files for debugging
+            find /tmp -type f -name "*.log" -o -name "tenstorrent*" | xargs ls -la
             exit 1
           fi
+
+          # Create home bin directory if it doesn't exist
+          mkdir -p "$HOME/.local/bin"
 
           # Check tt-metalium script
           if [[ "${{ matrix.mode }}" == "normal" || "${{ matrix.mode }}" == "dev-mode" ]]; then
             if [[ -f "$HOME/.local/bin/tt-metalium" ]]; then
               echo "✅ tt-metalium script exists"
-              # Add content checks here
+              cat "$HOME/.local/bin/tt-metalium"
             else
               echo "❌ tt-metalium script missing"
+              # Check if the directory exists
+              ls -la "$HOME/.local/bin/"
               exit 1
             fi
           else
             if [[ -f "$HOME/.local/bin/tt-metalium" ]]; then
               echo "❌ tt-metalium should not exist"
               exit 1
+            else
+              echo "✅ tt-metalium correctly does not exist"
             fi
           fi
 
