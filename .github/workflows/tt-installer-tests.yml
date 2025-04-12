@@ -43,24 +43,24 @@ jobs:
       - name: Setup mock environment
         run: |
           # Create mock devices with proper permissions
-          sudo mkdir -p /dev
-          sudo touch /dev/tenstorrent_0
-          sudo touch /dev/tenstorrent_1
-          sudo chmod 666 /dev/tenstorrent_*
+          mkdir -p /dev
+          touch /dev/tenstorrent_0
+          touch /dev/tenstorrent_1
+          chmod 666 /dev/tenstorrent_*
 
           # Install basic dependencies
           if [[ "${{ matrix.os }}" == ubuntu* ]]; then
-            sudo apt-get update
-            sudo apt-get install -y sudo curl wget git python3 python3-pip python3-venv
+            apt-get update
+            apt-get install -y curl wget git python3 python3-pip python3-venv
           elif [[ "${{ matrix.os }}" == "fedora-latest" ]]; then
-            sudo dnf install -y sudo curl wget git python3 python3-pip
+            dnf install -y curl wget git python3 python3-pip
           fi
 
           # Create mock scripts in system path
-          sudo mkdir -p /usr/local/bin
+          mkdir -p /usr/local/bin
           
           # tt-smi mock
-          sudo tee /usr/local/bin/tt-smi > /dev/null <<'EOF'
+          tee /usr/local/bin/tt-smi > /dev/null <<'EOF'
           #!/bin/bash
           echo "TT-SMI v0.1.0"
           echo "Found 2 Tenstorrent devices"
@@ -73,28 +73,28 @@ jobs:
           echo "  Memory: 32GB"
           echo "  Temperature: 47°C"
           EOF
-          sudo chmod +x /usr/local/bin/tt-smi
+          chmod +x /usr/local/bin/tt-smi
 
           # tt-flash mock
-          sudo tee /usr/local/bin/tt-flash > /dev/null <<'EOF'
+          tee /usr/local/bin/tt-flash > /dev/null <<'EOF'
           #!/bin/bash
           echo "TT-Flash v0.1.0"
           echo "Firmware update successful"
           exit 0
           EOF
-          sudo chmod +x /usr/local/bin/tt-flash
+          chmod +x /usr/local/bin/tt-flash
 
           # modinfo mock
-          sudo tee /usr/local/bin/modinfo > /dev/null <<'EOF'
+          tee /usr/local/bin/modinfo > /dev/null <<'EOF'
           #!/bin/bash
           if [[ "$1" == "-F" && "$2" == "version" && "$3" == "tenstorrent" ]]; then
             exit 1
           fi
           EOF
-          sudo chmod +x /usr/local/bin/modinfo
+          chmod +x /usr/local/bin/modinfo
 
           # docker mock
-          sudo tee /usr/local/bin/docker > /dev/null <<'EOF'
+          tee /usr/local/bin/docker > /dev/null <<'EOF'
           #!/bin/bash
           if [[ "$1" == "pull" ]]; then
             echo "Successfully pulled $2"
@@ -103,7 +103,7 @@ jobs:
           fi
           exit 0
           EOF
-          sudo chmod +x /usr/local/bin/docker
+          chmod +x /usr/local/bin/docker
 
       - name: Prepare installer script
         run: |
