@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ matrix.os == 'ubuntu-20.04' && 'ubuntu:20.04' || matrix.os == 'ubuntu-22.04' && 'ubuntu:22.04' || matrix.os == 'fedora-latest' && 'fedora:latest' || matrix.os }}
-      options: --privileged 
+      options: --privileged  # Needed for device mocks
 
     steps:
       - name: Checkout code
