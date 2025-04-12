@@ -51,9 +51,9 @@ jobs:
           # Install basic dependencies
           if [[ "${{ matrix.os }}" == ubuntu* ]]; then
             apt-get update
-            apt-get install -y curl wget git python3 python3-pip python3-venv
+            apt-get install -y sudo curl wget git python3 python3-pip python3-venv
           elif [[ "${{ matrix.os }}" == "fedora-latest" ]]; then
-            dnf install -y curl wget git python3 python3-pip
+            dnf install -y sudo curl wget git python3 python3-pip
           fi
 
           # Create mock scripts in system path
