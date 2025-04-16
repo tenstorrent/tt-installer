@@ -32,7 +32,6 @@ fetch_latest_fw_version() {
 }
 
 # Fetch latest systools version
-# Currently unused due to systools tags being broken
 TT_SYSTOOLS_GIT_URL="https://github.com/tenstorrent/tt-system-tools.git"
 fetch_latest_systools_version() {
 	local latest_systools
@@ -48,6 +47,9 @@ SKIP_INSTALL_HUGEPAGES=${TT_SKIP_INSTALL_HUGEPAGES:-1}
 
 # Skip tt-flash and firmware update flag (set to 0 to skip)
 SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
+
+# Skip Docker installation flag (set to 0 to skip)
+SKIP_INSTALL_DOCKER=${TT_SKIP_INSTALL_DOCKER:-1}
 
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
@@ -233,6 +235,88 @@ get_new_venv_location() {
 	fi
 }
 
+# Function to check if Docker is installed
+check_docker_installed() {
+	if command -v docker &> /dev/null; then
+		log "Docker is already installed"
+		# Check if Docker service is running
+		if systemctl is-active --quiet docker; then
+			log "Docker service is running"
+			return 0
+		else
+			log "Docker is installed but service is not running"
+			if confirm "Start Docker service?"; then
+				sudo systemctl start docker
+				sudo systemctl enable docker
+				log "Docker service started and enabled"
+			fi
+			return 0
+		fi
+	else
+		log "Docker is not installed"
+		return 1
+	fi
+}
+
+# Function to install Docker
+install_docker() {
+	log "Installing Docker"
+	cd "${WORKDIR}"
+
+	# Download the Docker installation script
+	wget -O docker-install.sh https://get.docker.com
+	verify_download "docker-install.sh"
+
+	# Make the script executable
+	chmod +x docker-install.sh
+
+	# Run the Docker installation script
+	sudo sh docker-install.sh
+
+	# Add current user to docker group to avoid using sudo with docker
+	if confirm "Add current user to docker group? (recommended)"; then
+		sudo usermod -aG docker "${USER}"
+		log "User ${USER} added to docker group"
+		log "You'll need to log out and back in for this change to take effect"
+	fi
+
+	# Start and enable Docker service
+	sudo systemctl start docker
+	sudo systemctl enable docker
+
+	log "Docker installation completed"
+
+	# Verify Docker installation
+	if sudo docker --version; then
+		log "Docker installed successfully"
+	else
+		error "Docker installation failed"
+		return 1
+	fi
+
+	return 0
+}
+
+# Get Docker installation choice interactively or use default
+get_docker_choice() {
+	# If TT_SKIP_INSTALL_DOCKER is set via environment variable, use that
+	if [[ -n "${TT_SKIP_INSTALL_DOCKER+x}" ]]; then
+		log "Using Docker installation preference from environment variable (got ${SKIP_INSTALL_DOCKER})"
+		return
+	# Otherwise, if in non-interactive mode, use the default
+	elif [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
+		log "Non-interactive mode, using default Docker installation preference (got ${SKIP_INSTALL_DOCKER})"
+		return
+	fi
+
+	# Interactive mode with no TT_SKIP_INSTALL_DOCKER set
+	if confirm "Would you like to install Docker?"; then
+		SKIP_INSTALL_DOCKER=1
+	else
+		SKIP_INSTALL_DOCKER=0
+	fi
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -299,6 +383,17 @@ main() {
 
 	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
+	fi
+
+	# Docker installation
+	log "Checking for Docker installation"
+	if ! check_docker_installed; then
+		get_docker_choice
+		if [[ "${SKIP_INSTALL_DOCKER}" = "0" ]]; then
+			warn "Skipping Docker installation"
+		else
+			install_docker
+		fi
 	fi
 
 	# Python package installation preference
@@ -437,6 +532,11 @@ main() {
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
 		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent tools."
 	fi
+
+	if [[ "${SKIP_INSTALL_DOCKER}" = "0" && "$(id -u)" = "$(id -nu)" ]]; then
+		warn "You may need to log out and back in for Docker group changes to take effect."
+	fi
+
 	log "Please reboot your system to complete the setup."
 	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
 
