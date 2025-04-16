@@ -81,8 +81,8 @@ if [[ "${CONTAINER_MODE}" = "0" ]]; then
 fi
 
 # Non-interactive mode flag (set to 0 to enable)
-NON_INTERATIVE_MODE=${TT_MODE_NON_INTERATIVE:-1}
-if [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
+NON_INTERACTIVE_MODE=${TT_MODE_NON_INTERACTIVE:-1}
+if [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
 	# In non-interactive mode, we can't ask the user for anything
 	# So if they don't provide a reboot choice we will pick a default
 	if [[ "${REBOOT_OPTION}" = "1" ]]; then
@@ -176,7 +176,7 @@ verify_download() {
 # Function to prompt for yes/no
 confirm() {
 	# In non-interactive mode, always return true
-	if [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
+	if [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
 		return 0
 	fi
 
@@ -197,7 +197,7 @@ get_python_choice() {
 		log "Using Python installation method from environment variable (option ${PYTHON_CHOICE}: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
 		return
 	# Otherwise, if in non-interactive mode, use the default
-	elif [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
+	elif [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
 			log "Non-interactive mode, using default Python installation method (option ${PYTHON_CHOICE}: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
 			return
 	fi
@@ -252,7 +252,7 @@ main() {
 	log "  System Tools: ${SYSTOOLS_VERSION}"
 
 	# Log special mode settings
-	if [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
+	if [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
 		warn "Running in non-interactive mode"
 	fi
 	if [[ "${CONTAINER_MODE}" = "0" ]]; then
