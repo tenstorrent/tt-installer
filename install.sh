@@ -39,6 +39,8 @@ fetch_latest_systools_version() {
 	echo "${latest_systools#v}" # Remove 'upstream/' prefix
 }
 
+# ========================= Boolean Parameters =========================
+
 # Skip KMD installation flag (set to 0 to skip)
 SKIP_INSTALL_KMD=${TT_SKIP_INSTALL_KMD:-1}
 
@@ -50,6 +52,8 @@ SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
 
 # Skip Docker installation flag (set to 0 to skip)
 SKIP_INSTALL_DOCKER=${TT_SKIP_INSTALL_DOCKER:-1}
+
+# ========================= String Parameters =========================
 
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
@@ -73,6 +77,8 @@ REBOOT_OPTION_TXT[1]="Ask the user"
 REBOOT_OPTION_TXT[2]="Never reboot"
 REBOOT_OPTION_TXT[3]="Always reboot"
 
+# ========================= Modes =========================
+
 # Container mode flag (set to 0 to enable, which skips KMD and HugePages and never reboots)
 CONTAINER_MODE=${TT_MODE_CONTAINER:-1}
 # If container mode is enabled, skip KMD and HugePages
@@ -91,6 +97,8 @@ if [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
 		REBOOT_OPTION=2 # Do not reboot
 	fi
 fi
+
+# ========================= Main Script =========================
 
 # Update FW_FILE based on FW_VERSION
 FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
