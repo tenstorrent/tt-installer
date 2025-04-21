@@ -84,7 +84,8 @@ CONTAINER_MODE=${TT_MODE_CONTAINER:-1}
 # If container mode is enabled, skip KMD and HugePages
 if [[ "${CONTAINER_MODE}" = "0" ]]; then
 	SKIP_INSTALL_KMD=0
-	SKIP_INSTALL_HUGEPAGES=0
+	SKIP_INSTALL_HUGEPAGES=0 # Both KMD and HugePages must live on the host kernel
+	SKIP_INSTALL_DOCKER=0 # No docker in docker
 	REBOOT_OPTION=2 # Do not reboot
 fi
 
@@ -355,6 +356,9 @@ main() {
 	fi
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
 		warn "HugePages setup will be skipped"
+	fi
+	if [[ "${SKIP_INSTALL_DOCKER}" = "0" ]]; then
+		warn "Docker installation will be skipped"
 	fi
 	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
 		warn "TT-Flash and firmware update will be skipped"
