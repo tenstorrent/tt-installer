@@ -15,6 +15,8 @@ LOGO=$(cat << "EOF"
 EOF
 )
 
+# ========================= GIT URLs =========================
+
 # Fetch latest kmd from git tags
 TT_KMD_GIT_URL="https://github.com/tenstorrent/tt-kmd.git"
 fetch_latest_kmd_version() {
@@ -39,6 +41,15 @@ fetch_latest_systools_version() {
 	echo "${latest_systools#v}" # Remove 'upstream/' prefix
 }
 
+# ========================= Docker Metalium Settings =========================
+
+# Docker Metalium URLs and Settings
+TT_DOCKER_METALIUM_URL="${TT_DOCKER_METALIUM_URL:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64}"
+TT_DOCKER_METALIUM_TAG="${TT_DOCKER_METALIUM_TAG:-latest-rc}"
+TT_DOCKER_METALIUM_CONFIG_DIR="${HOME}/.tt-metalium"
+TT_DOCKER_METALIUM_SCRIPT_DIR="${HOME}/.local/bin"
+TT_DOCKER_METALIUM_SCRIPT_NAME="tt-metalium"
+
 # ========================= Boolean Parameters =========================
 
 # Skip KMD installation flag (set to 0 to skip)
@@ -52,6 +63,9 @@ SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
 
 # Skip Docker installation flag (set to 0 to skip)
 SKIP_INSTALL_DOCKER=${TT_SKIP_INSTALL_DOCKER:-1}
+
+# Skip Docker Metalium installation flag (set to 0 to skip)
+SKIP_INSTALL_DOCKER_METALIUM=${TT_SKIP_INSTALL_DOCKER_METALIUM:-1}
 
 # ========================= String Parameters =========================
 
@@ -139,6 +153,12 @@ log() {
 error() {
 	local msg="[ERROR] $1"
 	echo -e "${RED}${msg}${NC}"
+}
+
+# log an error and then exit
+error_exit() {
+    error "$1"
+    exit 1
 }
 
 # log warnings
@@ -267,6 +287,17 @@ check_docker_installed() {
 	fi
 }
 
+# Function to check if Docker Compose is installed
+check_docker_compose_installed() {
+	if docker compose version &>/dev/null; then
+		log "Docker Compose V2 is already installed"
+		return 0
+	else
+		log "Docker Compose V2 is not installed"
+		return 1
+	fi
+}
+
 # Function to install Docker
 install_docker() {
 	log "Installing Docker"
@@ -282,6 +313,7 @@ install_docker() {
 	# Run the Docker installation script
 	sudo sh docker-install.sh
 
+	info "Docker has been installed"
 	# Add current user to docker group to avoid using sudo with docker
 	if confirm "Add current user to docker group? (recommended)"; then
 		sudo usermod -aG docker "${USER}"
@@ -292,8 +324,6 @@ install_docker() {
 	# Start and enable Docker service
 	sudo systemctl start docker
 	sudo systemctl enable docker
-
-	log "Docker installation completed"
 
 	# Verify Docker installation
 	if sudo docker --version; then
@@ -306,23 +336,100 @@ install_docker() {
 	return 0
 }
 
-# Get Docker installation choice interactively or use default
-get_docker_choice() {
-	# If TT_SKIP_INSTALL_DOCKER is set via environment variable, use that
-	if [[ -n "${TT_SKIP_INSTALL_DOCKER+x}" ]]; then
-		log "Using Docker installation preference from environment variable (got ${SKIP_INSTALL_DOCKER})"
+# Install Docker Metalium container
+install_docker_metalium() {
+	log "Installing Metalium (Dockerized version)"
+
+	# Create configuration directory
+	mkdir -p "${TT_DOCKER_METALIUM_CONFIG_DIR}" || error_exit "Failed to create configuration directory"
+
+	# Create Docker Compose file
+	log "Creating Docker Compose configuration file..."
+	cat > "${TT_DOCKER_METALIUM_CONFIG_DIR}/docker-compose.yml" << EOF
+# Docker Compose configuration for tt-metalium
+
+services:
+  # Service for interactive shell and command execution
+  tt-metalium:
+    image: ${TT_DOCKER_METALIUM_URL}:${TT_DOCKER_METALIUM_TAG}
+    stdin_open: true
+    tty: true
+    volumes:
+      - /dev/hugepages-1G:/dev/hugepages-1G
+      - \${HOME:-/home/user}:/home/user
+    working_dir: /home/user
+    devices:
+      - /dev/tenstorrent:/dev/tenstorrent
+    environment:
+      - DISPLAY=\${DISPLAY}
+      - HOME=/home/user
+      - TERM=\${TERM:-xterm-256color}
+    network_mode: host
+    command: bash
+EOF
+
+	# Create wrapper script directory
+	mkdir -p "${TT_DOCKER_METALIUM_SCRIPT_DIR}" || error_exit "Failed to create script directory"
+
+	# Create wrapper script
+	log "Creating wrapper script..."
+	cat > "${TT_DOCKER_METALIUM_SCRIPT_DIR}/${TT_DOCKER_METALIUM_SCRIPT_NAME}" << EOF
+#!/bin/bash
+# Wrapper script for tt-metalium Docker Compose
+
+# Docker Compose configuration
+CONFIG_DIR="${TT_DOCKER_METALIUM_CONFIG_DIR}"
+COMPOSE_FILE="\${CONFIG_DIR}/docker-compose.yml"
+
+# Run the command using Docker Compose
+docker compose --project-directory "\${CONFIG_DIR}" -f "\${COMPOSE_FILE}" run --rm tt-metalium "\$@"
+EOF
+
+	# Make the script executable
+	chmod +x "${TT_DOCKER_METALIUM_SCRIPT_DIR}/${TT_DOCKER_METALIUM_SCRIPT_NAME}" || error_exit "Failed to make script executable"
+
+	# Check if the directory is in PATH
+	if [[ ":$PATH:" != *":${TT_DOCKER_METALIUM_SCRIPT_DIR}:"* ]]; then
+		warn "${TT_DOCKER_METALIUM_SCRIPT_DIR} is not in your PATH."
+		warn "You may need to add the following line to your ~/.bashrc or ~/.zshrc file:"
+		warn "export PATH=\"\$PATH:${TT_DOCKER_METALIUM_SCRIPT_DIR}\""
+		warn "To use tt-metalium now, you can run it with the full path:"
+		warn "${TT_DOCKER_METALIUM_SCRIPT_DIR}/${TT_DOCKER_METALIUM_SCRIPT_NAME}"
+	fi
+
+	# Pull the Docker image
+	log "Pulling the tt-metalium Docker image (this may take a while)..."
+	sudo docker pull "${TT_DOCKER_METALIUM_URL}:${TT_DOCKER_METALIUM_TAG}" || error "Failed to pull Docker image"
+
+	log "Docker Metalium installation completed"
+	return 0
+}
+
+get_docker_metalium_choice() {
+	# If TT_SKIP_INSTALL_DOCKER_METALIUM is set via environment variable, use that
+	if [[ -n "${TT_SKIP_INSTALL_DOCKER_METALIUM+x}" ]]; then
+		log "Using Docker Metalium installation preference from environment variable (got ${SKIP_INSTALL_DOCKER_METALIUM})"
 		return
 	# Otherwise, if in non-interactive mode, use the default
-	elif [[ "${NON_INTERATIVE_MODE}" = "0" ]]; then
-		log "Non-interactive mode, using default Docker installation preference (got ${SKIP_INSTALL_DOCKER})"
+	elif [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
+		log "Non-interactive mode, using default Docker Metalium installation preference (got ${SKIP_INSTALL_DOCKER_METALIUM})"
 		return
 	fi
 
-	# Interactive mode with no TT_SKIP_INSTALL_DOCKER set
-	if confirm "Would you like to install Docker?"; then
-		SKIP_INSTALL_DOCKER=1
+	# Only ask if Docker is installed or will be installed
+	if [[ "${SKIP_INSTALL_DOCKER}" = "1" ]] || check_docker_installed; then
+		# Interactive mode with no TT_SKIP_INSTALL_DOCKER_METALIUM set
+		log "Would you like to install the TT-Metalium library using Docker?"
+		if confirm "Make a selection"; then
+			SKIP_INSTALL_DOCKER_METALIUM=1
+		else
+			SKIP_INSTALL_DOCKER_METALIUM=0
+			SKIP_INSTALL_DOCKER=0 # If we don't want Metalium, we can skip Docker
+		fi
 	else
-		SKIP_INSTALL_DOCKER=0
+		# Docker won't be installed, so don't install Metalium
+		SKIP_INSTALL_DOCKER_METALIUM=0
+		warn "Docker is not and will not be installed, skipping Docker Metalium installation"
 	fi
 }
 
@@ -359,6 +466,9 @@ main() {
 	fi
 	if [[ "${SKIP_INSTALL_DOCKER}" = "0" ]]; then
 		warn "Docker installation will be skipped"
+	fi
+	if [[ "${SKIP_INSTALL_DOCKER_METALIUM}" = "0" ]]; then
+		warn "Metalium installation will be skipped"
 	fi
 	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
 		warn "TT-Flash and firmware update will be skipped"
@@ -397,16 +507,8 @@ main() {
 		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
 	fi
 
-	# Docker installation
-	log "Checking for Docker installation"
-	if ! check_docker_installed; then
-		get_docker_choice
-		if [[ "${SKIP_INSTALL_DOCKER}" = "0" ]]; then
-			warn "Skipping Docker installation"
-		else
-			install_docker
-		fi
-	fi
+	# Get Docker Metalium installation choice
+	get_docker_metalium_choice
 
 	# Python package installation preference
 	get_new_venv_location
@@ -539,14 +641,44 @@ main() {
 	log "Installing System Management Interface"
 	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi
 
+	# Install Docker if requested
+	if [[ "${SKIP_INSTALL_DOCKER}" = "0" ]]; then
+		warn "Skipping Docker installation"
+	else
+		if ! check_docker_installed; then
+			install_docker
+		fi
+	fi
+
+	# Install Docker Metalium if requested
+	if [[ "${SKIP_INSTALL_DOCKER_METALIUM}" = "0" ]]; then
+		warn "Skipping Docker Metalium installation"
+	else
+		if ! check_docker_installed; then
+			warn "Docker is not installed. Cannot install Docker Metalium."
+		elif ! check_docker_compose_installed; then
+			warn "Docker Compose V2 is not installed. Cannot install Docker Metalium."
+		else
+			install_docker_metalium
+		fi
+	fi
+
 	log "Installation completed successfully!"
 	log "Installation log saved to: ${LOG_FILE}"
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
 		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent tools."
 	fi
 
-	if [[ "${SKIP_INSTALL_DOCKER}" = "0" && "$(id -u)" = "$(id -nu)" ]]; then
+	if [[ "${SKIP_INSTALL_DOCKER}" = "1" && "$(id -u)" = "$(id -nu)" ]]; then
 		warn "You may need to log out and back in for Docker group changes to take effect."
+	fi
+
+	if [[ "${SKIP_INSTALL_DOCKER_METALIUM}" = "1" ]]; then
+		log "You can now use the 'tt-metalium' command."
+		log "Usage examples:"
+		log "  tt-metalium                   # Start an interactive shell"
+		log "  tt-metalium [command]         # Run a specific command"
+		log "  tt-metalium python script.py  # Run a Python script"
 	fi
 
 	log "Please reboot your system to complete the setup."
