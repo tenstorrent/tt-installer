@@ -406,7 +406,7 @@ main() {
 		warn "Running in container mode"
 	fi
 	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
-		warn "KMD installation will be skipped"o
+		warn "KMD installation will be skipped"
 	fi
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
 		warn "HugePages setup will be skipped"
@@ -463,7 +463,7 @@ main() {
 
 	# Enforce restrictions on Ubuntu 20
 	if [[ "${IS_UBUNTU_20}" = "0" && "${PYTHON_CHOICE}" = "4" ]]; then
-		warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"o
+		warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"
 		PYTHON_CHOICE=2
 	fi
 
@@ -511,7 +511,7 @@ main() {
 	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
 		log "Skipping KMD installation"
 	else
-		log "Installing Kernel-Mode Driver"o
+		log "Installing Kernel-Mode Driver"
 		cd "${WORKDIR}"
 		# Get the KMD version, if installed, while silencing errors
 		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
@@ -558,7 +558,7 @@ main() {
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
 		warn "Skipping HugePages setup"
 	else
-		log "Setting up HugePages"o
+		log "Setting up HugePages"
 		case "${DISTRO_ID}" in
 			"ubuntu"|"debian")
 				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}-1_all.deb"
@@ -616,7 +616,7 @@ main() {
 
 	log "Please reboot your system to complete the setup."
 	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
-	if [[ "${SKIP_INSTALL_PODMAN_METALIUM}" = "1" ]]; then
+	if [[ "${SKIP_INSTALL_METALIUM_CONTAINER}" = "1" ]]; then
 		log "Use 'tt-metalium' to access the Metalium programming environment"
 		log "Usage examples:"
 		log "  tt-metalium                   # Start an interactive shell"
