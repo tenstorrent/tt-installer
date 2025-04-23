@@ -41,14 +41,13 @@ fetch_latest_systools_version() {
 	echo "${latest_systools#v}" # Remove 'upstream/' prefix
 }
 
-# ========================= Docker Metalium Settings =========================
+# ========================= Podman Metalium Settings =========================
 
-# Docker Metalium URLs and Settings
-TT_DOCKER_METALIUM_URL="${TT_DOCKER_METALIUM_URL:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64}"
-TT_DOCKER_METALIUM_TAG="${TT_DOCKER_METALIUM_TAG:-latest-rc}"
-TT_DOCKER_METALIUM_CONFIG_DIR="${HOME}/.tt-metalium"
-TT_DOCKER_METALIUM_SCRIPT_DIR="${HOME}/.local/bin"
-TT_DOCKER_METALIUM_SCRIPT_NAME="tt-metalium"
+# Podman Metalium URLs and Settings
+METALIUM_IMAGE_URL="${TT_METALIUM_IMAGE_URL:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64}"
+METALIUM_IMAGE_TAG="${TT_METALIUM_IMAGE_TAG:-latest-rc}"
+PODMAN_METALIUM_SCRIPT_DIR="${HOME}/.local/bin"
+PODMAN_METALIUM_SCRIPT_NAME="tt-metalium"
 
 # ========================= Boolean Parameters =========================
 
@@ -61,11 +60,11 @@ SKIP_INSTALL_HUGEPAGES=${TT_SKIP_INSTALL_HUGEPAGES:-1}
 # Skip tt-flash and firmware update flag (set to 0 to skip)
 SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
 
-# Skip Docker installation flag (set to 0 to skip)
-SKIP_INSTALL_DOCKER=${TT_SKIP_INSTALL_DOCKER:-1}
+# Skip Podman installation flag (set to 0 to skip)
+SKIP_INSTALL_PODMAN=${TT_SKIP_INSTALL_PODMAN:-1}
 
-# Skip Docker Metalium installation flag (set to 0 to skip)
-SKIP_INSTALL_DOCKER_METALIUM=${TT_SKIP_INSTALL_DOCKER_METALIUM:-1}
+# Skip Podman Metalium installation flag (set to 0 to skip)
+SKIP_INSTALL_METALIUM_CONTAINER=${TT_SKIP_INSTALL_METALIUM_CONTAINER:-1}
 
 # ========================= String Parameters =========================
 
@@ -99,7 +98,7 @@ CONTAINER_MODE=${TT_MODE_CONTAINER:-1}
 if [[ "${CONTAINER_MODE}" = "0" ]]; then
 	SKIP_INSTALL_KMD=0
 	SKIP_INSTALL_HUGEPAGES=0 # Both KMD and HugePages must live on the host kernel
-	SKIP_INSTALL_DOCKER=0 # No docker in docker
+	SKIP_INSTALL_PODMAN=0 # No podman in podman
 	REBOOT_OPTION=2 # Do not reboot
 fi
 
@@ -264,172 +263,120 @@ get_new_venv_location() {
 	fi
 }
 
-# Function to check if Docker is installed
-check_docker_installed() {
-	if command -v docker &> /dev/null; then
-		log "Docker is already installed"
-		# Check if Docker service is running
-		if systemctl is-active --quiet docker; then
-			log "Docker service is running"
-			return 0
-		else
-			log "Docker is installed but service is not running"
-			if confirm "Start Docker service?"; then
-				sudo systemctl start docker
-				sudo systemctl enable docker
-				log "Docker service started and enabled"
-			fi
-			return 0
-		fi
+# Function to check if Podman is installed
+check_podman_installed() {
+	if command -v podman &> /dev/null; then
+		log "Podman is already installed"
 	else
-		log "Docker is not installed"
+		log "Podman is not installed"
 		return 1
 	fi
 }
 
-# Function to check if Docker Compose is installed
-check_docker_compose_installed() {
-	if docker compose version &>/dev/null; then
-		log "Docker Compose V2 is already installed"
-		return 0
-	else
-		log "Docker Compose V2 is not installed"
-		return 1
-	fi
-}
-
-# Function to install Docker
-install_docker() {
-	log "Installing Docker"
+# Function to install Podman
+install_podman() {
+	log "Installing Podman"
 	cd "${WORKDIR}"
 
-	# Download the Docker installation script
-	wget -O docker-install.sh https://get.docker.com
-	verify_download "docker-install.sh"
+	# Install Podman using package manager
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			sudo apt install -y podman
+			;;
+		"fedora")
+			sudo dnf install -y podman
+			;;
+		"rhel"|"centos")
+			sudo dnf install -y podman
+			;;
+		*)
+			error "Unsupported distribution for Podman installation: ${DISTRO_ID}"
+			return 1
+			;;
+	esac
 
-	# Make the script executable
-	chmod +x docker-install.sh
-
-	# Run the Docker installation script
-	sudo sh docker-install.sh
-
-	info "Docker has been installed"
-	# Add current user to docker group to avoid using sudo with docker
-	if confirm "Add current user to docker group? (recommended)"; then
-		sudo usermod -aG docker "${USER}"
-		log "User ${USER} added to docker group"
-		log "You'll need to log out and back in for this change to take effect"
-	fi
-
-	# Start and enable Docker service
-	sudo systemctl start docker
-	sudo systemctl enable docker
-
-	# Verify Docker installation
-	if sudo docker --version; then
-		log "Docker installed successfully"
+	# Verify Podman installation
+	if podman --version; then
+		log "Podman installed successfully"
 	else
-		error "Docker installation failed"
+		error "Podman installation failed"
 		return 1
 	fi
 
 	return 0
 }
 
-# Install Docker Metalium container
-install_docker_metalium() {
-	log "Installing Metalium (Dockerized version)"
-
-	# Create configuration directory
-	mkdir -p "${TT_DOCKER_METALIUM_CONFIG_DIR}" || error_exit "Failed to create configuration directory"
-
-	# Create Docker Compose file
-	log "Creating Docker Compose configuration file..."
-	cat > "${TT_DOCKER_METALIUM_CONFIG_DIR}/docker-compose.yml" << EOF
-# Docker Compose configuration for tt-metalium
-
-services:
-  # Service for interactive shell and command execution
-  tt-metalium:
-    image: ${TT_DOCKER_METALIUM_URL}:${TT_DOCKER_METALIUM_TAG}
-    stdin_open: true
-    tty: true
-    volumes:
-      - /dev/hugepages-1G:/dev/hugepages-1G
-      - \${HOME:-/home/user}:/home/user
-    working_dir: /home/user
-    devices:
-      - /dev/tenstorrent:/dev/tenstorrent
-    environment:
-      - DISPLAY=\${DISPLAY}
-      - HOME=/home/user
-      - TERM=\${TERM:-xterm-256color}
-    network_mode: host
-    command: bash
-EOF
+# Install Podman Metalium container
+install_podman_metalium() {
+	log "Installing Metalium via Podman"
 
 	# Create wrapper script directory
-	mkdir -p "${TT_DOCKER_METALIUM_SCRIPT_DIR}" || error_exit "Failed to create script directory"
+	mkdir -p "${PODMAN_METALIUM_SCRIPT_DIR}" || error_exit "Failed to create script directory"
 
 	# Create wrapper script
 	log "Creating wrapper script..."
-	cat > "${TT_DOCKER_METALIUM_SCRIPT_DIR}/${TT_DOCKER_METALIUM_SCRIPT_NAME}" << EOF
+	cat > "${PODMAN_METALIUM_SCRIPT_DIR}/${PODMAN_METALIUM_SCRIPT_NAME}" << EOF
 #!/bin/bash
-# Wrapper script for tt-metalium Docker Compose
+# Wrapper script for tt-metalium using Podman
 
-# Docker Compose configuration
-CONFIG_DIR="${TT_DOCKER_METALIUM_CONFIG_DIR}"
-COMPOSE_FILE="\${CONFIG_DIR}/docker-compose.yml"
+# Image configuration
+METALIUM_IMAGE="${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}"
 
-# Run the command using Docker Compose
-docker compose --project-directory "\${CONFIG_DIR}" -f "\${COMPOSE_FILE}" run --rm tt-metalium "\$@"
+# Run the command using Podman
+podman run --rm -it \\
+  --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
+  --volume=\${HOME}:/home/user \\
+  --device=/dev/tenstorrent:/dev/tenstorrent \\
+  --workdir=/home/user \\
+  --env=DISPLAY=\${DISPLAY} \\
+  --env=HOME=/home/user \\
+  --env=TERM=\${TERM:-xterm-256color} \\
+  --network=host \\
+  \${METALIUM_IMAGE} "\$@"
 EOF
 
 	# Make the script executable
-	chmod +x "${TT_DOCKER_METALIUM_SCRIPT_DIR}/${TT_DOCKER_METALIUM_SCRIPT_NAME}" || error_exit "Failed to make script executable"
+	chmod +x "${PODMAN_METALIUM_SCRIPT_DIR}/${PODMAN_METALIUM_SCRIPT_NAME}" || error_exit "Failed to make script executable"
 
 	# Check if the directory is in PATH
-	if [[ ":$PATH:" != *":${TT_DOCKER_METALIUM_SCRIPT_DIR}:"* ]]; then
-		warn "${TT_DOCKER_METALIUM_SCRIPT_DIR} is not in your PATH."
-		warn "You may need to add the following line to your ~/.bashrc or ~/.zshrc file:"
-		warn "export PATH=\"\$PATH:${TT_DOCKER_METALIUM_SCRIPT_DIR}\""
-		warn "To use tt-metalium now, you can run it with the full path:"
-		warn "${TT_DOCKER_METALIUM_SCRIPT_DIR}/${TT_DOCKER_METALIUM_SCRIPT_NAME}"
+	if [[ ":${PATH}:" != *":${PODMAN_METALIUM_SCRIPT_DIR}:"* ]]; then
+		warn "${PODMAN_METALIUM_SCRIPT_DIR} is not in your PATH."
+		warn "A restart may fix this, or you may need to update your shell RC"
 	fi
 
-	# Pull the Docker image
-	log "Pulling the tt-metalium Docker image (this may take a while)..."
-	sudo docker pull "${TT_DOCKER_METALIUM_URL}:${TT_DOCKER_METALIUM_TAG}" || error "Failed to pull Docker image"
+	# Pull the image
+	log "Pulling the tt-metalium image (this may take a while)..."
+	podman pull "${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}" || error "Failed to pull image"
 
-	log "Docker Metalium installation completed"
+	log "Metalium installation completed"
 	return 0
 }
 
-get_docker_metalium_choice() {
-	# If TT_SKIP_INSTALL_DOCKER_METALIUM is set via environment variable, use that
-	if [[ -n "${TT_SKIP_INSTALL_DOCKER_METALIUM+x}" ]]; then
-		log "Using Docker Metalium installation preference from environment variable (got ${SKIP_INSTALL_DOCKER_METALIUM})"
+get_podman_metalium_choice() {
+	# If TT_SKIP_INSTALL_METALIUM_CONTAINER is set via environment variable, use that
+	if [[ -n "${TT_SKIP_INSTALL_METALIUM_CONTAINER+x}" ]]; then
+		log "Using Podman Metalium installation preference from environment variable (got ${SKIP_INSTALL_METALIUM_CONTAINER})"
 		return
 	# Otherwise, if in non-interactive mode, use the default
 	elif [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
-		log "Non-interactive mode, using default Docker Metalium installation preference (got ${SKIP_INSTALL_DOCKER_METALIUM})"
+		log "Non-interactive mode, using default Podman Metalium installation preference (got ${SKIP_INSTALL_METALIUM_CONTAINER})"
 		return
 	fi
 
-	# Only ask if Docker is installed or will be installed
-	if [[ "${SKIP_INSTALL_DOCKER}" = "1" ]] || check_docker_installed; then
-		# Interactive mode with no TT_SKIP_INSTALL_DOCKER_METALIUM set
-		log "Would you like to install the TT-Metalium library using Docker?"
+	# Only ask if Podman is installed or will be installed
+	if [[ "${SKIP_INSTALL_PODMAN}" = "1" ]] || check_podman_installed; then
+		# Interactive mode with no TT_SKIP_INSTALL_METALIUM_CONTAINER set
+		log "Would you like to install the TT-Metalium library using Podman?"
 		if confirm "Make a selection"; then
-			SKIP_INSTALL_DOCKER_METALIUM=1
+			SKIP_INSTALL_METALIUM_CONTAINER=1
 		else
-			SKIP_INSTALL_DOCKER_METALIUM=0
-			SKIP_INSTALL_DOCKER=0 # If we don't want Metalium, we can skip Docker
+			SKIP_INSTALL_METALIUM_CONTAINER=0
+			SKIP_INSTALL_PODMAN=0 # If we don't want Metalium, we can skip Podman
 		fi
 	else
-		# Docker won't be installed, so don't install Metalium
-		SKIP_INSTALL_DOCKER_METALIUM=0
-		warn "Docker is not and will not be installed, skipping Docker Metalium installation"
+		# Podman won't be installed, so don't install Metalium
+		SKIP_INSTALL_METALIUM_CONTAINER=0
+		warn "Podman is not and will not be installed, skipping Podman Metalium installation"
 	fi
 }
 
@@ -459,15 +406,15 @@ main() {
 		warn "Running in container mode"
 	fi
 	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
-		warn "KMD installation will be skipped"
+		warn "KMD installation will be skipped"o
 	fi
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
 		warn "HugePages setup will be skipped"
 	fi
-	if [[ "${SKIP_INSTALL_DOCKER}" = "0" ]]; then
-		warn "Docker installation will be skipped"
+	if [[ "${SKIP_INSTALL_PODMAN}" = "0" ]]; then
+		warn "Podman installation will be skipped"
 	fi
-	if [[ "${SKIP_INSTALL_DOCKER_METALIUM}" = "0" ]]; then
+	if [[ "${SKIP_INSTALL_METALIUM_CONTAINER}" = "0" ]]; then
 		warn "Metalium installation will be skipped"
 	fi
 	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
@@ -507,8 +454,8 @@ main() {
 		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
 	fi
 
-	# Get Docker Metalium installation choice
-	get_docker_metalium_choice
+	# Get Podman Metalium installation choice
+	get_podman_metalium_choice
 
 	# Python package installation preference
 	get_new_venv_location
@@ -516,7 +463,7 @@ main() {
 
 	# Enforce restrictions on Ubuntu 20
 	if [[ "${IS_UBUNTU_20}" = "0" && "${PYTHON_CHOICE}" = "4" ]]; then
-		warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"
+		warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"o
 		PYTHON_CHOICE=2
 	fi
 
@@ -564,7 +511,7 @@ main() {
 	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
 		log "Skipping KMD installation"
 	else
-		log "Installing Kernel-Mode Driver"
+		log "Installing Kernel-Mode Driver"o
 		cd "${WORKDIR}"
 		# Get the KMD version, if installed, while silencing errors
 		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
@@ -611,7 +558,7 @@ main() {
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
 		warn "Skipping HugePages setup"
 	else
-		log "Setting up HugePages"
+		log "Setting up HugePages"o
 		case "${DISTRO_ID}" in
 			"ubuntu"|"debian")
 				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}-1_all.deb"
@@ -641,48 +588,41 @@ main() {
 	log "Installing System Management Interface"
 	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi
 
-	# Install Docker if requested
-	if [[ "${SKIP_INSTALL_DOCKER}" = "0" ]]; then
-		warn "Skipping Docker installation"
+	# Install Podman if requested
+	if [[ "${SKIP_INSTALL_PODMAN}" = "0" ]]; then
+		warn "Skipping Podman installation"
 	else
-		if ! check_docker_installed; then
-			install_docker
+		if ! check_podman_installed; then
+			install_podman
 		fi
 	fi
 
-	# Install Docker Metalium if requested
-	if [[ "${SKIP_INSTALL_DOCKER_METALIUM}" = "0" ]]; then
-		warn "Skipping Docker Metalium installation"
+	# Install Podman Metalium if requested
+	if [[ "${SKIP_INSTALL_METALIUM_CONTAINER}" = "0" ]]; then
+		warn "Skipping Podman Metalium installation"
 	else
-		if ! check_docker_installed; then
-			warn "Docker is not installed. Cannot install Docker Metalium."
-		elif ! check_docker_compose_installed; then
-			warn "Docker Compose V2 is not installed. Cannot install Docker Metalium."
+		if ! check_podman_installed; then
+			warn "Podman is not installed. Cannot install Podman Metalium."
 		else
-			install_docker_metalium
+			install_podman_metalium
 		fi
 	fi
 
 	log "Installation completed successfully!"
 	log "Installation log saved to: ${LOG_FILE}"
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
-		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent tools."
+		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent's Python tools."
 	fi
 
-	if [[ "${SKIP_INSTALL_DOCKER}" = "1" && "$(id -u)" = "$(id -nu)" ]]; then
-		warn "You may need to log out and back in for Docker group changes to take effect."
-	fi
-
-	if [[ "${SKIP_INSTALL_DOCKER_METALIUM}" = "1" ]]; then
-		log "You can now use the 'tt-metalium' command."
+	log "Please reboot your system to complete the setup."
+	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
+	if [[ "${SKIP_INSTALL_PODMAN_METALIUM}" = "1" ]]; then
+		log "Use 'tt-metalium' to access the Metalium programming environment"
 		log "Usage examples:"
 		log "  tt-metalium                   # Start an interactive shell"
 		log "  tt-metalium [command]         # Run a specific command"
 		log "  tt-metalium python script.py  # Run a Python script"
 	fi
-
-	log "Please reboot your system to complete the setup."
-	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
 
 	# Auto-reboot if specified
 	if [[ "${REBOOT_OPTION}" = "3" ]]; then
