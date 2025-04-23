@@ -332,6 +332,7 @@ podman run --rm -it \\
   --env=HOME=/home/user \\
   --env=TERM=\${TERM:-xterm-256color} \\
   --network=host \\
+  --security-opt label=disable \\
   \${METALIUM_IMAGE} "\$@"
 EOF
 
