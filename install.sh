@@ -435,7 +435,7 @@ main() {
 	detect_distro
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
+		"ubuntu")
 			sudo apt update
 			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 				# On Ubuntu 20, install python3-venv and don't install pipx
@@ -443,6 +443,11 @@ main() {
 			else
 				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
 			fi
+			;;
+		"debian")
+			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
+			sudo apt update
+			sudo apt install -y wget git python3-pip dkms pipx
 			;;
 		"fedora")
 			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
@@ -460,6 +465,11 @@ main() {
 	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
 		warn "Metalium installation will be unavailable. To install Metalium, upgrade to Ubuntu 22+"
+	fi
+
+	if [[ "${DISTRO_ID}" = "debian" ]]; then
+		warn "rustc and cargo cannot be automatically installed on Debian. Ensure the latest versions are installed before continuing."
+		warn "If you are unsure how to do this, use rustup: https://rustup.rs/"
 	fi
 
 	# Get Podman Metalium installation choice
