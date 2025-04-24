@@ -12,17 +12,30 @@ tt-installer installs tt-metalium, Tenstorrent's library for building and runnin
 
 For more about Metalium and TTNN, check out the [examples page](https://docs.tenstorrent.com/tt-metal/latest/ttnn/ttnn/usage.html#basic-examples). For more information about the container, see [this page](https://github.com/tenstorrent/tt-installer/wiki/Using-the-tt%E2%80%90metalium-container) on the wiki.
 
-## Using Python tools
+## Using Python Tools
 tt-installer installs two Python tools on your system:
 1. tt-smi: Tenstorrent's System Management Interface
 2. tt-flash: Utility to update your firmware
 
 Running `tt-smi` launches the interface where you can see your hardware status and confirm the install worked properly.
 
-## Advanced Usage
-Much of the script's behavior can be configured with environment variables- some examples are shown below. For a full list of configurable parameters, please see [this page](https://github.com/tenstorrent/tt-installer/wiki/Customizing-your-installation-with-environment-variables) on the wiki.
+## Full List of Functions
+tt-installer performs the following actions on your system:
+1. Using your package manager, installs base packages the software stack depends on
+2. Configures a Python environment to install Python packages
+3. Installs tenstorrent's Kernel-Mode Driver (KMD)
+4. Installs tt-flash and updates your card's firmware
+5. Configures HugePages, which are necessary for fast access to your Tenstorrent hardware
+6. Installs tt-smi, our System Management Interface
+7. Using your package manager, installs Podman
+8. Installs tt-metalium as a Podman container and configures the tt-metalium script for convenient access to it
 
-Clone the script and run the following:
+The installer will ask the user to make choices about Python environments and tt-metalium. If you wish to configure the installation more granuarly, see [Advanced Usage](#advanced-usage).
+
+## Advanced Usage
+Much of the installer's behavior can be configured with environment variables- some examples are shown below. For a full list of configurable parameters, please see [this page](https://github.com/tenstorrent/tt-installer/wiki/Customizing-your-installation-with-environment-variables) on the wiki.
+
+To install from a local file, clone this repository and run install.sh:
 ```bash
 git clone https://github.com/tenstorrent/tt-installer.git
 cd tt-installer
