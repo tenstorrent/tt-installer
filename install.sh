@@ -366,13 +366,19 @@ get_podman_metalium_choice() {
 
 	# Only ask if Podman is installed or will be installed
 	if [[ "${SKIP_INSTALL_PODMAN}" = "1" ]] || check_podman_installed; then
-		# Interactive mode with no TT_SKIP_INSTALL_METALIUM_CONTAINER set
-		log "Would you like to install the TT-Metalium library using Podman?"
-		if confirm "Make a selection"; then
-			SKIP_INSTALL_METALIUM_CONTAINER=1
-		else
+		# If we're on Ubuntu 20, Podman is not available
+		if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 			SKIP_INSTALL_METALIUM_CONTAINER=0
-			SKIP_INSTALL_PODMAN=0 # If we don't want Metalium, we can skip Podman
+			SKIP_INSTALL_PODMAN=0
+		else
+			# Interactive mode with no TT_SKIP_INSTALL_METALIUM_CONTAINER set
+			log "Would you like to install the TT-Metalium library using Podman?"
+			if confirm "Make a selection"; then
+				SKIP_INSTALL_METALIUM_CONTAINER=1
+			else
+				SKIP_INSTALL_METALIUM_CONTAINER=0
+				SKIP_INSTALL_PODMAN=0 # If we don't want Metalium, we can skip Podman
+			fi
 		fi
 	else
 		# Podman won't be installed, so don't install Metalium
@@ -431,11 +437,11 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
 			sudo apt update
-			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
-				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
-			# On Ubuntu 20, install python3-venv and don't install pipx
-			else
+			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
+				# On Ubuntu 20, install python3-venv and don't install pipx
 				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc
+			else
+				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
 			fi
 			;;
 		"fedora")
@@ -453,6 +459,7 @@ main() {
 
 	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
+		warn "Metalium installation will be unavailable. To install Metalium, upgrade to Ubuntu 22+"
 	fi
 
 	# Get Podman Metalium installation choice
