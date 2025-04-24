@@ -1,14 +1,23 @@
 # tt-installer
-
-This installer script is a one-stop-shop for installing the Kernel & User-mode driver, configuring your host system (e.g. enabling hugepages) and installing tt-smi and other tools.
-
-After running the installer, the system should be in the same state as it would be after following Tenstorrent's [Quickstart docs](https://docs.tenstorrent.com/#software-installation).
+Install the tenstorrent software stack with one command.
 
 ## Quickstart
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tenstorrent/tt-installer/refs/heads/main/install.sh)"
 ```
 **WARNING:** Take care with this command! Always be careful running untrusted code.
+
+## Using tt-metalium
+tt-installer installs tt-metalium, Tenstorrent's library for building and running AI models. Metalium is installed as a container using Podman. Using the container is easy- just run `tt-metalium`. By default, this will launch the container with your home directory mounted so you can access your files. You can also run `tt-metalium <command>` to run commands inside the container, such as `tt-metalium "python3"`. 
+
+For more about Metalium and TTNN, check out the [examples page](https://docs.tenstorrent.com/tt-metal/latest/ttnn/ttnn/usage.html#basic-examples). For more information about the container, see [this page](https://github.com/tenstorrent/tt-installer/wiki/Using-the-tt%E2%80%90metalium-container) on the wiki.
+
+## Using Python tools
+tt-installer installs two Python tools on your system:
+1. tt-smi: Tenstorrent's System Management Interface
+2. tt-flash: Utility to update your firmware
+
+Running `tt-smi` launches the interface where you can see your hardware status and confirm the install worked properly.
 
 ## Advanced Usage
 Much of the script's behavior can be configured with environment variables- some examples are shown below. For a full list of configurable parameters, please see [this page](https://github.com/tenstorrent/tt-installer/wiki/Customizing-your-installation-with-environment-variables) on the wiki.
