@@ -45,29 +45,28 @@ To install without prompting the user:
 ```bash
 git clone https://github.com/tenstorrent/tt-installer.git
 cd tt-installer
-TT_NON_INTERACTIVE=0 ./install.sh
+TT_MODE_NON_INTERACTIVE=0 ./install.sh
 ```
 To install without prompting the user and automatically reboot:
 ```bash
 git clone https://github.com/tenstorrent/tt-installer.git
 cd tt-installer
-TT_NON_INTERACTIVE=0 TT_AUTO_REBOOT=0 ./install.sh
+TT_MODE_NON_INTERACTIVE=0 TT_REBOOT_OPTION=3 ./install.sh
 ```
 
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages.
 
 ## Supported Operating Systems
-Our preferred OS is Ubuntu 22.04.5 LTS (Jammy Jellyfish).
-For other OSes, please see this compatibility matrix:
+Our preferred OS is Ubuntu 22.04.5 LTS (Jammy Jellyfish). Other operating systems will not be prioritized for support or features.
+For more information, please see this compatibility matrix:
 | OS     | Version     | Working? | Notes                                     |
 | ------ | ----------- | -------- | ----------------------------------------- |
 | Ubuntu | 24.04.2 LTS | Yes      | None                                      |
 | Ubuntu | 22.04.5 LTS | Yes      | None                                      |
-| Ubuntu | 20.04.6 LTS | Yes      | Deprecated; support will be removed in a later release|
+| Ubuntu | 20.04.6 LTS | Yes      | - Deprecated; support will be removed in a later release<br>- Metalium cannot be installed|
 | Debian | 12.10.0     | Yes      | - Curl is not installed by default<br>- The packaged rustc version is too old to complete installation, we recommend using [rustup](https://rustup.rs/) to install a more modern version|
 | Fedora | 41          | Yes      | May require restart after base package install |
 | Fedora | 42          | Yes      | May require restart after base package install |
 | Other DEB-based distros  | N/A          | N/A     | Unsupported but may work |
 | Other RPM-based distros  | N/A          | N/A     | Unsupported but may work |
-
 
