@@ -15,6 +15,8 @@ LOGO=$(cat << "EOF"
 EOF
 )
 
+# ========================= GIT URLs =========================
+
 # Fetch latest kmd from git tags
 TT_KMD_GIT_URL="https://github.com/tenstorrent/tt-kmd.git"
 fetch_latest_kmd_version() {
@@ -32,13 +34,22 @@ fetch_latest_fw_version() {
 }
 
 # Fetch latest systools version
-# Currently unused due to systools tags being broken
 TT_SYSTOOLS_GIT_URL="https://github.com/tenstorrent/tt-system-tools.git"
 fetch_latest_systools_version() {
 	local latest_systools
 	latest_systools=$(git ls-remote --tags --refs "${TT_SYSTOOLS_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
 	echo "${latest_systools#v}" # Remove 'upstream/' prefix
 }
+
+# ========================= Podman Metalium Settings =========================
+
+# Podman Metalium URLs and Settings
+METALIUM_IMAGE_URL="${TT_METALIUM_IMAGE_URL:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64}"
+METALIUM_IMAGE_TAG="${TT_METALIUM_IMAGE_TAG:-latest-rc}"
+PODMAN_METALIUM_SCRIPT_DIR="${HOME}/.local/bin"
+PODMAN_METALIUM_SCRIPT_NAME="tt-metalium"
+
+# ========================= Boolean Parameters =========================
 
 # Skip KMD installation flag (set to 0 to skip)
 SKIP_INSTALL_KMD=${TT_SKIP_INSTALL_KMD:-1}
@@ -48,6 +59,14 @@ SKIP_INSTALL_HUGEPAGES=${TT_SKIP_INSTALL_HUGEPAGES:-1}
 
 # Skip tt-flash and firmware update flag (set to 0 to skip)
 SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
+
+# Skip Podman installation flag (set to 0 to skip)
+SKIP_INSTALL_PODMAN=${TT_SKIP_INSTALL_PODMAN:-1}
+
+# Skip Podman Metalium installation flag (set to 0 to skip)
+SKIP_INSTALL_METALIUM_CONTAINER=${TT_SKIP_INSTALL_METALIUM_CONTAINER:-1}
+
+# ========================= String Parameters =========================
 
 # Optional assignment- uses TT_ envvar version if present, otherwise latest
 KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
@@ -71,12 +90,15 @@ REBOOT_OPTION_TXT[1]="Ask the user"
 REBOOT_OPTION_TXT[2]="Never reboot"
 REBOOT_OPTION_TXT[3]="Always reboot"
 
+# ========================= Modes =========================
+
 # Container mode flag (set to 0 to enable, which skips KMD and HugePages and never reboots)
 CONTAINER_MODE=${TT_MODE_CONTAINER:-1}
 # If container mode is enabled, skip KMD and HugePages
 if [[ "${CONTAINER_MODE}" = "0" ]]; then
 	SKIP_INSTALL_KMD=0
-	SKIP_INSTALL_HUGEPAGES=0
+	SKIP_INSTALL_HUGEPAGES=0 # Both KMD and HugePages must live on the host kernel
+	SKIP_INSTALL_PODMAN=0 # No podman in podman
 	REBOOT_OPTION=2 # Do not reboot
 fi
 
@@ -89,6 +111,8 @@ if [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
 		REBOOT_OPTION=2 # Do not reboot
 	fi
 fi
+
+# ========================= Main Script =========================
 
 # Update FW_FILE based on FW_VERSION
 FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
@@ -128,6 +152,12 @@ log() {
 error() {
 	local msg="[ERROR] $1"
 	echo -e "${RED}${msg}${NC}"
+}
+
+# log an error and then exit
+error_exit() {
+    error "$1"
+    exit 1
 }
 
 # log warnings
@@ -233,6 +263,130 @@ get_new_venv_location() {
 	fi
 }
 
+# Function to check if Podman is installed
+check_podman_installed() {
+	if command -v podman &> /dev/null; then
+		log "Podman is already installed"
+	else
+		log "Podman is not installed"
+		return 1
+	fi
+}
+
+# Function to install Podman
+install_podman() {
+	log "Installing Podman"
+	cd "${WORKDIR}"
+
+	# Install Podman using package manager
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			sudo apt install -y podman
+			;;
+		"fedora")
+			sudo dnf install -y podman
+			;;
+		"rhel"|"centos")
+			sudo dnf install -y podman
+			;;
+		*)
+			error "Unsupported distribution for Podman installation: ${DISTRO_ID}"
+			return 1
+			;;
+	esac
+
+	# Verify Podman installation
+	if podman --version; then
+		log "Podman installed successfully"
+	else
+		error "Podman installation failed"
+		return 1
+	fi
+
+	return 0
+}
+
+# Install Podman Metalium container
+install_podman_metalium() {
+	log "Installing Metalium via Podman"
+
+	# Create wrapper script directory
+	mkdir -p "${PODMAN_METALIUM_SCRIPT_DIR}" || error_exit "Failed to create script directory"
+
+	# Create wrapper script
+	log "Creating wrapper script..."
+	cat > "${PODMAN_METALIUM_SCRIPT_DIR}/${PODMAN_METALIUM_SCRIPT_NAME}" << EOF
+#!/bin/bash
+# Wrapper script for tt-metalium using Podman
+
+# Image configuration
+METALIUM_IMAGE="${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}"
+
+# Run the command using Podman
+podman run --rm -it \\
+  --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
+  --volume=\${HOME}:/home/user \\
+  --device=/dev/tenstorrent:/dev/tenstorrent \\
+  --workdir=/home/user \\
+  --env=DISPLAY=\${DISPLAY} \\
+  --env=HOME=/home/user \\
+  --env=TERM=\${TERM:-xterm-256color} \\
+  --network=host \\
+  --security-opt label=disable \\
+  \${METALIUM_IMAGE} "\$@"
+EOF
+
+	# Make the script executable
+	chmod +x "${PODMAN_METALIUM_SCRIPT_DIR}/${PODMAN_METALIUM_SCRIPT_NAME}" || error_exit "Failed to make script executable"
+
+	# Check if the directory is in PATH
+	if [[ ":${PATH}:" != *":${PODMAN_METALIUM_SCRIPT_DIR}:"* ]]; then
+		warn "${PODMAN_METALIUM_SCRIPT_DIR} is not in your PATH."
+		warn "A restart may fix this, or you may need to update your shell RC"
+	fi
+
+	# Pull the image
+	log "Pulling the tt-metalium image (this may take a while)..."
+	podman pull "${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}" || error "Failed to pull image"
+
+	log "Metalium installation completed"
+	return 0
+}
+
+get_podman_metalium_choice() {
+	# If TT_SKIP_INSTALL_METALIUM_CONTAINER is set via environment variable, use that
+	if [[ -n "${TT_SKIP_INSTALL_METALIUM_CONTAINER+x}" ]]; then
+		log "Using Podman Metalium installation preference from environment variable (got ${SKIP_INSTALL_METALIUM_CONTAINER})"
+		return
+	# Otherwise, if in non-interactive mode, use the default
+	elif [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
+		log "Non-interactive mode, using default Podman Metalium installation preference (got ${SKIP_INSTALL_METALIUM_CONTAINER})"
+		return
+	fi
+
+	# Only ask if Podman is installed or will be installed
+	if [[ "${SKIP_INSTALL_PODMAN}" = "1" ]] || check_podman_installed; then
+		# If we're on Ubuntu 20, Podman is not available
+		if [[ "${IS_UBUNTU_20}" = "0" ]]; then
+			SKIP_INSTALL_METALIUM_CONTAINER=0
+			SKIP_INSTALL_PODMAN=0
+		else
+			# Interactive mode with no TT_SKIP_INSTALL_METALIUM_CONTAINER set
+			log "Would you like to install the TT-Metalium library using Podman?"
+			if confirm "Make a selection"; then
+				SKIP_INSTALL_METALIUM_CONTAINER=1
+			else
+				SKIP_INSTALL_METALIUM_CONTAINER=0
+				SKIP_INSTALL_PODMAN=0 # If we don't want Metalium, we can skip Podman
+			fi
+		fi
+	else
+		# Podman won't be installed, so don't install Metalium
+		SKIP_INSTALL_METALIUM_CONTAINER=0
+		warn "Podman is not and will not be installed, skipping Podman Metalium installation"
+	fi
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -264,6 +418,12 @@ main() {
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
 		warn "HugePages setup will be skipped"
 	fi
+	if [[ "${SKIP_INSTALL_PODMAN}" = "0" ]]; then
+		warn "Podman installation will be skipped"
+	fi
+	if [[ "${SKIP_INSTALL_METALIUM_CONTAINER}" = "0" ]]; then
+		warn "Metalium installation will be skipped"
+	fi
 	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
 		warn "TT-Flash and firmware update will be skipped"
 	fi
@@ -275,14 +435,19 @@ main() {
 	detect_distro
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
+		"ubuntu")
 			sudo apt update
-			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
-				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
-			# On Ubuntu 20, install python3-venv and don't install pipx
-			else
+			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
+				# On Ubuntu 20, install python3-venv and don't install pipx
 				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc
+			else
+				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
 			fi
+			;;
+		"debian")
+			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
+			sudo apt update
+			sudo apt install -y wget git python3-pip dkms pipx
 			;;
 		"fedora")
 			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
@@ -299,7 +464,16 @@ main() {
 
 	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
+		warn "Metalium installation will be unavailable. To install Metalium, upgrade to Ubuntu 22+"
 	fi
+
+	if [[ "${DISTRO_ID}" = "debian" ]]; then
+		warn "rustc and cargo cannot be automatically installed on Debian. Ensure the latest versions are installed before continuing."
+		warn "If you are unsure how to do this, use rustup: https://rustup.rs/"
+	fi
+
+	# Get Podman Metalium installation choice
+	get_podman_metalium_choice
 
 	# Python package installation preference
 	get_new_venv_location
@@ -432,13 +606,41 @@ main() {
 	log "Installing System Management Interface"
 	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi
 
+	# Install Podman if requested
+	if [[ "${SKIP_INSTALL_PODMAN}" = "0" ]]; then
+		warn "Skipping Podman installation"
+	else
+		if ! check_podman_installed; then
+			install_podman
+		fi
+	fi
+
+	# Install Podman Metalium if requested
+	if [[ "${SKIP_INSTALL_METALIUM_CONTAINER}" = "0" ]]; then
+		warn "Skipping Podman Metalium installation"
+	else
+		if ! check_podman_installed; then
+			warn "Podman is not installed. Cannot install Podman Metalium."
+		else
+			install_podman_metalium
+		fi
+	fi
+
 	log "Installation completed successfully!"
 	log "Installation log saved to: ${LOG_FILE}"
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
-		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent tools."
+		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent's Python tools."
 	fi
+
 	log "Please reboot your system to complete the setup."
 	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
+	if [[ "${SKIP_INSTALL_METALIUM_CONTAINER}" = "1" ]]; then
+		log "Use 'tt-metalium' to access the Metalium programming environment"
+		log "Usage examples:"
+		log "  tt-metalium                   # Start an interactive shell"
+		log "  tt-metalium [command]         # Run a specific command"
+		log "  tt-metalium python script.py  # Run a Python script"
+	fi
 
 	# Auto-reboot if specified
 	if [[ "${REBOOT_OPTION}" = "3" ]]; then
