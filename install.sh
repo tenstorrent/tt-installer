@@ -535,7 +535,7 @@ main() {
 		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
 			warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
 			if confirm "Force KMD reinstall?"; then
-				sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}"
+				sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
 				git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
 				sudo dkms add tt-kmd
 				sudo dkms install "tenstorrent/${KMD_VERSION}"
