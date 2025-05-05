@@ -579,7 +579,7 @@ main() {
 		log "Setting up HugePages"
 		case "${DISTRO_ID}" in
 			"ubuntu"|"debian")
-				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}-1_all.deb"
+				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
 				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
 				wget "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
