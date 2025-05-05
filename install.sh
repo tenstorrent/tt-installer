@@ -278,6 +278,11 @@ install_podman() {
 	log "Installing Podman"
 	cd "${WORKDIR}"
 
+	# Add GUIDs/UIDs for rootless Podman
+	# See https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md
+	sudo usermod --add-subgids 10000-75535 "$(whoami)"
+	sudo usermod --add-subuids 10000-75535 "$(whoami)"
+
 	# Install Podman using package manager
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
