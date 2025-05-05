@@ -576,7 +576,7 @@ main() {
 	fi
 
 	# Setup HugePages
-	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download/upstream"
+	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
 	# Skip HugePages installation if flag is set
 	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
 		warn "Skipping HugePages setup"
