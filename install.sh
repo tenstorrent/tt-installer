@@ -18,27 +18,27 @@ EOF
 # ========================= GIT URLs =========================
 
 # Fetch latest kmd from git tags
-TT_KMD_GIT_URL="https://github.com/tenstorrent/tt-kmd.git"
+TT_KMD_GH_REPO="tenstorrent/tt-kmd"
 fetch_latest_kmd_version() {
 	local latest_kmd
-	latest_kmd=$(git ls-remote --tags --refs "${TT_KMD_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
+	latest_kmd=$(wget -qO- https://api.github.com/repos/${TT_KMD_GH_REPO}/releases/latest | jq -r '.tag_name')
 	echo "${latest_kmd#ttkmd-}"
 }
 
 # Fetch lastest FW version
-TT_FW_GIT_URL="https://github.com/tenstorrent/tt-firmware.git"
+TT_FW_GH_REPO="tenstorrent/tt-firmware"
 fetch_latest_fw_version() {
 	local latest_fw
-	latest_fw=$(git ls-remote --tags --refs "${TT_FW_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
+	latest_fw=$(wget -qO- https://api.github.com/repos/${TT_FW_GH_REPO}/releases/latest | jq -r '.tag_name')
 	echo "${latest_fw#v}" # Remove 'v' prefix if present
 }
 
 # Fetch latest systools version
-TT_SYSTOOLS_GIT_URL="https://github.com/tenstorrent/tt-system-tools.git"
+TT_SYSTOOLS_GH_REPO="tenstorrent/tt-system-tools"
 fetch_latest_systools_version() {
 	local latest_systools
-	latest_systools=$(git ls-remote --tags --refs "${TT_SYSTOOLS_GIT_URL}" | awk -F/ '{print $NF}' | sort -V | tail -n1)
-	echo "${latest_systools#v}" # Remove 'upstream/' prefix
+	latest_systools=$(wget -qO- https://api.github.com/repos/${TT_SYSTOOLS_GH_REPO}/releases/latest | jq -r '.tag_name')
+	echo "${latest_systools#v}" # Remove 'v' prefix if present
 }
 
 # ========================= Podman Metalium Settings =========================
@@ -444,22 +444,22 @@ main() {
 			sudo apt update
 			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 				# On Ubuntu 20, install python3-venv and don't install pipx
-				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc
+				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc jq
 			else
-				sudo apt install -y wget git python3-pip dkms cargo rustc pipx
+				sudo apt install -y wget git python3-pip dkms cargo rustc pipx jq
 			fi
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt update
-			sudo apt install -y wget git python3-pip dkms pipx
+			sudo apt install -y wget git python3-pip dkms pipx jq
 			;;
 		"fedora")
-			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
+			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx
+			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
