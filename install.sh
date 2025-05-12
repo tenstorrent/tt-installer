@@ -24,7 +24,7 @@ fetch_latest_kmd_version() {
 		exit
 	fi
 	local latest_kmd
-	latest_kmd=$(wget -qO- https://api.github.com/repos/${TT_KMD_GH_REPO}/releases/latest | jq -r '.tag_name')
+	latest_kmd=$(wget -qO- https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_kmd#ttkmd-}"
 }
 
@@ -35,7 +35,7 @@ fetch_latest_fw_version() {
 		exit
 	fi
 	local latest_fw
-	latest_fw=$(wget -qO- https://api.github.com/repos/${TT_FW_GH_REPO}/releases/latest | jq -r '.tag_name')
+	latest_fw=$(wget -qO- https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_fw#v}" # Remove 'v' prefix if present
 }
 
@@ -46,7 +46,7 @@ fetch_latest_systools_version() {
 		exit
 	fi
 	local latest_systools
-	latest_systools=$(wget -qO- https://api.github.com/repos/${TT_SYSTOOLS_GH_REPO}/releases/latest | jq -r '.tag_name')
+	latest_systools=$(wget -qO- https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_systools#v}" # Remove 'v' prefix if present
 }
 
