@@ -115,7 +115,8 @@ fi
 # ========================= Main Script =========================
 
 # Update FW_FILE based on FW_VERSION
-FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
+# Release candidates always have a .0 appended to the release name
+FW_FILE="fw_pack-${FW_VERSION}.0.fwbundle"
 
 # Create working directory
 TMP_DIR_TEMPLATE="tenstorrent_install_XXXXXX"
