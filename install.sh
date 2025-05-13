@@ -20,24 +20,33 @@ EOF
 # Fetch latest kmd from git tags
 TT_KMD_GH_REPO="tenstorrent/tt-kmd"
 fetch_latest_kmd_version() {
+	if ! command -v jq &> /dev/null; then
+		exit
+	fi
 	local latest_kmd
-	latest_kmd=$(wget -qO- https://api.github.com/repos/${TT_KMD_GH_REPO}/releases/latest | jq -r '.tag_name')
+	latest_kmd=$(wget -qO- https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_kmd#ttkmd-}"
 }
 
 # Fetch lastest FW version
 TT_FW_GH_REPO="tenstorrent/tt-firmware"
 fetch_latest_fw_version() {
+	if ! command -v jq &> /dev/null; then
+		exit
+	fi
 	local latest_fw
-	latest_fw=$(wget -qO- https://api.github.com/repos/${TT_FW_GH_REPO}/releases/latest | jq -r '.tag_name')
+	latest_fw=$(wget -qO- https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_fw#v}" # Remove 'v' prefix if present
 }
 
 # Fetch latest systools version
 TT_SYSTOOLS_GH_REPO="tenstorrent/tt-system-tools"
 fetch_latest_systools_version() {
+	if ! command -v jq &> /dev/null; then
+		exit
+	fi
 	local latest_systools
-	latest_systools=$(wget -qO- https://api.github.com/repos/${TT_SYSTOOLS_GH_REPO}/releases/latest | jq -r '.tag_name')
+	latest_systools=$(wget -qO- https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_systools#v}" # Remove 'v' prefix if present
 }
 
@@ -67,11 +76,6 @@ SKIP_INSTALL_PODMAN=${TT_SKIP_INSTALL_PODMAN:-1}
 SKIP_INSTALL_METALIUM_CONTAINER=${TT_SKIP_INSTALL_METALIUM_CONTAINER:-1}
 
 # ========================= String Parameters =========================
-
-# Optional assignment- uses TT_ envvar version if present, otherwise latest
-KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
-FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
-SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-$(fetch_latest_systools_version)}"
 
 # Set default Python installation choice
 # 1 = Use active venv, 2 = Create new venv, 3 = Use pipx, 4 = system level (not recommended)
@@ -113,10 +117,6 @@ if [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
 fi
 
 # ========================= Main Script =========================
-
-# Update FW_FILE based on FW_VERSION
-# Release candidates always have a .0 appended to the release name
-FW_FILE="fw_pack-${FW_VERSION}.0.fwbundle"
 
 # Create working directory
 TMP_DIR_TEMPLATE="tenstorrent_install_XXXXXX"
@@ -248,6 +248,25 @@ get_python_choice() {
 	# If user provided a value, update PYTHON_CHOICE
 	if [[ -n "${user_choice}" ]]; then
 		PYTHON_CHOICE=${user_choice}
+	fi
+}
+
+fetch_tt_sw_versions() {
+	# Use TT_ envvar version if present, otherwise latest
+	KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
+	FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
+	SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-$(fetch_latest_systools_version)}"
+
+	# If the user provides nothing and the functions fail to execute, take note of that,
+	# we will retry later
+	if [[ ${KMD_VERSION} != "" && ${FW_VERSION} != "" && ${SYSTOOLS_VERSION} != "" ]]; then
+		HAVE_SET_TT_SW_VERSIONS=0 # True
+		log "Using software versions:"
+		log "  KMD: ${KMD_VERSION}"
+		log "  Firmware: ${FW_VERSION}"
+		log "  System Tools: ${SYSTOOLS_VERSION}"
+	else
+		HAVE_SET_TT_SW_VERSIONS=1
 	fi
 }
 
@@ -400,16 +419,15 @@ main() {
 	log "Welcome to tenstorrent!"
 	log "Log is at ${LOG_FILE}"
 
+	fetch_tt_sw_versions
+
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
+
 	if ! confirm "OK to continue?"; then
 		error "Exiting."
 		exit 1
 	fi
 	log "Starting installation"
-	log "Using software versions:"
-	log "  KMD: ${KMD_VERSION}"
-	log "  Firmware: ${FW_VERSION}"
-	log "  System Tools: ${SYSTOOLS_VERSION}"
 
 	# Log special mode settings
 	if [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
@@ -476,6 +494,15 @@ main() {
 	if [[ "${DISTRO_ID}" = "debian" ]]; then
 		warn "rustc and cargo cannot be automatically installed on Debian. Ensure the latest versions are installed before continuing."
 		warn "If you are unsure how to do this, use rustup: https://rustup.rs/"
+	fi
+
+	# If jq wasn't installed before, we need to fetch these now that we have it installed
+	if [[ "${HAVE_SET_TT_SW_VERSIONS}" = "1" ]]; then
+		fetch_tt_sw_versions
+	fi
+	# If we still haven't successfully retrieved the versions, there is an error, so exit
+	if [[ "${HAVE_SET_TT_SW_VERSIONS}" = "1" ]]; then
+		error_exit "Cannot fetch versions of TT software. Is jq installed?"
 	fi
 
 	# Get Podman Metalium installation choice
@@ -566,6 +593,10 @@ main() {
 		log "Installing TT-Flash and updating firmware"
 		cd "${WORKDIR}"
 		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git
+
+		# Create FW_FILE based on FW_VERSION
+		# Release candidates always have a .0 appended to the release name
+		FW_FILE="fw_pack-${FW_VERSION}.0.fwbundle"
 
 		wget "https://github.com/tenstorrent/tt-firmware/raw/main/${FW_FILE}"
 		verify_download "${FW_FILE}"
