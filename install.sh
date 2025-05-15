@@ -595,8 +595,7 @@ main() {
 		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git
 
 		# Create FW_FILE based on FW_VERSION
-		# Release candidates always have a .0 appended to the release name
-		FW_FILE="fw_pack-${FW_VERSION}.0.fwbundle"
+		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
 		FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
 
 		# Download from GitHub releases
