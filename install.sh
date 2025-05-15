@@ -50,6 +50,28 @@ fetch_latest_systools_version() {
 	echo "${latest_systools#v}" # Remove 'v' prefix if present
 }
 
+# Fetch latest tt-smi version
+TT_SMI_GH_REPO="tenstorrent/tt-smi"
+fetch_latest_smi_version() {
+	if ! command -v jq &> /dev/null; then
+		exit
+	fi
+	local latest_smi
+	latest_smi=$(wget -qO- https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	echo "${latest_smi}"
+}
+
+# Fetch latest tt-flash version
+TT_FLASH_GH_REPO="tenstorrent/tt-flash"
+fetch_latest_flash_version() {
+	if ! command -v jq &> /dev/null; then
+		exit
+	fi
+	local latest_flash
+	latest_flash=$(wget -qO- https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	echo "${latest_flash}"
+}
+
 # ========================= Podman Metalium Settings =========================
 
 # Podman Metalium URLs and Settings
@@ -256,22 +278,32 @@ fetch_tt_sw_versions() {
 	KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
 	FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
 	SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-$(fetch_latest_systools_version)}"
+	SMI_VERSION="${TT_SMI_VERSION:-$(fetch_latest_smi_version)}"
+	FLASH_VERSION="${TT_FLASH_VERSION:-$(fetch_latest_flash_version)}"
 
 	# If the user provides nothing and the functions fail to execute, take note of that,
 	# we will retry later
-	if [[ ${KMD_VERSION} != "" && ${FW_VERSION} != "" && ${SYSTOOLS_VERSION} != "" ]]; then
+	if [[ 
+		${KMD_VERSION} != "" &&\
+		${FW_VERSION} != "" &&\
+		${SYSTOOLS_VERSION} != "" &&\
+		${SMI_VERSION} != "" &&\
+		${FLASH_VERSION} != ""
+	]]; then
 		HAVE_SET_TT_SW_VERSIONS=0 # True
 		log "Using software versions:"
-		log "  KMD: ${KMD_VERSION}"
+		log "  TT-KMD: ${KMD_VERSION}"
 		log "  Firmware: ${FW_VERSION}"
 		log "  System Tools: ${SYSTOOLS_VERSION}"
+		log "  tt-smi: ${SMI_VERSION#v}"
+		log "  tt-flash: ${FLASH_VERSION#v}"
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
 	fi
 }
 
 get_new_venv_location() {
-    # If user provides path, use it
+	# If user provides path, use it
 	if [[ -v TT_NEW_VENV_LOCATION ]]; then
 		NEW_VENV_LOCATION="${TT_NEW_VENV_LOCATION}"
 	# If XDG_DATA_HOME is defined, use that
@@ -594,7 +626,7 @@ main() {
 	else
 		log "Installing TT-Flash and updating firmware"
 		cd "${WORKDIR}"
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git
+		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@${FLASH_VERSION}
 
 		# Create FW_FILE based on FW_VERSION
 		# Release candidates always have a .0 appended to the release name
@@ -643,7 +675,7 @@ main() {
 
 	# Install TT-SMI
 	log "Installing System Management Interface"
-	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi
+	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@${SMI_VERSION}
 
 	# Install Podman if requested
 	if [[ "${SKIP_INSTALL_PODMAN}" = "0" ]]; then
