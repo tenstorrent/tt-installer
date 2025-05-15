@@ -15,20 +15,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set version variables
+        id: version
+        run: |
+          # Extract version with 'v' prefix for GitHub paths
+          TAG_VERSION=${{ github.ref_name }}
+          # Extract version without the 'v' prefix for script
+          CLEAN_VERSION=$(echo $TAG_VERSION | sed 's/^v//')
+
+          echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
+          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+
       - name: Set version in install.sh
         run: |
-          # Extract version number without the 'v' prefix
-          VERSION=$(echo ${{ github.ref_name }} | sed 's/^v//')
           # Replace the placeholder with actual version
-          sed -i "s/__INSTALLER_VERSION__/$VERSION/g" install.sh
+          sed -i "s/__INSTALLER_VERSION__/${{ steps.version.outputs.clean_version }}/g" install.sh
           # Display the change for verification in workflow logs
-          echo "Updated install.sh with version $VERSION"
+          echo "Updated install.sh with version ${{ steps.version.outputs.clean_version }}"
 
       - name: Build Changelog
         id: build_changelog
         uses: mikepenz/release-changelog-builder-action@v4
         with:
           mode: "HYBRID" # Include both PRs and direct commits
+          configurationJSON: |
+            {
+              "template": "#{{CHANGELOG}}\n\n## Installation\n\nInstall this version with:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag_version }}/install.sh)\"\n```\n\nLatest version can always be installed using:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh)\"\n```"
+            }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
