@@ -597,8 +597,11 @@ main() {
 		# Create FW_FILE based on FW_VERSION
 		# Release candidates always have a .0 appended to the release name
 		FW_FILE="fw_pack-${FW_VERSION}.0.fwbundle"
+		FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
 
-		wget "https://github.com/tenstorrent/tt-firmware/raw/main/${FW_FILE}"
+		# Download from GitHub releases
+		wget "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"
+
 		verify_download "${FW_FILE}"
 
 		if ! tt-flash --fw-tar "${FW_FILE}"; then
