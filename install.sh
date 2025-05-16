@@ -448,7 +448,9 @@ get_podman_metalium_choice() {
 main() {
 	echo -e "${LOGO}"
 	echo # newline
+	INSTALLER_VERSION="__INSTALLER_DEVELOPMENT_BUILD__" # Set to semver at release time by GitHub Actions
 	log "Welcome to tenstorrent!"
+	log "This is tt-installer version ${INSTALLER_VERSION}"
 	log "Log is at ${LOG_FILE}"
 
 	fetch_tt_sw_versions
