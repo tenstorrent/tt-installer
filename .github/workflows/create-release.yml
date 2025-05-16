@@ -29,7 +29,7 @@ jobs:
       - name: Set version in install.sh
         run: |
           # Replace the placeholder with actual version
-          sed -i "s/__INSTALLER_VERSION__/${{ steps.version.outputs.clean_version }}/g" install.sh
+          sed -i "s/__INSTALLER_DEVELOPMENT_BUILD__/${{ steps.version.outputs.clean_version }}/g" install.sh
           # Display the change for verification in workflow logs
           echo "Updated install.sh with version ${{ steps.version.outputs.clean_version }}"
 
