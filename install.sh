@@ -411,6 +411,13 @@ EOF
 }
 
 get_podman_metalium_choice() {
+	# If we're on Ubuntu 20, Podman is not available - force skip regardless of environment variable
+	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
+		SKIP_INSTALL_METALIUM_CONTAINER=0
+		SKIP_INSTALL_PODMAN=0
+		return
+	fi
+
 	# If TT_SKIP_INSTALL_METALIUM_CONTAINER is set via environment variable, use that
 	if [[ -n "${TT_SKIP_INSTALL_METALIUM_CONTAINER+x}" ]]; then
 		log "Using Podman Metalium installation preference from environment variable (got ${SKIP_INSTALL_METALIUM_CONTAINER})"
@@ -423,19 +430,13 @@ get_podman_metalium_choice() {
 
 	# Only ask if Podman is installed or will be installed
 	if [[ "${SKIP_INSTALL_PODMAN}" = "1" ]] || check_podman_installed; then
-		# If we're on Ubuntu 20, Podman is not available
-		if [[ "${IS_UBUNTU_20}" = "0" ]]; then
-			SKIP_INSTALL_METALIUM_CONTAINER=0
-			SKIP_INSTALL_PODMAN=0
+		# Interactive mode with no TT_SKIP_INSTALL_METALIUM_CONTAINER set
+		log "Would you like to install the TT-Metalium library using Podman?"
+		if confirm "Make a selection"; then
+			SKIP_INSTALL_METALIUM_CONTAINER=1
 		else
-			# Interactive mode with no TT_SKIP_INSTALL_METALIUM_CONTAINER set
-			log "Would you like to install the TT-Metalium library using Podman?"
-			if confirm "Make a selection"; then
-				SKIP_INSTALL_METALIUM_CONTAINER=1
-			else
-				SKIP_INSTALL_METALIUM_CONTAINER=0
-				SKIP_INSTALL_PODMAN=0 # If we don't want Metalium, we can skip Podman
-			fi
+			SKIP_INSTALL_METALIUM_CONTAINER=0
+			SKIP_INSTALL_PODMAN=0 # If we don't want Metalium, we can skip Podman
 		fi
 	else
 		# Podman won't be installed, so don't install Metalium
