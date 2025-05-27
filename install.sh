@@ -500,7 +500,7 @@ main() {
 				# On Ubuntu 20, install python3-venv and don't install pipx
 				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc jq
 			else
-				sudo apt install -y wget git python3-pip dkms cargo rustc pipx jq
+				sudo DEBIAN_FRONTEND=noninteractive apt install -y wget git python3-pip dkms cargo rustc pipx jq
 			fi
 			;;
 		"debian")
@@ -568,8 +568,9 @@ main() {
 		3)
 			log "Using system pathing"
 			INSTALLED_IN_VENV=1
-			# If we're on a modern OS, specify we want to break sys packages
-			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
+			# Check Python version to determine if --break-system-packages is needed (Python 3.11+)
+			PYTHON_VERSION_MINOR=$(python3 -c "import sys; print(f'{sys.version_info.minor}')")
+			if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then # Is version greater than 3.10?
 				PYTHON_INSTALL_CMD="pip install --break-system-packages"
 			else
 				PYTHON_INSTALL_CMD="pip install"

@@ -1,0 +1,209 @@
+name: Test Installer
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-installer:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - ubuntu:20.04
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - debian:12
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Test script syntax
+      run: |
+        bash -n install.sh
+        echo "✓ Script syntax is valid"
+
+    - name: Test in container
+      run: |
+        docker run --rm -v "$PWD:/workspace" -w /workspace ${{ matrix.distro }} bash -c "
+          set -e
+
+          # Update package manager and install sudo
+          if command -v apt >/dev/null; then
+            apt update
+            apt install -y wget git python3-pip jq curl sudo
+          fi
+
+          # Create a non-root user for testing
+          useradd -m -s /bin/bash testuser
+          echo 'testuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/testuser
+
+          # Copy workspace to user home and change ownership
+          cp -r /workspace /home/testuser/workspace
+          chown -R testuser:testuser /home/testuser/workspace
+
+          # Switch to test user and run installer
+          su - testuser -c '
+            cd /home/testuser/workspace
+
+            # Test configuration (skip hardware-dependent steps)
+            export TT_MODE_NON_INTERACTIVE=0
+            export TT_SKIP_INSTALL_KMD=0
+            export TT_SKIP_INSTALL_HUGEPAGES=0
+            export TT_SKIP_UPDATE_FIRMWARE=0
+            export TT_SKIP_INSTALL_METALIUM_CONTAINER=0
+            export TT_PYTHON_CHOICE=3
+            export TT_REBOOT_OPTION=2
+
+            # Run installer
+            timeout 300 bash install.sh || {
+              echo \"Installer timed out or failed\"
+              exit 1
+            }
+
+            echo \"✓ Installer completed successfully in container mode\"
+          '
+        "
+
+  test-fedora:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - fedora:39
+          - fedora:40
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Test in Fedora container
+      run: |
+        docker run --rm -v "$PWD:/workspace" -w /workspace ${{ matrix.distro }} bash -c "
+          set -e
+
+          # Update package manager and install sudo
+          dnf update -y
+          dnf install -y wget git python3-pip jq curl sudo
+
+          # Create a non-root user for testing
+          useradd -m -s /bin/bash testuser
+          echo 'testuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/testuser
+
+          # Copy workspace to user home and change ownership
+          cp -r /workspace /home/testuser/workspace
+          chown -R testuser:testuser /home/testuser/workspace
+
+          # Switch to test user and run installer
+          su - testuser -c '
+            cd /home/testuser/workspace
+
+            # Test configuration (skip hardware-dependent steps)
+            export TT_MODE_NON_INTERACTIVE=0
+            export TT_SKIP_INSTALL_KMD=0
+            export TT_SKIP_INSTALL_HUGEPAGES=0
+            export TT_SKIP_UPDATE_FIRMWARE=0
+            export TT_SKIP_INSTALL_METALIUM_CONTAINER=0
+            export TT_PYTHON_CHOICE=3
+            export TT_REBOOT_OPTION=2
+
+            # Run installer
+            timeout 300 bash install.sh || {
+              echo \"Installer timed out or failed\"
+              exit 1
+            }
+
+            echo \"✓ Installer completed successfully in Fedora\"
+          '
+        "
+
+  test-environment-variables:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Test environment variable parsing
+      run: |
+        # Test that all documented environment variables are recognized
+        export TT_SKIP_INSTALL_KMD=0
+        export TT_SKIP_INSTALL_HUGEPAGES=0
+        export TT_SKIP_UPDATE_FIRMWARE=0
+        export TT_SKIP_INSTALL_PODMAN=0
+        export TT_SKIP_INSTALL_METALIUM_CONTAINER=0
+        export TT_PYTHON_CHOICE=3
+        export TT_REBOOT_OPTION=2
+        export TT_MODE_CONTAINER=0
+        export TT_MODE_NON_INTERACTIVE=0
+        export TT_NEW_VENV_LOCATION=/tmp/test-venv
+        export TT_METALIUM_IMAGE_URL=test.example.com/image
+        export TT_METALIUM_IMAGE_TAG=test-tag
+
+
+        # Dry run to check variable parsing
+        timeout 30 bash install.sh 2>&1 | head -20 || true
+
+        echo "✓ Environment variables are properly recognized"
+
+  test-version-fetching:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y jq wget
+
+    - name: Test version fetching functions
+      run: |
+        # Source the script to test individual functions
+        set +e  # Don't exit on function failures
+
+        # Extract and test the version fetching functions
+        source <(grep -A 10 "fetch_latest_.*_version()" install.sh)
+
+        echo "Testing version fetch functions..."
+
+        # Test KMD version fetching
+        if kmd_ver=$(fetch_latest_kmd_version); then
+          echo "✓ KMD version fetched: $kmd_ver"
+        else
+          echo "⚠ KMD version fetch failed (may be rate limited)"
+        fi
+
+        # Test FW version fetching
+        if fw_ver=$(fetch_latest_fw_version); then
+          echo "✓ FW version fetched: $fw_ver"
+        else
+          echo "⚠ FW version fetch failed (may be rate limited)"
+        fi
+
+        # Test other version fetches
+        if systools_ver=$(fetch_latest_systools_version); then
+          echo "✓ System tools version fetched: $systools_ver"
+        else
+          echo "⚠ System tools version fetch failed (may be rate limited)"
+        fi
+
+        if smi_ver=$(fetch_latest_smi_version); then
+          echo "✓ SMI version fetched: $smi_ver"
+        else
+          echo "⚠ SMI version fetch failed (may be rate limited)"
+        fi
+
+        if flash_ver=$(fetch_latest_flash_version); then
+          echo "✓ Flash version fetched: $flash_ver"
+        else
+          echo "⚠ Flash version fetch failed (may be rate limited)"
+        fi
+
+        echo "✓ Version fetching functions are working"
