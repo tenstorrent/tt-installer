@@ -114,6 +114,7 @@ REBOOT_OPTION="${TT_REBOOT_OPTION:-1}"
 declare -A REBOOT_OPTION_TXT
 REBOOT_OPTION_TXT[1]="Ask the user"
 REBOOT_OPTION_TXT[2]="Never reboot"
+# shellcheck disable=SC2034  # REBOOT_OPTION_TXT is currently unused but it's good docs
 REBOOT_OPTION_TXT[3]="Always reboot"
 
 # ========================= Modes =========================
@@ -197,6 +198,7 @@ check_has_sudo_perms() {
 }
 
 detect_distro() {
+	# shellcheck disable=SC1091 # Always present
 	if [[ -f /etc/os-release ]]; then
 		. /etc/os-release
 		DISTRO_ID=${ID}
@@ -500,7 +502,7 @@ main() {
 				# On Ubuntu 20, install python3-venv and don't install pipx
 				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc jq
 			else
-				sudo apt install -y wget git python3-pip dkms cargo rustc pipx jq
+				sudo DEBIAN_FRONTEND=noninteractive apt install -y wget git python3-pip dkms cargo rustc pipx jq
 			fi
 			;;
 		"debian")
@@ -554,6 +556,8 @@ main() {
 	fi
 
 	# Set up Python environment based on choice
+	# shellcheck disable=SC2221,SC2222  # Using the "2" after a "*" for documentation and clarity,
+	# but we need to tell shellcheck to ignore it
 	case ${PYTHON_CHOICE} in
 		1)
 			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
@@ -568,8 +572,9 @@ main() {
 		3)
 			log "Using system pathing"
 			INSTALLED_IN_VENV=1
-			# If we're on a modern OS, specify we want to break sys packages
-			if [[ "${IS_UBUNTU_20}" != "0" ]]; then
+			# Check Python version to determine if --break-system-packages is needed (Python 3.11+)
+			PYTHON_VERSION_MINOR=$(python3 -c "import sys; print(f'{sys.version_info.minor}')")
+			if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then # Is version greater than 3.10?
 				PYTHON_INSTALL_CMD="pip install --break-system-packages"
 			else
 				PYTHON_INSTALL_CMD="pip install"
@@ -586,6 +591,7 @@ main() {
 		*|"2")
 			log "Setting up new Python virtual environment"
 			python3 -m venv "${NEW_VENV_LOCATION}"
+			# shellcheck disable=SC1091 # Must exist after previous command
 			source "${NEW_VENV_LOCATION}/bin/activate"
 			INSTALLED_IN_VENV=0
 			PYTHON_INSTALL_CMD="pip install"
@@ -627,7 +633,7 @@ main() {
 	else
 		log "Installing TT-Flash and updating firmware"
 		cd "${WORKDIR}"
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@${FLASH_VERSION}
+		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@"${FLASH_VERSION}"
 
 		# Create FW_FILE based on FW_VERSION
 		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
@@ -678,7 +684,7 @@ main() {
 
 	# Install TT-SMI
 	log "Installing System Management Interface"
-	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@${SMI_VERSION}
+	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@"${SMI_VERSION}"
 
 	# Install Podman if requested
 	if [[ "${SKIP_INSTALL_PODMAN}" = "0" ]]; then
