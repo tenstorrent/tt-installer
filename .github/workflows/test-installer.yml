@@ -22,11 +22,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Test script syntax
-      run: |
-        shellcheck install.sh
-        echo "✓ Script syntax is valid"
-
     - name: Test in container
       run: |
         docker run --rm -v "$PWD:/workspace" -w /workspace ${{ matrix.distro }} bash -c "
@@ -121,6 +116,18 @@ jobs:
             echo \"✓ Installer completed successfully in Fedora\"
           '
         "
+
+  test-script-syntax:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Test script syntax
+      run: |
+        shellcheck install.sh
+        echo "✓ Script syntax is valid"
 
   test-environment-variables:
     runs-on: ubuntu-latest
