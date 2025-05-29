@@ -114,6 +114,7 @@ REBOOT_OPTION="${TT_REBOOT_OPTION:-1}"
 declare -A REBOOT_OPTION_TXT
 REBOOT_OPTION_TXT[1]="Ask the user"
 REBOOT_OPTION_TXT[2]="Never reboot"
+# shellcheck disable=SC2034  # REBOOT_OPTION_TXT is currently unused but it's good docs
 REBOOT_OPTION_TXT[3]="Always reboot"
 
 # ========================= Modes =========================
@@ -197,6 +198,7 @@ check_has_sudo_perms() {
 }
 
 detect_distro() {
+	# shellcheck disable=SC1091 # Always present
 	if [[ -f /etc/os-release ]]; then
 		. /etc/os-release
 		DISTRO_ID=${ID}
@@ -554,6 +556,8 @@ main() {
 	fi
 
 	# Set up Python environment based on choice
+	# shellcheck disable=SC2221,SC2222  # Using the "2" after a "*" for documentation and clarity,
+	# but we need to tell shellcheck to ignore it
 	case ${PYTHON_CHOICE} in
 		1)
 			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
@@ -587,6 +591,7 @@ main() {
 		*|"2")
 			log "Setting up new Python virtual environment"
 			python3 -m venv "${NEW_VENV_LOCATION}"
+			# shellcheck disable=SC1091 # Must exist after previous command
 			source "${NEW_VENV_LOCATION}/bin/activate"
 			INSTALLED_IN_VENV=0
 			PYTHON_INSTALL_CMD="pip install"

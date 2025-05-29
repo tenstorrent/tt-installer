@@ -24,7 +24,6 @@ jobs:
 
     - name: Test script syntax
       run: |
-        apt update && apt install -y shellcheck
         shellcheck install.sh
         echo "✓ Script syntax is valid"
 
