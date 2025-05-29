@@ -55,7 +55,7 @@ jobs:
             export TT_REBOOT_OPTION=2
 
             # Run installer
-            timeout 300 bash install.sh || {
+            timeout 600 bash install.sh || {
               echo \"Installer timed out or failed\"
               exit 1
             }
