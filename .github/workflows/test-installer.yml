@@ -24,7 +24,8 @@ jobs:
 
     - name: Test script syntax
       run: |
-        bash -n install.sh
+        apt update && apt install -y shellcheck
+        shellcheck install.sh
         echo "✓ Script syntax is valid"
 
     - name: Test in container
