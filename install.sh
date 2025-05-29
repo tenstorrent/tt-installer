@@ -633,7 +633,7 @@ main() {
 	else
 		log "Installing TT-Flash and updating firmware"
 		cd "${WORKDIR}"
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@${FLASH_VERSION}
+		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@"${FLASH_VERSION}"
 
 		# Create FW_FILE based on FW_VERSION
 		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
@@ -684,7 +684,7 @@ main() {
 
 	# Install TT-SMI
 	log "Installing System Management Interface"
-	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@${SMI_VERSION}
+	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@"${SMI_VERSION}"
 
 	# Install Podman if requested
 	if [[ "${SKIP_INSTALL_PODMAN}" = "0" ]]; then
