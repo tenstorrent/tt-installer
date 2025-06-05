@@ -28,12 +28,21 @@ jobs:
           echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
           echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Set version in install.sh
+      - name: Set version in install.m4
         run: |
           # Replace the placeholder with actual version
-          sed -i "s/__INSTALLER_DEVELOPMENT_BUILD__/${{ steps.version.outputs.clean_version }}/g" install.sh
+          sed -i "s/__INSTALLER_DEVELOPMENT_BUILD__/${{ steps.version.outputs.clean_version }}/g" install.m4
           # Display the change for verification in workflow logs
-          echo "Updated install.sh with version ${{ steps.version.outputs.clean_version }}"
+          echo "Updated install.m4 with version ${{ steps.version.outputs.clean_version }}"
+
+      - name: Generate install.sh from install.m4
+        run: |
+          docker run --rm \
+            -e PROGRAM=argbash \
+            -v "$(pwd):/work" \
+            -u "$(id -u):$(id -g)" \
+            matejak/argbash \
+            install.m4 -o install.sh
 
       - name: Build Changelog
         id: build_changelog
