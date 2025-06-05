@@ -4,7 +4,7 @@ set -euo pipefail
 
 # m4_ignore(
 echo "This is just a script template, not the script (yet) - pass it to 'argbash' to fix this." >&2
-exit 11  #)Created by argbash-init v2.10.0
+exit 11 #)
 # ARG_HELP([A one-stop-shop for installing the Tenstorrent stack])
 # ARG_VERSION([echo "__INSTALLER_DEVELOPMENT_BUILD__"])
 # ========================= Boolean Arguments =========================
@@ -21,7 +21,7 @@ exit 11  #)Created by argbash-init v2.10.0
 # ARG_OPTIONAL_SINGLE([podman-metalium-script-name],,[Name of the helper wrapper script],["tt-metalium"])
 
 # ========================= String Parameters =========================
-# ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: existing-venv, new-venv, system-python, pipx],[new-venv])
+# ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 
 # ========================= Version Arguments =========================
@@ -269,7 +269,7 @@ get_python_choice() {
 	# Interactive mode - show current choice and allow override
 	log "Current Python installation method: ${PYTHON_CHOICE}"
 	log "How would you like to install Python packages?"
-	echo "existing-venv: Use the active virtual environment"
+	echo "active-venv: Use the active virtual environment"
 	echo "new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
 	echo "system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
 	if [[ "${IS_UBUNTU_20}" != "0" ]]; then
@@ -575,7 +575,7 @@ main() {
 
 	# Set up Python environment based on choice
 	case ${PYTHON_CHOICE} in
-		"existing-venv")
+		"active-venv")
 			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
 				error "No active virtual environment detected!"
 				error "Please activate your virtual environment first and try again"
