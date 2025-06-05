@@ -110,43 +110,20 @@ fetch_latest_flash_version() {
 	echo "${latest_flash}"
 }
 
-# ========================= Podman Metalium Settings =========================
-
-# Podman Metalium URLs and Settings
-METALIUM_IMAGE_URL="${_arg_metalium_image_url}"
-METALIUM_IMAGE_TAG="${_arg_metalium_image_tag}"
-PODMAN_METALIUM_SCRIPT_DIR="${_arg_podman_metalium_script_dir}"
-PODMAN_METALIUM_SCRIPT_NAME="${_arg_podman_metalium_script_name}"
-
-# ========================= Boolean Parameters =========================
-
-# Note: argbash boolean arguments are now used directly
-# _arg_install_kmd, _arg_install_hugepages, etc. are "on" or "off"
-
-# ========================= String Parameters =========================
-
-# Python choice is now string-based from argbash
-PYTHON_CHOICE="${_arg_python_choice}"
-
-# Reboot option is now string-based from argbash
-REBOOT_OPTION="${_arg_reboot_option}"
-
-# ========================= Modes =========================
-
 # If container mode is enabled, disable KMD and HugePages
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
 	_arg_install_podman="off" # No podman in podman
-	REBOOT_OPTION="never" # Do not reboot
+	_arg_reboot_option="never" # Do not reboot
 fi
 
 # In non-interactive mode, set reboot default if not specified
 if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 	# In non-interactive mode, we can't ask the user for anything
 	# So if they don't provide a reboot choice we will pick a default
-	if [[ "${REBOOT_OPTION}" = "ask" ]]; then
-		REBOOT_OPTION="never" # Do not reboot
+	if [[ "${_arg_reboot_option}" = "ask" ]]; then
+		_arg_reboot_option="never" # Do not reboot
 	fi
 fi
 
@@ -262,12 +239,12 @@ confirm() {
 get_python_choice() {
 	# In non-interactive mode, use the provided argument
 	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
-		log "Non-interactive mode, using Python installation method: ${PYTHON_CHOICE}"
+		log "Non-interactive mode, using Python installation method: ${_arg_python_choice}"
 		return
 	fi
 
 	# Interactive mode - show current choice and allow override
-	log "Current Python installation method: ${PYTHON_CHOICE}"
+	log "Current Python installation method: ${_arg_python_choice}"
 	log "How would you like to install Python packages?"
 	echo "active-venv: Use the active virtual environment"
 	echo "new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
@@ -275,7 +252,7 @@ get_python_choice() {
 	if [[ "${IS_UBUNTU_20}" != "0" ]]; then
 		echo "pipx: Use pipx for isolated package installation"
 	fi
-	read -rp "Enter your choice or press enter to keep current (${PYTHON_CHOICE}): " user_choice
+	read -rp "Enter your choice or press enter to keep current (${_arg_python_choice}): " user_choice
 	echo # newline
 
 	# If user provided a value, update PYTHON_CHOICE
