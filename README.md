@@ -54,6 +54,22 @@ cd tt-installer
 TT_MODE_NON_INTERACTIVE=0 TT_REBOOT_OPTION=3 ./install.sh
 ```
 
+### All options:
+| Option                      | What it does                                  | Example |
+| --------------------------- | --------------------------------------------- | ------- |
+| TT_MODE_NON_INTERACTIVE=0   | Don't ask the user questions during install   | `TT_MODE_NON_INTERACTIVE=0 ./install.sh` |
+| TT_REBOOT_OPTION=[123]      | 1 = Ask the user<br/>2 = never<br/>3 = always | To automatically reboot:<br/>`TT_REBOOT_OPTION=3 ./install.sh` |
+| TT_SKIP_INSTALL_KMD=0       | Skip KMD installation flag (set to 0 to skip) | `TT_SKIP_INSTALL_KMD=0 ./install.sh` |
+| TT_SKIP_INSTALL_HUGEPAGES=0 | Skip HugePages installation flag (set to 0 to skip) | `TT_SKIP_INSTALL_HUGEPAGES=0 ./install.sh` |
+| TT_SKIP_UPDATE_FIRMWARE=0   | Skip tt-flash and firmware update flag (set to 0 to skip) | `TT_SKIP_UPDATE_FIRMWARE=0 ./install.sh` |
+| TT_SKIP_INSTALL_PODMAN=0    | Skip Podman installation flag (set to 0 to skip) | `TT_SKIP_INSTALL_PODMAN=0 ./install.sh` |
+| TT_SKIP_INSTALL_METALIUM_CONTAINER=0 | Skip Podman Metalium installation flag (set to 0 to skip) | `TT_SKIP_INSTALL_METALIUM_CONTAINER=0 ./install.sh` |
+| TT_PYTHON_CHOICE=[1234]     | 1 = Use active venv<br/>2 = Create new venv<br/>3 = system level (not recommended)<br/>4 = Use pipx | Create new virtual environment:<br/>`TT_PYTHON_CHOICE=2 ./install.sh` |
+| TT_MODE_CONTAINER=0         | Container mode flag (set to 0 to enable, which skips KMD and HugePages and never reboots) | `TT_MODE_CONTAINER=0 ./install.sh` |
+| TT_METALIUM_IMAGE_URL=<url> | Change the container base url used to install metalium (or any other container) | `TT_METALIUM_IMAGE_URL=ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64 ./install.sh` |
+| TT_METALIUM_IMAGE_TAG=<tag> | Change the container tag | `TT_METALIUM_IMAGE_TAG=latest-rc ./install.sh` |
+
+
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages.
 
 ## Supported Operating Systems
