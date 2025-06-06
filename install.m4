@@ -1,8 +1,46 @@
 #!/bin/bash
-# SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
-# SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
+
+# m4_ignore(
+echo "This is just a script template, not the script (yet) - pass it to 'argbash' to fix this." >&2
+exit 11 #)
+# ARG_HELP([A one-stop-shop for installing the Tenstorrent stack])
+# ARG_VERSION([echo "__INSTALLER_DEVELOPMENT_BUILD__"])
+# ========================= Boolean Arguments =========================
+# ARG_OPTIONAL_BOOLEAN([install-kmd],,[Kernel-Mode-Driver installation],[on])
+# ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
+# ARG_OPTIONAL_BOOLEAN([install-podman],,[Install Podman],[on])
+# ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
+# ARG_OPTIONAL_BOOLEAN([update-firmware],,[Update TT device firmware],[on])
+
+# =========================  Podman Metalium Arguments =========================
+# ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
+# ARG_OPTIONAL_SINGLE([metalium-image-tag],,[Tag (version) of the Metalium image],[latest-rc])
+# ARG_OPTIONAL_SINGLE([podman-metalium-script-dir],,[Directory where the helper wrapper will be written],["~/.local/bin"])
+# ARG_OPTIONAL_SINGLE([podman-metalium-script-name],,[Name of the helper wrapper script],["tt-metalium"])
+
+# ========================= String Parameters =========================
+# ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
+# ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
+
+# ========================= Version Arguments =========================
+# ARG_OPTIONAL_SINGLE([kmd-version],,[Specific version of TT-KMD to install],[])
+# ARG_OPTIONAL_SINGLE([fw-version],,[Specific version of firmware to install],[])
+# ARG_OPTIONAL_SINGLE([systools-version],,[Specific version of system tools to install],[])
+# ARG_OPTIONAL_SINGLE([smi-version],,[Specific version of tt-smi to install],[])
+# ARG_OPTIONAL_SINGLE([flash-version],,[Specific version of tt-flash to install],[])
+
+# ========================= Path Arguments =========================
+# ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[~/.tenstorrent-venv])
+
+# ========================= Mode Arguments =========================
+# ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD and HugePages, never reboots)],[off])
+# ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
+
+# ARGBASH_GO
+
+# [ <-- needed because of Argbash
 
 # Logo
 # Credit: figlet font slant by Glenn Chappell
@@ -72,70 +110,20 @@ fetch_latest_flash_version() {
 	echo "${latest_flash}"
 }
 
-# ========================= Podman Metalium Settings =========================
-
-# Podman Metalium URLs and Settings
-METALIUM_IMAGE_URL="${TT_METALIUM_IMAGE_URL:-ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64}"
-METALIUM_IMAGE_TAG="${TT_METALIUM_IMAGE_TAG:-latest-rc}"
-PODMAN_METALIUM_SCRIPT_DIR="${HOME}/.local/bin"
-PODMAN_METALIUM_SCRIPT_NAME="tt-metalium"
-
-# ========================= Boolean Parameters =========================
-
-# Skip KMD installation flag (set to 0 to skip)
-SKIP_INSTALL_KMD=${TT_SKIP_INSTALL_KMD:-1}
-
-# Skip HugePages installation flag (set to 0 to skip)
-SKIP_INSTALL_HUGEPAGES=${TT_SKIP_INSTALL_HUGEPAGES:-1}
-
-# Skip tt-flash and firmware update flag (set to 0 to skip)
-SKIP_UPDATE_FIRMWARE=${TT_SKIP_UPDATE_FIRMWARE:-1}
-
-# Skip Podman installation flag (set to 0 to skip)
-SKIP_INSTALL_PODMAN=${TT_SKIP_INSTALL_PODMAN:-1}
-
-# Skip Podman Metalium installation flag (set to 0 to skip)
-SKIP_INSTALL_METALIUM_CONTAINER=${TT_SKIP_INSTALL_METALIUM_CONTAINER:-1}
-
-# ========================= String Parameters =========================
-
-# Set default Python installation choice
-# 1 = Use active venv, 2 = Create new venv, 3 = Use pipx, 4 = system level (not recommended)
-PYTHON_CHOICE="${TT_PYTHON_CHOICE:-2}"
-declare -A PYTHON_CHOICE_TXT
-PYTHON_CHOICE_TXT[1]="Existing venv"
-PYTHON_CHOICE_TXT[2]="New venv"
-PYTHON_CHOICE_TXT[3]="System Python"
-PYTHON_CHOICE_TXT[4]="pipx"
-
-# Post-install reboot behavior
-# 1 = Ask the user, 2 = never, 3 = always
-REBOOT_OPTION="${TT_REBOOT_OPTION:-1}"
-declare -A REBOOT_OPTION_TXT
-REBOOT_OPTION_TXT[1]="Ask the user"
-REBOOT_OPTION_TXT[2]="Never reboot"
-# shellcheck disable=SC2034  # REBOOT_OPTION_TXT is currently unused but it's good docs
-REBOOT_OPTION_TXT[3]="Always reboot"
-
-# ========================= Modes =========================
-
-# Container mode flag (set to 0 to enable, which skips KMD and HugePages and never reboots)
-CONTAINER_MODE=${TT_MODE_CONTAINER:-1}
-# If container mode is enabled, skip KMD and HugePages
-if [[ "${CONTAINER_MODE}" = "0" ]]; then
-	SKIP_INSTALL_KMD=0
-	SKIP_INSTALL_HUGEPAGES=0 # Both KMD and HugePages must live on the host kernel
-	SKIP_INSTALL_PODMAN=0 # No podman in podman
-	REBOOT_OPTION=2 # Do not reboot
+# If container mode is enabled, disable KMD and HugePages
+if [[ "${_arg_mode_container}" = "on" ]]; then
+	_arg_install_kmd="off"
+	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
+	_arg_install_podman="off" # No podman in podman
+	_arg_reboot_option="never" # Do not reboot
 fi
 
-# Non-interactive mode flag (set to 0 to enable)
-NON_INTERACTIVE_MODE=${TT_MODE_NON_INTERACTIVE:-1}
-if [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
+# In non-interactive mode, set reboot default if not specified
+if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 	# In non-interactive mode, we can't ask the user for anything
 	# So if they don't provide a reboot choice we will pick a default
-	if [[ "${REBOOT_OPTION}" = "1" ]]; then
-		REBOOT_OPTION=2 # Do not reboot
+	if [[ "${_arg_reboot_option}" = "ask" ]]; then
+		_arg_reboot_option="never" # Do not reboot
 	fi
 fi
 
@@ -165,6 +153,8 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# argbash workaround: close square brackets ]]]]]
 
 # log messages to terminal (with color)
 log() {
@@ -231,7 +221,7 @@ verify_download() {
 # Function to prompt for yes/no
 confirm() {
 	# In non-interactive mode, always return true
-	if [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 		return 0
 	fi
 
@@ -247,26 +237,22 @@ confirm() {
 
 # Get Python installation choice interactively or use default
 get_python_choice() {
-	# If TT_PYTHON_CHOICE is set via environment variable, use that
-	if [[ -n "${TT_PYTHON_CHOICE+x}" ]]; then
-		log "Using Python installation method from environment variable (option ${PYTHON_CHOICE}: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
+	# In non-interactive mode, use the provided argument
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+		log "Non-interactive mode, using Python installation method: ${_arg_python_choice}"
 		return
-	# Otherwise, if in non-interactive mode, use the default
-	elif [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
-			log "Non-interactive mode, using default Python installation method (option ${PYTHON_CHOICE}: ${PYTHON_CHOICE_TXT[${PYTHON_CHOICE}]})"
-			return
 	fi
 
-	# Interactive mode with no TT_PYTHON_CHOICE set
+	# Interactive mode - show current choice and allow override
+	log "Current Python installation method: ${_arg_python_choice}"
 	log "How would you like to install Python packages?"
-	echo "1. Use the active virtual environment"
-	echo "2. [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
-	# The pipx version on ubuntu 20 is too old to install git packages. They must use a venv
-	echo "3. Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
+	echo "active-venv: Use the active virtual environment"
+	echo "new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
+	echo "system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
 	if [[ "${IS_UBUNTU_20}" != "0" ]]; then
-		echo "4. Use pipx for isolated package installation"
+		echo "pipx: Use pipx for isolated package installation"
 	fi
-	read -rp "Enter your choice (1, 2...) or press enter for default: " user_choice
+	read -rp "Enter your choice or press enter to keep current (${_arg_python_choice}): " user_choice
 	echo # newline
 
 	# If user provided a value, update PYTHON_CHOICE
@@ -276,12 +262,32 @@ get_python_choice() {
 }
 
 fetch_tt_sw_versions() {
-	# Use TT_ envvar version if present, otherwise latest
-	KMD_VERSION="${TT_KMD_VERSION:-$(fetch_latest_kmd_version)}"
-	FW_VERSION="${TT_FW_VERSION:-$(fetch_latest_fw_version)}"
-	SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION:-$(fetch_latest_systools_version)}"
-	SMI_VERSION="${TT_SMI_VERSION:-$(fetch_latest_smi_version)}"
-	FLASH_VERSION="${TT_FLASH_VERSION:-$(fetch_latest_flash_version)}"
+	# Use argbash version if present, otherwise latest
+	if [[ -n "${_arg_kmd_version}" ]]; then
+		KMD_VERSION="${_arg_kmd_version}"
+	else
+		KMD_VERSION="$(fetch_latest_kmd_version)"
+	fi
+	if [[ -n "${_arg_fw_version}" ]]; then
+		FW_VERSION="${_arg_fw_version}"
+	else
+		FW_VERSION="$(fetch_latest_fw_version)"
+	fi
+	if [[ -n "${_arg_systools_version}" ]]; then
+		SYSTOOLS_VERSION="${_arg_systools_version}"
+	else
+		SYSTOOLS_VERSION="$(fetch_latest_systools_version)"
+	fi
+	if [[ -n "${_arg_smi_version}" ]]; then
+		SMI_VERSION="${_arg_smi_version}"
+	else
+		SMI_VERSION="$(fetch_latest_smi_version)"
+	fi
+	if [[ -n "${_arg_flash_version}" ]]; then
+		FLASH_VERSION="${_arg_flash_version}"
+	else
+		FLASH_VERSION="$(fetch_latest_flash_version)"
+	fi
 
 	# If the user provides nothing and the functions fail to execute, take note of that,
 	# we will retry later
@@ -305,16 +311,8 @@ fetch_tt_sw_versions() {
 }
 
 get_new_venv_location() {
-	# If user provides path, use it
-	if [[ -v TT_NEW_VENV_LOCATION ]]; then
-		NEW_VENV_LOCATION="${TT_NEW_VENV_LOCATION}"
-	# If XDG_DATA_HOME is defined, use that
-	elif [[ -v XDG_DATA_HOME ]]; then
-		NEW_VENV_LOCATION="${XDG_DATA_HOME}/tenstorrent-venv"
-	# Fallback to ${HOME}/.tenstorrent-venv
-	else
-		NEW_VENV_LOCATION="${HOME}/.tenstorrent-venv"
-	fi
+	# Use argbash parameter, expanding tilde
+	NEW_VENV_LOCATION="${_arg_new_venv_location/#\~/$HOME}"
 }
 
 # Function to check if Podman is installed
@@ -413,36 +411,33 @@ EOF
 }
 
 get_podman_metalium_choice() {
-	# If we're on Ubuntu 20, Podman is not available - force skip regardless of environment variable
+	# If we're on Ubuntu 20, Podman is not available - force disable
 	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
-		SKIP_INSTALL_METALIUM_CONTAINER=0
-		SKIP_INSTALL_PODMAN=0
+		_arg_install_metalium_container="off"
+		_arg_install_podman="off"
 		return
 	fi
 
-	# If TT_SKIP_INSTALL_METALIUM_CONTAINER is set via environment variable, use that
-	if [[ -n "${TT_SKIP_INSTALL_METALIUM_CONTAINER+x}" ]]; then
-		log "Using Podman Metalium installation preference from environment variable (got ${SKIP_INSTALL_METALIUM_CONTAINER})"
-		return
-	# Otherwise, if in non-interactive mode, use the default
-	elif [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
-		log "Non-interactive mode, using default Podman Metalium installation preference (got ${SKIP_INSTALL_METALIUM_CONTAINER})"
+	# In non-interactive mode, use the provided arguments
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+		log "Non-interactive mode, using Podman Metalium installation preference: ${_arg_install_metalium_container}"
 		return
 	fi
 
 	# Only ask if Podman is installed or will be installed
-	if [[ "${SKIP_INSTALL_PODMAN}" = "1" ]] || check_podman_installed; then
-		# Interactive mode with no TT_SKIP_INSTALL_METALIUM_CONTAINER set
+	if [[ "${_arg_install_podman}" = "on" ]] || check_podman_installed; then
+		# Interactive mode - allow override
+		log "Current Metalium installation setting: ${_arg_install_metalium_container}"
 		log "Would you like to install the TT-Metalium library using Podman?"
-		if confirm "Make a selection"; then
-			SKIP_INSTALL_METALIUM_CONTAINER=1
+		if confirm "Install Metalium"; then
+			_arg_install_metalium_container="on"
 		else
-			SKIP_INSTALL_METALIUM_CONTAINER=0
-			SKIP_INSTALL_PODMAN=0 # If we don't want Metalium, we can skip Podman
+			_arg_install_metalium_container="off"
+			_arg_install_podman="off" # If we don't want Metalium, we can skip Podman
 		fi
 	else
 		# Podman won't be installed, so don't install Metalium
-		SKIP_INSTALL_METALIUM_CONTAINER=0
+		_arg_install_metalium_container="off"
 		warn "Podman is not and will not be installed, skipping Podman Metalium installation"
 	fi
 }
@@ -467,25 +462,25 @@ main() {
 	log "Starting installation"
 
 	# Log special mode settings
-	if [[ "${NON_INTERACTIVE_MODE}" = "0" ]]; then
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 		warn "Running in non-interactive mode"
 	fi
-	if [[ "${CONTAINER_MODE}" = "0" ]]; then
+	if [[ "${_arg_mode_container}" = "on" ]]; then
 		warn "Running in container mode"
 	fi
-	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
+	if [[ "${_arg_install_kmd}" = "off" ]]; then
 		warn "KMD installation will be skipped"
 	fi
-	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
+	if [[ "${_arg_install_hugepages}" = "off" ]]; then
 		warn "HugePages setup will be skipped"
 	fi
-	if [[ "${SKIP_INSTALL_PODMAN}" = "0" ]]; then
+	if [[ "${_arg_install_podman}" = "off" ]]; then
 		warn "Podman installation will be skipped"
 	fi
-	if [[ "${SKIP_INSTALL_METALIUM_CONTAINER}" = "0" ]]; then
+	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Metalium installation will be skipped"
 	fi
-	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
+	if [[ "${_arg_update_firmware}" = "off" ]]; then
 		warn "TT-Flash and firmware update will be skipped"
 	fi
 
@@ -550,16 +545,14 @@ main() {
 	get_python_choice
 
 	# Enforce restrictions on Ubuntu 20
-	if [[ "${IS_UBUNTU_20}" = "0" && "${PYTHON_CHOICE}" = "4" ]]; then
+	if [[ "${IS_UBUNTU_20}" = "0" && "${PYTHON_CHOICE}" = "pipx" ]]; then
 		warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"
-		PYTHON_CHOICE=2
+		PYTHON_CHOICE="new-venv"
 	fi
 
 	# Set up Python environment based on choice
-	# shellcheck disable=SC2221,SC2222  # Using the "2" after a "*" for documentation and clarity,
-	# but we need to tell shellcheck to ignore it
 	case ${PYTHON_CHOICE} in
-		1)
+		"active-venv")
 			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
 				error "No active virtual environment detected!"
 				error "Please activate your virtual environment first and try again"
@@ -569,7 +562,7 @@ main() {
 			INSTALLED_IN_VENV=0
 			PYTHON_INSTALL_CMD="pip install"
 			;;
-		3)
+		"system-python")
 			log "Using system pathing"
 			INSTALLED_IN_VENV=1
 			# Check Python version to determine if --break-system-packages is needed (Python 3.11+)
@@ -580,7 +573,7 @@ main() {
 				PYTHON_INSTALL_CMD="pip install"
 			fi
 			;;
-		4)
+		"pipx")
 			log "Using pipx for isolated package installation"
 			pipx ensurepath
 			# Enable the pipx path in this shell session
@@ -588,7 +581,7 @@ main() {
 			INSTALLED_IN_VENV=1
 			PYTHON_INSTALL_CMD="pipx install"
 			;;
-		*|"2")
+		*|"new-venv")
 			log "Setting up new Python virtual environment"
 			python3 -m venv "${NEW_VENV_LOCATION}"
 			# shellcheck disable=SC1091 # Must exist after previous command
@@ -600,7 +593,7 @@ main() {
 
 	# Install TT-KMD
 	# Skip KMD installation if flag is set
-	if [[ "${SKIP_INSTALL_KMD}" = "0" ]]; then
+	if [[ "${_arg_install_kmd}" = "off" ]]; then
 		log "Skipping KMD installation"
 	else
 		log "Installing Kernel-Mode Driver"
@@ -628,7 +621,7 @@ main() {
 
 	# Install TT-Flash and Firmware
 	# Skip tt-flash installation if flag is set
-	if [[ "${SKIP_UPDATE_FIRMWARE}" = "0" ]]; then
+	if [[ "${_arg_update_firmware}" = "off" ]]; then
 		log "Skipping TT-Flash and firmware update installation"
 	else
 		log "Installing TT-Flash and updating firmware"
@@ -653,7 +646,7 @@ main() {
 	# Setup HugePages
 	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
 	# Skip HugePages installation if flag is set
-	if [[ "${SKIP_INSTALL_HUGEPAGES}" = "0" ]]; then
+	if [[ "${_arg_install_hugepages}" = "off" ]]; then
 		warn "Skipping HugePages setup"
 	else
 		log "Setting up HugePages"
@@ -687,7 +680,7 @@ main() {
 	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@"${SMI_VERSION}"
 
 	# Install Podman if requested
-	if [[ "${SKIP_INSTALL_PODMAN}" = "0" ]]; then
+	if [[ "${_arg_install_podman}" = "off" ]]; then
 		warn "Skipping Podman installation"
 	else
 		if ! check_podman_installed; then
@@ -696,7 +689,7 @@ main() {
 	fi
 
 	# Install Podman Metalium if requested
-	if [[ "${SKIP_INSTALL_METALIUM_CONTAINER}" = "0" ]]; then
+	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Skipping Podman Metalium installation"
 	else
 		if ! check_podman_installed; then
@@ -714,7 +707,7 @@ main() {
 
 	log "Please reboot your system to complete the setup."
 	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
-	if [[ "${SKIP_INSTALL_METALIUM_CONTAINER}" = "1" ]]; then
+	if [[ "${_arg_install_metalium_container}" = "on" ]]; then
 		log "Use 'tt-metalium' to access the Metalium programming environment"
 		log "Usage examples:"
 		log "  tt-metalium                   # Start an interactive shell"
@@ -723,11 +716,11 @@ main() {
 	fi
 
 	# Auto-reboot if specified
-	if [[ "${REBOOT_OPTION}" = "3" ]]; then
+	if [[ "${REBOOT_OPTION}" = "always" ]]; then
 		log "Auto-reboot enabled. Rebooting now..."
 		sudo reboot
 	# Otherwise, ask if specified
-	elif [[ "${REBOOT_OPTION}" = "1" ]]; then
+	elif [[ "${REBOOT_OPTION}" = "ask" ]]; then
 		if confirm "Would you like to reboot now?"; then
 			log "Rebooting..."
 			sudo reboot
@@ -738,5 +731,6 @@ main() {
 # Start installation
 main
 
-# Don't muck with this unless you know what you are doing -warthog9
-# vim: noai:ts=4:sw=4
+# ] <-- needed because of Argbash
+
+# vim: noai:ts=4:sw=4:ft=bash
