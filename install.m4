@@ -110,20 +110,81 @@ fetch_latest_flash_version() {
 	echo "${latest_flash}"
 }
 
+# ========================= Backward Compatibility Environment Variables =========================
+
+# Support environment variables as fallbacks for backward compatibility
+# If env var is set, use it; otherwise use argbash value with default
+
+# Podman Metalium URLs and Settings
+METALIUM_IMAGE_URL="${TT_METALIUM_IMAGE_URL:-${_arg_metalium_image_url}}"
+METALIUM_IMAGE_TAG="${TT_METALIUM_IMAGE_TAG:-${_arg_metalium_image_tag}}"
+PODMAN_METALIUM_SCRIPT_DIR="${TT_PODMAN_METALIUM_SCRIPT_DIR:-${_arg_podman_metalium_script_dir}}"
+PODMAN_METALIUM_SCRIPT_NAME="${TT_PODMAN_METALIUM_SCRIPT_NAME:-${_arg_podman_metalium_script_name}}"
+
+# String Parameters - use env var if set, otherwise argbash value
+PYTHON_CHOICE="${TT_PYTHON_CHOICE:-${_arg_python_choice}}"
+REBOOT_OPTION="${TT_REBOOT_OPTION:-${_arg_reboot_option}}"
+
+# Path Parameters - use env var if set, otherwise argbash value
+VENV_PATH_EXPAND_TILDE="${_arg_new_venv_location/#\~/$HOME}"
+NEW_VENV_LOCATION="${TT_NEW_VENV_LOCATION:-${VENV_PATH_EXPAND_TILDE}}"
+
+# Boolean Parameters - support legacy env vars for backward compatibility
+# Convert env vars to argbash format if they exist
+if [[ -n "${TT_INSTALL_KMD:-}" ]]; then
+	if [[ "${TT_INSTALL_KMD}" == "true" || "${TT_INSTALL_KMD}" == "0" || "${TT_INSTALL_KMD}" == "on" ]]; then
+		_arg_install_kmd="on"
+	else
+		_arg_install_kmd="off"
+	fi
+fi
+
+if [[ -n "${TT_INSTALL_HUGEPAGES:-}" ]]; then
+	if [[ "${TT_INSTALL_HUGEPAGES}" == "true" || "${TT_INSTALL_HUGEPAGES}" == "0" || "${TT_INSTALL_HUGEPAGES}" == "on" ]]; then
+		_arg_install_hugepages="on"
+	else
+		_arg_install_hugepages="off"
+	fi
+fi
+
+if [[ -n "${TT_INSTALL_PODMAN:-}" ]]; then
+	if [[ "${TT_INSTALL_PODMAN}" == "true" || "${TT_INSTALL_PODMAN}" == "0" || "${TT_INSTALL_PODMAN}" == "on" ]]; then
+		_arg_install_podman="on"
+	else
+		_arg_install_podman="off"
+	fi
+fi
+
+if [[ -n "${TT_INSTALL_METALIUM_CONTAINER:-}" ]]; then
+	if [[ "${TT_INSTALL_METALIUM_CONTAINER}" == "true" || "${TT_INSTALL_METALIUM_CONTAINER}" == "0" || "${TT_INSTALL_METALIUM_CONTAINER}" == "on" ]]; then
+		_arg_install_metalium_container="on"
+	else
+		_arg_install_metalium_container="off"
+	fi
+fi
+
+if [[ -n "${TT_UPDATE_FIRMWARE:-}" ]]; then
+	if [[ "${TT_UPDATE_FIRMWARE}" == "true" || "${TT_UPDATE_FIRMWARE}" == "0" || "${TT_UPDATE_FIRMWARE}" == "on" ]]; then
+		_arg_update_firmware="on"
+	else
+		_arg_update_firmware="off"
+	fi
+fi
+
 # If container mode is enabled, disable KMD and HugePages
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
 	_arg_install_podman="off" # No podman in podman
-	_arg_reboot_option="never" # Do not reboot
+	REBOOT_OPTION="never" # Do not reboot
 fi
 
 # In non-interactive mode, set reboot default if not specified
 if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 	# In non-interactive mode, we can't ask the user for anything
 	# So if they don't provide a reboot choice we will pick a default
-	if [[ "${_arg_reboot_option}" = "ask" ]]; then
-		_arg_reboot_option="never" # Do not reboot
+	if [[ "${REBOOT_OPTION}" = "ask" ]]; then
+		REBOOT_OPTION="never" # Do not reboot
 	fi
 fi
 
@@ -262,28 +323,38 @@ get_python_choice() {
 }
 
 fetch_tt_sw_versions() {
-	# Use argbash version if present, otherwise latest
-	if [[ -n "${_arg_kmd_version}" ]]; then
+	# Use environment variable if set, then argbash version if present, otherwise latest
+	if [[ -n "${TT_KMD_VERSION:-}" ]]; then
+		KMD_VERSION="${TT_KMD_VERSION}"
+	elif [[ -n "${_arg_kmd_version}" ]]; then
 		KMD_VERSION="${_arg_kmd_version}"
 	else
 		KMD_VERSION="$(fetch_latest_kmd_version)"
 	fi
-	if [[ -n "${_arg_fw_version}" ]]; then
+	if [[ -n "${TT_FW_VERSION:-}" ]]; then
+		FW_VERSION="${TT_FW_VERSION}"
+	elif [[ -n "${_arg_fw_version}" ]]; then
 		FW_VERSION="${_arg_fw_version}"
 	else
 		FW_VERSION="$(fetch_latest_fw_version)"
 	fi
-	if [[ -n "${_arg_systools_version}" ]]; then
+	if [[ -n "${TT_SYSTOOLS_VERSION:-}" ]]; then
+		SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION}"
+	elif [[ -n "${_arg_systools_version}" ]]; then
 		SYSTOOLS_VERSION="${_arg_systools_version}"
 	else
 		SYSTOOLS_VERSION="$(fetch_latest_systools_version)"
 	fi
-	if [[ -n "${_arg_smi_version}" ]]; then
+	if [[ -n "${TT_SMI_VERSION:-}" ]]; then
+		SMI_VERSION="${TT_SMI_VERSION}"
+	elif [[ -n "${_arg_smi_version}" ]]; then
 		SMI_VERSION="${_arg_smi_version}"
 	else
 		SMI_VERSION="$(fetch_latest_smi_version)"
 	fi
-	if [[ -n "${_arg_flash_version}" ]]; then
+	if [[ -n "${TT_FLASH_VERSION:-}" ]]; then
+		FLASH_VERSION="${TT_FLASH_VERSION}"
+	elif [[ -n "${_arg_flash_version}" ]]; then
 		FLASH_VERSION="${_arg_flash_version}"
 	else
 		FLASH_VERSION="$(fetch_latest_flash_version)"
@@ -308,11 +379,6 @@ fetch_tt_sw_versions() {
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
 	fi
-}
-
-get_new_venv_location() {
-	# Use argbash parameter, expanding tilde
-	NEW_VENV_LOCATION="${_arg_new_venv_location/#\~/$HOME}"
 }
 
 # Function to check if Podman is installed
