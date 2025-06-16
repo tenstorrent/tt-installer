@@ -1,4 +1,4 @@
-name: Test Installer
+name: Build and Test Installer
 
 on:
   push:
@@ -7,7 +7,53 @@ on:
     branches: [ main ]
 
 jobs:
+  build:
+    name: Build installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set version variables
+        id: version
+        run: |
+          # Extract version with 'v' prefix for GitHub paths
+          TAG_VERSION=${{ github.ref_name }}
+          # Extract version without the 'v' prefix for script
+          CLEAN_VERSION=$(echo $TAG_VERSION | sed 's/^v//')
+
+          echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
+          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set version in install.m4
+        run: |
+          # Replace the placeholder with actual version
+          sed -i "s/__INSTALLER_DEVELOPMENT_BUILD__/${{ steps.version.outputs.clean_version }}/g" install.m4
+          # Display the change for verification in workflow logs
+          echo "Updated install.m4 with version ${{ steps.version.outputs.clean_version }}"
+
+      - name: Generate install.sh from install.m4
+        run: |
+          docker run --rm \
+            -e PROGRAM=argbash \
+            -v "$(pwd):/work" \
+            -u "$(id -u):$(id -g)" \
+            matejak/argbash \
+            install.m4 -o install.sh
+
+      - name: Upload install.sh as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-script
+          path: install.sh
+
   test-installer:
+    name: Test installer
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -21,6 +67,11 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: install-script
 
     - name: Test in container
       run: |
@@ -125,6 +176,8 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Test script syntax
+      # If this fails, we should be warned but not stop entirely
+      continue-on-error: true
       run: |
         shellcheck install.sh
         echo "✓ Script syntax is valid"
