@@ -276,7 +276,7 @@ jobs:
         # Test other version fetches
         if systools_ver=$(fetch_latest_systools_version); then
           echo "✓ System tools version fetched: $systools_ver"
-        else/bin/bash -c "$(curl -fsSL https://github.com/knauth/tt-installer/releases/download//install.sh)"
+        else /bin/bash -c "$(curl -fsSL https://github.com/knauth/tt-installer/releases/download//install.sh)"
           echo "⚠ System tools version fetch failed (may be rate limited)"
         fi
 
