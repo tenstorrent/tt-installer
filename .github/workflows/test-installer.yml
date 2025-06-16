@@ -98,12 +98,12 @@ jobs:
 
             # Test configuration (skip hardware-dependent steps)
             export TT_MODE_NON_INTERACTIVE=0
-            export TT_SKIP_INSTALL_KMD=0
-            export TT_SKIP_INSTALL_HUGEPAGES=0
-            export TT_SKIP_UPDATE_FIRMWARE=0
-            export TT_SKIP_INSTALL_METALIUM_CONTAINER=0
-            export TT_PYTHON_CHOICE=3
-            export TT_REBOOT_OPTION=2
+            export TT_INSTALL_KMD=1
+            export TT_INSTALL_HUGEPAGES=1
+            export TT_UPDATE_FIRMWARE=1
+            export TT_INSTALL_METALIUM_CONTAINER=1
+            export TT_PYTHON_CHOICE=new-venv
+            export TT_REBOOT_OPTION=never
 
             # Run installer
             timeout 600 bash install.sh || {

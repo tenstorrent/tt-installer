@@ -170,6 +170,14 @@ if [[ -n "${TT_UPDATE_FIRMWARE:-}" ]]; then
 	fi
 fi
 
+if [[ -n "${TT_MODE_NON_INTERACTIVE:-}" ]]; then
+	if [[ "${TT_MODE_NON_INTERACTIVE}" == "true" || "${TT_MODE_NON_INTERACTIVE}" == "0" || "${TT_MODE_NON_INTERACTIVE}" == "on" ]]; then
+		_arg_mode_non_interactive="on"
+	else
+		_arg_mode_non_interactive="off"
+	fi
+fi
+
 # If container mode is enabled, disable KMD and HugePages
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
