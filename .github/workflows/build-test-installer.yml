@@ -1,13 +1,61 @@
-name: Test Installer
+name: Build and Test Installer
 
 on:
   push:
     branches: [ main ]
+    tags: ['v*']
   pull_request:
     branches: [ main ]
 
 jobs:
+  build:
+    name: Build installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set version variables
+        id: version
+        run: |
+          # Extract version with 'v' prefix for GitHub paths
+          TAG_VERSION=${{ github.ref_name }}
+          # Extract version without the 'v' prefix for script
+          CLEAN_VERSION=$(echo $TAG_VERSION | sed 's/^v//')
+
+          echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
+          echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set version in install.m4
+        run: |
+          # Replace the placeholder with actual version
+          # Use | as a delimited because / can sometimes show up in the input
+          sed -i "s|__INSTALLER_DEVELOPMENT_BUILD__|${{ steps.version.outputs.clean_version }}|g" install.m4
+          # Display the change for verification in workflow logs
+          echo "Updated install.m4 with version ${{ steps.version.outputs.clean_version }}"
+
+      - name: Generate install.sh from install.m4
+        run: |
+          docker run --rm \
+            -e PROGRAM=argbash \
+            -v "$(pwd):/work" \
+            -u "$(id -u):$(id -g)" \
+            matejak/argbash \
+            install.m4 -o install.sh
+
+      - name: Upload install.sh as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-script
+          path: install.sh
+
   test-installer:
+    name: Test installer
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -21,6 +69,11 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: install-script
 
     - name: Test in container
       run: |
@@ -47,12 +100,12 @@ jobs:
 
             # Test configuration (skip hardware-dependent steps)
             export TT_MODE_NON_INTERACTIVE=0
-            export TT_SKIP_INSTALL_KMD=0
-            export TT_SKIP_INSTALL_HUGEPAGES=0
-            export TT_SKIP_UPDATE_FIRMWARE=0
-            export TT_SKIP_INSTALL_METALIUM_CONTAINER=0
-            export TT_PYTHON_CHOICE=3
-            export TT_REBOOT_OPTION=2
+            export TT_INSTALL_KMD=1
+            export TT_INSTALL_HUGEPAGES=1
+            export TT_UPDATE_FIRMWARE=1
+            export TT_INSTALL_METALIUM_CONTAINER=1
+            export TT_PYTHON_CHOICE=new-venv
+            export TT_REBOOT_OPTION=never
 
             # Run installer
             timeout 600 bash install.sh || {
@@ -65,6 +118,7 @@ jobs:
         "
 
   test-fedora:
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -76,6 +130,11 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: install-script
 
     - name: Test in Fedora container
       run: |
@@ -100,12 +159,12 @@ jobs:
 
             # Test configuration (skip hardware-dependent steps)
             export TT_MODE_NON_INTERACTIVE=0
-            export TT_SKIP_INSTALL_KMD=0
-            export TT_SKIP_INSTALL_HUGEPAGES=0
-            export TT_SKIP_UPDATE_FIRMWARE=0
-            export TT_SKIP_INSTALL_METALIUM_CONTAINER=0
-            export TT_PYTHON_CHOICE=3
-            export TT_REBOOT_OPTION=2
+            export TT_INSTALL_KMD=1
+            export TT_INSTALL_HUGEPAGES=1
+            export TT_UPDATE_FIRMWARE=1
+            export TT_INSTALL_METALIUM_CONTAINER=1
+            export TT_PYTHON_CHOICE=new-venv
+            export TT_REBOOT_OPTION=never
 
             # Run installer
             timeout 300 bash install.sh || {
@@ -118,23 +177,37 @@ jobs:
         "
 
   test-script-syntax:
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: install-script
+
     - name: Test script syntax
+      # If this fails, we should be warned but not stop entirely
+      continue-on-error: true
       run: |
         shellcheck install.sh
         echo "✓ Script syntax is valid"
 
   test-environment-variables:
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: install-script
 
     - name: Test environment variable parsing
       run: |
@@ -159,11 +232,17 @@ jobs:
         echo "✓ Environment variables are properly recognized"
 
   test-version-fetching:
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: install-script
 
     - name: Install dependencies
       run: |
@@ -197,7 +276,7 @@ jobs:
         # Test other version fetches
         if systools_ver=$(fetch_latest_systools_version); then
           echo "✓ System tools version fetched: $systools_ver"
-        else
+        else /bin/bash -c "$(curl -fsSL https://github.com/knauth/tt-installer/releases/download//install.sh)"
           echo "⚠ System tools version fetch failed (may be rate limited)"
         fi
 
@@ -214,3 +293,55 @@ jobs:
         fi
 
         echo "✓ Version fetching functions are working"
+
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    # Only run if the build workflow completed successfully AND it was triggered by a version tag
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, test-installer, test-fedora]
+
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Checkout the tag that triggered the original workflow
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Download artifacts from build workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: install-script
+
+      - name: Build Changelog
+        id: build_changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        with:
+          mode: "HYBRID" # Include both PRs and direct commits
+          configurationJSON: |
+            {
+              "template": "#{{CHANGELOG}}\n\n## Contributors\n#{{CONTRIBUTORS}}\n\n## Installation\n\nInstall this version with:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh)\"\n```\n\nLatest version can always be installed using:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh)\"\n```",
+              "categories": [
+                {
+                  "title": "## 🔄 Changes",
+                  "labels": []
+                }
+              ],
+              "pr_template": "- #{{TITLE}} (#{{NUMBER}}) by @#{{AUTHOR}}",
+              "commit_template": "- #{{TITLE}} (#{{MERGE_SHA}}) by @#{{AUTHOR}}"
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: install.sh
+          body: ${{ steps.build_changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
