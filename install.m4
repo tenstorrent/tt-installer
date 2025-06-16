@@ -625,7 +625,7 @@ main() {
 	# Set up Python environment based on choice
 	case ${PYTHON_CHOICE} in
 		"active-venv")
-			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+			if [[ -n "${VIRTUAL_ENV:-}" ]]; then
 				error "No active virtual environment detected!"
 				error "Please activate your virtual environment first and try again"
 				exit 1
