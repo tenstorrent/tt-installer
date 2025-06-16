@@ -30,10 +30,10 @@ tt-installer performs the following actions on your system:
 7. Using your package manager, installs Podman
 8. Installs tt-metalium as a Podman container and configures the tt-metalium script for convenient access to it
 
-The installer will ask the user to make choices about Python environments and tt-metalium. If you wish to configure the installation more granuarly, see [Advanced Usage](#advanced-usage).
+The installer will ask the user to make choices about Python environments and tt-metalium. If you wish to configure the installation more granularly, see [Advanced Usage](#advanced-usage).
 
 ## Advanced Usage
-Much of the installer's behavior can be configured with environment variables- some examples are shown below. For a full list of configurable parameters, please see [this page](https://github.com/tenstorrent/tt-installer/wiki/Customizing-your-installation-with-environment-variables) on the wiki.
+The installer supports command-line arguments for customization. For a full list of available arguments and their environment variable equivalents, please see [this page](https://github.com/tenstorrent/tt-installer/wiki/Customizing-your-installation) on the wiki.
 
 To install from a local file, clone this repository and run install.sh:
 ```bash
@@ -41,17 +41,30 @@ git clone https://github.com/tenstorrent/tt-installer.git
 cd tt-installer
 ./install.sh
 ```
+
+To see all available options:
+```bash
+./install.sh --help
+```
+
 To install without prompting the user:
 ```bash
-git clone https://github.com/tenstorrent/tt-installer.git
-cd tt-installer
-TT_MODE_NON_INTERACTIVE=0 ./install.sh
+./install.sh --mode-non-interactive
 ```
+
 To install without prompting the user and automatically reboot:
 ```bash
-git clone https://github.com/tenstorrent/tt-installer.git
-cd tt-installer
-TT_MODE_NON_INTERACTIVE=0 TT_REBOOT_OPTION=3 ./install.sh
+./install.sh --mode-non-interactive --reboot-option=always
+```
+
+To skip certain components:
+```bash
+./install.sh --no-install-kmd --no-install-hugepages
+```
+
+To specify versions:
+```bash
+./install.sh --kmd-version=1.34 --fw-version=18.3.0
 ```
 
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages.
