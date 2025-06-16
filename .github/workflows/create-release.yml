@@ -19,7 +19,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout code
-      - uses: actions/checkout@v4
+        uses: actions/checkout@v4
         with:
           # Checkout the tag that triggered the original workflow
           ref: ${{ github.event.workflow_run.head_sha }}
