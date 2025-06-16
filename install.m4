@@ -32,7 +32,7 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([flash-version],,[Specific version of tt-flash to install],[])
 
 # ========================= Path Arguments =========================
-# ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[~/.tenstorrent-venv])
+# ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[$HOME/.tenstorrent-venv])
 
 # ========================= Mode Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD and HugePages, never reboots)],[off])
@@ -126,8 +126,7 @@ PYTHON_CHOICE="${TT_PYTHON_CHOICE:-${_arg_python_choice}}"
 REBOOT_OPTION="${TT_REBOOT_OPTION:-${_arg_reboot_option}}"
 
 # Path Parameters - use env var if set, otherwise argbash value
-VENV_PATH_EXPAND_TILDE="${_arg_new_venv_location/#\~/$HOME}"
-NEW_VENV_LOCATION="${TT_NEW_VENV_LOCATION:-${VENV_PATH_EXPAND_TILDE}}"
+NEW_VENV_LOCATION="${TT_NEW_VENV_LOCATION:-${_arg_new_venv_location}}"
 
 # Boolean Parameters - support legacy env vars for backward compatibility
 # Convert env vars to argbash format if they exist
@@ -607,7 +606,6 @@ main() {
 	get_podman_metalium_choice
 
 	# Python package installation preference
-	get_new_venv_location
 	get_python_choice
 
 	# Enforce restrictions on Ubuntu 20
