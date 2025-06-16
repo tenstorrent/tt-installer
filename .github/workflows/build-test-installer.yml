@@ -33,7 +33,8 @@ jobs:
       - name: Set version in install.m4
         run: |
           # Replace the placeholder with actual version
-          sed -i "s/__INSTALLER_DEVELOPMENT_BUILD__/${{ steps.version.outputs.clean_version }}/g" install.m4
+          # Use | as a delimited because / can sometimes show up in the input
+          sed -i "s|__INSTALLER_DEVELOPMENT_BUILD__|${{ steps.version.outputs.clean_version }}|g" install.m4
           # Display the change for verification in workflow logs
           echo "Updated install.m4 with version ${{ steps.version.outputs.clean_version }}"
 
