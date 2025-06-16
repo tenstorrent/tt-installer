@@ -275,7 +275,7 @@ jobs:
         # Test other version fetches
         if systools_ver=$(fetch_latest_systools_version); then
           echo "✓ System tools version fetched: $systools_ver"
-        else
+        else/bin/bash -c "$(curl -fsSL https://github.com/knauth/tt-installer/releases/download//install.sh)"
           echo "⚠ System tools version fetch failed (may be rate limited)"
         fi
 
@@ -321,7 +321,7 @@ jobs:
           mode: "HYBRID" # Include both PRs and direct commits
           configurationJSON: |
             {
-              "template": "#{{CHANGELOG}}\n\n## Contributors\n#{{CONTRIBUTORS}}\n\n## Installation\n\nInstall this version with:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag_version }}/install.sh)\"\n```\n\nLatest version can always be installed using:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh)\"\n```",
+              "template": "#{{CHANGELOG}}\n\n## Contributors\n#{{CONTRIBUTORS}}\n\n## Installation\n\nInstall this version with:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh)\"\n```\n\nLatest version can always be installed using:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh)\"\n```",
               "categories": [
                 {
                   "title": "## 🔄 Changes",
