@@ -48,8 +48,8 @@ LOGO=$(cat << "EOF"
    __                  __                             __
   / /____  ____  _____/ /_____  _____________  ____  / /_
  / __/ _ \/ __ \/ ___/ __/ __ \/ ___/ ___/ _ \/ __ \/ __/
-/ /_/  __/ / / (__  ) /_/ /_/ / /  / /  /  __/ / / / /_  
-\__/\___/_/ /_/____/\__/\____/_/  /_/   \___/_/ /_/\__/  
+/ /_/  __/ / / (__  ) /_/ /_/ / /  / /  /  __/ / / / /_
+\__/\___/_/ /_/____/\__/\____/_/  /_/   \___/_/ /_/\__/
 EOF
 )
 
@@ -418,7 +418,7 @@ fetch_tt_sw_versions() {
 
 	# If the user provides nothing and the functions fail to execute, take note of that,
 	# we will retry later
-	if [[ 
+	if [[
 		${KMD_VERSION} != "" &&\
 		${FW_VERSION} != "" &&\
 		${SYSTOOLS_VERSION} != "" &&\
@@ -743,9 +743,9 @@ main() {
 			# During the offline installer we need to figure out what kernels are actually installed
 			# because the kernel running on the system is not what we just installed and it's going
 			# to complain up a storm if we don't have the headers for the running kernel, which we don't
-			# so lets start by figuring out what kernels we do have (packaging, we can do this by doing a 
-			# ls on /lib/modules too but right now I'm doing it this way, deal.  
-			# Then we wander through and do dkms for the installed kernels only.  After that instead of 
+			# so lets start by figuring out what kernels we do have (packaging, we can do this by doing a
+			# ls on /lib/modules too but right now I'm doing it this way, deal.
+			# Then we wander through and do dkms for the installed kernels only.  After that instead of
 			# trying to modprobe the module on a system we might not have built for, we check if we match
 			# and only then try modprobe
 			for x in $( eval "${KERNEL_LISTING}" )
