@@ -37,7 +37,7 @@ The installer supports command-line arguments for customization. For a full list
 
 To install from a local file, download the latest install.sh:
 ```bash
-curl -O https://github.com/tenstorrent/tt-installer/releases/latest/download/install.sh
+curl -fsSL https://github.com/tenstorrent/tt-installer/releases/latest/download/install.sh -O
 chmod +x install.sh
 ./install.sh
 ```
