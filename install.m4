@@ -311,22 +311,46 @@ get_python_choice() {
 		return
 	fi
 
-	# Interactive mode - show current choice and allow override
-	log "Current Python installation method: ${_arg_python_choice}"
 	log "How would you like to install Python packages?"
-	echo "active-venv: Use the active virtual environment"
-	echo "new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
-	echo "system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
-	if [[ "${IS_UBUNTU_20}" != "0" ]]; then
-		echo "pipx: Use pipx for isolated package installation"
-	fi
-	read -rp "Enter your choice or press enter to keep current (${_arg_python_choice}): " user_choice
-	echo # newline
+	# Interactive mode - show current choice and allow override
+	while true; do
+		echo "1) active-venv: Use the active virtual environment"
+		echo "2) new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
+		echo "3) system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
+		if [[ "${IS_UBUNTU_20}" != "0" ]]; then
+			echo "4) pipx: Use pipx for isolated package installation"
+		fi
+		read -rp "Enter your choice (1-4) or press enter for default (${_arg_python_choice}): " user_choice
+		echo # newline
 
-	# If user provided a value, update PYTHON_CHOICE
-	if [[ -n "${user_choice}" ]]; then
-		PYTHON_CHOICE=${user_choice}
-	fi
+		# If user provided no value, use default and exit
+		if [[ -z "${user_choice}" ]]; then
+			break
+		fi
+
+		# Process user choice
+		case "${user_choice}" in
+			1|active-venv)
+				PYTHON_CHOICE="active-venv"
+				break
+				;;
+			2|new-venv)
+				PYTHON_CHOICE="new-venv"
+				break
+				;;
+			3|system-python)
+				PYTHON_CHOICE="system-python"
+				break
+				;;
+			4|pipx)
+				PYTHON_CHOICE="pipx"
+				break
+				;;
+			*)
+				warn "Invalid choice '${user_choice}'. Please try again."
+				;;
+		esac
+	done
 }
 
 fetch_tt_sw_versions() {
@@ -625,7 +649,7 @@ main() {
 	# Set up Python environment based on choice
 	case ${PYTHON_CHOICE} in
 		"active-venv")
-			if [[ -n "${VIRTUAL_ENV:-}" ]]; then
+			if [[ ! -n "${VIRTUAL_ENV:-}" ]]; then
 				error "No active virtual environment detected!"
 				error "Please activate your virtual environment first and try again"
 				exit 1
