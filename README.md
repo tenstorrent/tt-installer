@@ -35,10 +35,10 @@ The installer will ask the user to make choices about Python environments and tt
 ## Advanced Usage
 The installer supports command-line arguments for customization. For a full list of available arguments and their environment variable equivalents, please see [this page](https://github.com/tenstorrent/tt-installer/wiki/Customizing-your-installation) on the wiki.
 
-To install from a local file, clone this repository and run install.sh:
+To install from a local file, download the latest install.sh:
 ```bash
-git clone https://github.com/tenstorrent/tt-installer.git
-cd tt-installer
+curl -O https://github.com/tenstorrent/tt-installer/releases/latest/download/install.sh
+chmod +x install.sh
 ./install.sh
 ```
 
@@ -50,11 +50,6 @@ To see all available options:
 To install without prompting the user:
 ```bash
 ./install.sh --mode-non-interactive
-```
-
-To install without prompting the user and automatically reboot:
-```bash
-./install.sh --mode-non-interactive --reboot-option=always
 ```
 
 To skip certain components:
