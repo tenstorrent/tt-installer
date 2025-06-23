@@ -434,6 +434,12 @@ fetch_tt_sw_versions() {
 		log "  tt-flash: ${FLASH_VERSION#v}"
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
+		error "*** WARNING software versions found:"
+		error "  TT-KMD: ${KMD_VERSION}"
+		error "  Firmware: ${FW_VERSION}"
+		error "  System Tools: ${SYSTOOLS_VERSION}"
+		error "  tt-smi: ${SMI_VERSION#v}"
+		error "  tt-flash: ${FLASH_VERSION#v}"
 	fi
 }
 
@@ -660,7 +666,16 @@ main() {
 	fi
 	# If we still haven't successfully retrieved the versions, there is an error, so exit
 	if [[ "${HAVE_SET_TT_SW_VERSIONS}" = "1" ]]; then
-		error_exit "Cannot fetch versions of TT software. Is jq installed?"
+		echo "HAVE_SET_TT_SW_VERSIONS: ${HAVE_SET_TT_SW_VERSIONS}"
+
+		which jq > /dev/null 2>&1
+		res=$?
+		if [[ "${res}" == "0" ]]
+		then
+			error_exit "Cannot fetch versions of TT software, likely a transient error in getting the versions - please try again"
+		else
+			error_exit "Cannot fetch versions of TT software. Is jq installed?"
+		fi
 	fi
 
 	# Get Podman Metalium installation choice
