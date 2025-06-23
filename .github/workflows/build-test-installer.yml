@@ -124,8 +124,8 @@ jobs:
       fail-fast: false
       matrix:
         distro:
-          - fedora:39
-          - fedora:40
+          - fedora:41
+          - fedora:42
 
     steps:
     - name: Checkout code
