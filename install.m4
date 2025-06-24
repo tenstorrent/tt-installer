@@ -61,7 +61,7 @@ KERNEL_LISTING_DEBIAN=$( cat << EOF
 	grep linux-image |
 	awk 'BEGIN { FS="/"; } { print \$1; }' |
 	sed 's/^linux-image-//g' |
-	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$"
+	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$\|virtual"
 EOF
 )
 
@@ -70,7 +70,7 @@ KERNEL_LISTING_UBUNTU=$( cat << EOF
 	grep linux-image |
 	awk 'BEGIN { FS="/"; } { print \$1; }' |
 	sed 's/^linux-image-//g' |
-	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$"
+	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$\|virtual"
 EOF
 )
 KERNEL_LISTING_FEDORA="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matched\" | sed 's/^kernel-devel-//'"
