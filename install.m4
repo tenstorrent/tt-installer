@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 
 # m4_ignore(
@@ -48,10 +51,30 @@ LOGO=$(cat << "EOF"
    __                  __                             __
   / /____  ____  _____/ /_____  _____________  ____  / /_
  / __/ _ \/ __ \/ ___/ __/ __ \/ ___/ ___/ _ \/ __ \/ __/
-/ /_/  __/ / / (__  ) /_/ /_/ / /  / /  /  __/ / / / /_  
-\__/\___/_/ /_/____/\__/\____/_/  /_/   \___/_/ /_/\__/  
+/ /_/  __/ / / (__  ) /_/ /_/ / /  / /  /  __/ / / / /_
+\__/\___/_/ /_/____/\__/\____/_/  /_/   \___/_/ /_/\__/
 EOF
 )
+
+KERNEL_LISTING_DEBIAN=$( cat << EOF
+	apt list --installed |
+	grep linux-image |
+	awk 'BEGIN { FS="/"; } { print \$1; }' |
+	sed 's/^linux-image-//g' |
+	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$"
+EOF
+)
+
+KERNEL_LISTING_UBUNTU=$( cat << EOF
+	apt list --installed |
+	grep linux-image |
+	awk 'BEGIN { FS="/"; } { print \$1; }' |
+	sed 's/^linux-image-//g' |
+	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$"
+EOF
+)
+KERNEL_LISTING_FEDORA="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matched\" | sed 's/^kernel-devel-//'"
+KERNEL_LISTING_EL="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matched\" | sed 's/^kernel-devel-//'"
 
 # ========================= GIT URLs =========================
 
@@ -194,6 +217,11 @@ if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 		REBOOT_OPTION="never" # Do not reboot
 	fi
 fi
+
+SYSTEMD_NOW="${TT_SYSTEMD_NOW:---now}"
+SYSTEMD_NO="${TT_SYSTEMD_NO:-0}"
+PIPX_ENSUREPATH_EXTRAS="${TT_PIPX_ENSUREPATH_EXTRAS:- }"
+PIPX_INSTALL_EXTRAS="${TT_PIPX_INSTALL_EXTRAS:- }"
 
 # ========================= Main Script =========================
 
@@ -393,7 +421,7 @@ fetch_tt_sw_versions() {
 
 	# If the user provides nothing and the functions fail to execute, take note of that,
 	# we will retry later
-	if [[ 
+	if [[
 		${KMD_VERSION} != "" &&\
 		${FW_VERSION} != "" &&\
 		${SYSTOOLS_VERSION} != "" &&\
@@ -409,6 +437,12 @@ fetch_tt_sw_versions() {
 		log "  tt-flash: ${FLASH_VERSION#v}"
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
+		error "*** WARNING software versions found:"
+		error "  TT-KMD: ${KMD_VERSION}"
+		error "  Firmware: ${FW_VERSION}"
+		error "  System Tools: ${SYSTOOLS_VERSION}"
+		error "  tt-smi: ${SMI_VERSION#v}"
+		error "  tt-flash: ${FLASH_VERSION#v}"
 	fi
 }
 
@@ -596,18 +630,22 @@ main() {
 			else
 				sudo DEBIAN_FRONTEND=noninteractive apt install -y wget git python3-pip dkms cargo rustc pipx jq
 			fi
+			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt update
 			sudo apt install -y wget git python3-pip dkms pipx jq
+			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
 			;;
 		"fedora")
 			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
+			KERNEL_LISTING="${KERNEL_LISTING_FEDORA}"
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
 			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
+			KERNEL_LISTING="${KERNEL_LISTING_EL}"
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
@@ -631,7 +669,16 @@ main() {
 	fi
 	# If we still haven't successfully retrieved the versions, there is an error, so exit
 	if [[ "${HAVE_SET_TT_SW_VERSIONS}" = "1" ]]; then
-		error_exit "Cannot fetch versions of TT software. Is jq installed?"
+		echo "HAVE_SET_TT_SW_VERSIONS: ${HAVE_SET_TT_SW_VERSIONS}"
+
+		which jq > /dev/null 2>&1
+		res=$?
+		if [[ "${res}" == "0" ]]
+		then
+			error_exit "Cannot fetch versions of TT software, likely a transient error in getting the versions - please try again"
+		else
+			error_exit "Cannot fetch versions of TT software. Is jq installed?"
+		fi
 	fi
 
 	# Get Podman Metalium installation choice
@@ -671,11 +718,11 @@ main() {
 			;;
 		"pipx")
 			log "Using pipx for isolated package installation"
-			pipx ensurepath
+			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
 			# Enable the pipx path in this shell session
 			export PATH="${PATH}:${HOME}/.local/bin/"
 			INSTALLED_IN_VENV=1
-			PYTHON_INSTALL_CMD="pipx install"
+			PYTHON_INSTALL_CMD="pipx install ${PIPX_INSTALL_EXTRAS}"
 			;;
 		*|"new-venv")
 			log "Setting up new Python virtual environment"
@@ -710,8 +757,23 @@ main() {
 			# Only install KMD if it's not already installed
 			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
 			sudo dkms add tt-kmd
-			sudo dkms install "tenstorrent/${KMD_VERSION}"
-			sudo modprobe tenstorrent
+			# Ok so this gets exciting fast, so hang on for a second while I explain
+			# During the offline installer we need to figure out what kernels are actually installed
+			# because the kernel running on the system is not what we just installed and it's going
+			# to complain up a storm if we don't have the headers for the running kernel, which we don't
+			# so lets start by figuring out what kernels we do have (packaging, we can do this by doing a
+			# ls on /lib/modules too but right now I'm doing it this way, deal.
+			# Then we wander through and do dkms for the installed kernels only.  After that instead of
+			# trying to modprobe the module on a system we might not have built for, we check if we match
+			# and only then try modprobe
+			for x in $( eval "${KERNEL_LISTING}" )
+			do
+				sudo dkms install "tenstorrent/${KMD_VERSION}" -k "${x}"
+				if [[ "$( uname -r )" == "${x}" ]]
+				then
+					sudo modprobe tenstorrent
+				fi
+			done
 		fi
 	fi
 
@@ -753,8 +815,11 @@ main() {
 				wget "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
 				sudo dpkg -i "${TOOLS_FILENAME}"
-				sudo systemctl enable --now tenstorrent-hugepages.service
-				sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+				if [[ "${SYSTEMD_NO}" != 0 ]]
+				then
+					sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
+					sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
+				fi
 				;;
 			"fedora"|"rhel"|"centos")
 				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
@@ -762,8 +827,11 @@ main() {
 				wget "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
 				sudo dnf install -y "${TOOLS_FILENAME}"
-				sudo systemctl enable --now tenstorrent-hugepages.service
-				sudo systemctl enable --now 'dev-hugepages\x2d1G.mount'
+				if [[ "${SYSTEMD_NO}" != 0 ]]
+				then
+					sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
+					sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
+				fi
 				;;
 			*)
 				error "This distro is unsupported. Skipping HugePages install!"
