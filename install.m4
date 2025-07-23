@@ -18,8 +18,8 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([update-firmware],,[Update TT device firmware],[on])
 
 # =========================  Podman Metalium Arguments =========================
-# ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
-# ARG_OPTIONAL_SINGLE([metalium-image-tag],,[Tag (version) of the Metalium image],[latest-rc])
+# ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/upstream-tests-bh])
+# ARG_OPTIONAL_SINGLE([metalium-image-tag],,[Tag (version) of the Metalium image],[latest])
 # ARG_OPTIONAL_SINGLE([podman-metalium-script-dir],,[Directory where the helper wrapper will be written],["$HOME/.local/bin"])
 # ARG_OPTIONAL_SINGLE([podman-metalium-script-name],,[Name of the helper wrapper script],["tt-metalium"])
 
@@ -507,20 +507,38 @@ install_podman_metalium() {
 #!/bin/bash
 # Wrapper script for tt-metalium using Podman
 
+echo "================================================================================"
+echo "NOTE: This container tool for tt-metalium is meant to enable users to try out"
+echo "      demos, and is not meant for production use. This container is liable to
+echo "      to change at anytime.
+echo "================================================================================"
+
 # Image configuration
 METALIUM_IMAGE="${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}"
 
 # Run the command using Podman
-podman run --rm -it \\
+# sudo is needed to have privileged access to hugepages, which is needed for
+# certain configurations, especially older architectures
+#
+# Explaining some changes:
+#  removal of --volume=\${HOME}:/home/user \\: the user in the upstream monster
+#  container is user, and we put the source code in that user's directory, so
+#  this would override it
+#
+#  removal of --workdir=/home/user \\: not super needed, but it's nice for
+#  people to just be in the source code, ready to go
+#
+#  addition of --entrypoint /bin/bash: The current upstream container needs to
+#  override the entrypoint. Why not just corral users into /bin/bash?
+sudo podman run --rm -it \\
   --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
-  --volume=\${HOME}:/home/user \\
   --device=/dev/tenstorrent:/dev/tenstorrent \\
-  --workdir=/home/user \\
   --env=DISPLAY=\${DISPLAY} \\
   --env=HOME=/home/user \\
   --env=TERM=\${TERM:-xterm-256color} \\
   --network=host \\
   --security-opt label=disable \\
+  --entrypoint /bin/bash \\
   \${METALIUM_IMAGE} "\$@"
 EOF
 
