@@ -18,10 +18,11 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([update-firmware],,[Update TT device firmware],[on])
 
 # =========================  Podman Metalium Arguments =========================
-# ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/upstream-tests-bh])
-# ARG_OPTIONAL_SINGLE([metalium-image-tag],,[Tag (version) of the Metalium image],[latest])
+# ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
+# ARG_OPTIONAL_SINGLE([metalium-image-tag],,[Tag (version) of the Metalium image],[latest-rc])
 # ARG_OPTIONAL_SINGLE([podman-metalium-script-dir],,[Directory where the helper wrapper will be written],["$HOME/.local/bin"])
 # ARG_OPTIONAL_SINGLE([podman-metalium-script-name],,[Name of the helper wrapper script],["tt-metalium"])
+# ARG_OPTIONAL_BOOLEAN([install-metalium-models-container],,[Install additional TT-Metalium container for running model demos],[off])
 
 # ========================= String Parameters =========================
 # ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
@@ -507,32 +508,17 @@ install_podman_metalium() {
 #!/bin/bash
 # Wrapper script for tt-metalium using Podman
 
-echo "================================================================================"
-echo "NOTE: This container tool for tt-metalium is meant to enable users to try out"
-echo "      demos, and is not meant for production use. This container is liable to
-echo "      to change at anytime.
-echo "================================================================================"
-
 # Image configuration
 METALIUM_IMAGE="${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}"
 
 # Run the command using Podman
-# sudo is needed to have privileged access to hugepages, which is needed for
-# certain configurations, especially older architectures
-#
-# Explaining some changes:
-#  removal of --volume=\${HOME}:/home/user \\: the user in the upstream monster
-#  container is user, and we put the source code in that user's directory, so
-#  this would override it
-#
-#  removal of --workdir=/home/user \\: not super needed, but it's nice for
-#  people to just be in the source code, ready to go
-#
-#  addition of --entrypoint /bin/bash: The current upstream container needs to
-#  override the entrypoint. Why not just corral users into /bin/bash?
-sudo podman run --rm -it \\
+
+podman run --rm -it \\
+  --privileged \\
   --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
+  --volume=\${HOME}:/home/user \\
   --device=/dev/tenstorrent:/dev/tenstorrent \\
+  --workdir=/home/user \\
   --env=DISPLAY=\${DISPLAY} \\
   --env=HOME=/home/user \\
   --env=TERM=\${TERM:-xterm-256color} \\
@@ -558,6 +544,78 @@ EOF
 	log "Metalium installation completed"
 	return 0
 }
+
+# Install Podman Metalium "models" container
+install_podman_metalium_models() {
+	log "Installing Metalium Models Container via Podman"
+	local PODMAN_METALIUM_MODELS_SCRIPT_DIR="$HOME/.local/bin"
+	local PODMAN_METALIUM_MODELS_SCRIPT_NAME="tt-metalium-models"
+	local METALIUM_MODELS_IMAGE_TAG="latest"
+	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
+
+	# Create wrapper script directory
+	mkdir -p "${PODMAN_METALIUM_MODELS_SCRIPT_DIR}" || error_exit "Failed to create script directory"
+
+	# Create wrapper script
+	log "Creating wrapper script..."
+	cat > "${PODMAN_METALIUM_MODELS_SCRIPT_DIR}/${PODMAN_METALIUM_MODELS_SCRIPT_NAME}" << EOF
+#!/bin/bash
+# Wrapper script for tt-metalium-models using Podman
+
+echo "================================================================================"
+echo "NOTE: This container tool for tt-metalium is meant to enable users to try out"
+echo "      demos, and is not meant for production use. This container is liable to"
+echo "      to change at anytime."
+echo ""
+echo "      For more information see https://github.com/tenstorrent/tt-metal/issues/25602"
+echo "================================================================================"
+
+# Image configuration
+METALIUM_IMAGE="${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}"
+
+# Run the command using Podman
+#
+# Explaining some changes:
+#  removal of --volume=\${HOME}:/home/user \\: the user in the upstream monster
+#  container is user, and we put the source code in that user's directory, so
+#  this would override it
+#
+#  removal of --workdir=/home/user \\: not super needed, but it's nice for
+#  people to just be in the source code, ready to go
+#
+#  addition of --entrypoint /bin/bash: The current upstream container needs to
+#  override the entrypoint. Why not just corral users into /bin/bash?
+podman run --rm -it \\
+  --privileged \\
+  --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
+  --device=/dev/tenstorrent:/dev/tenstorrent \\
+  --env=DISPLAY=\${DISPLAY} \\
+  --env=HOME=/home/user \\
+  --env=TERM=\${TERM:-xterm-256color} \\
+  --network=host \\
+  --security-opt label=disable \\
+  --entrypoint /bin/bash \\
+  \${METALIUM_IMAGE} "\$@"
+EOF
+
+	# Make the script executable
+	chmod +x "${PODMAN_METALIUM_MODELS_SCRIPT_DIR}/${PODMAN_METALIUM_MODELS_SCRIPT_NAME}" || error_exit "Failed to make script executable"
+
+	# Check if the directory is in PATH
+	if [[ ":${PATH}:" != *":${PODMAN_METALIUM_MODELS_SCRIPT_DIR}:"* ]]; then
+		warn "${PODMAN_METALIUM_MODELS_SCRIPT_DIR} is not in your PATH."
+		warn "A restart may fix this, or you may need to update your shell RC"
+	fi
+
+	# Pull the image
+	log "Pulling the tt-metalium-models image (this may take a while)..."
+	podman pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed toghcr.io/tenstorrent/tt-metal/upstream-tests-bh] pull image"
+
+	log "Metalium Models installation completed"
+	return 0
+}
+
+
 
 get_podman_metalium_choice() {
 	# If we're on Ubuntu 20, Podman is not available - force disable
@@ -631,6 +689,9 @@ main() {
 	fi
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
 		warn "TT-Flash and firmware update will be skipped"
+	fi
+	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
+		log "Metalium Models container will be installed"
 	fi
 
 	log "Checking for sudo permissions... (may request password)"
@@ -878,6 +939,15 @@ main() {
 			warn "Podman is not installed. Cannot install Podman Metalium."
 		else
 			install_podman_metalium
+		fi
+	fi
+
+	# Install Metalium Models container if requested
+	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
+		if ! check_podman_installed; then
+			warn "Podman is not installed. Cannot install Metalium Models."
+		else
+			install_podman_metalium_models
 		fi
 	fi
 
