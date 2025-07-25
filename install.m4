@@ -16,6 +16,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-podman],,[Install Podman],[on])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
+# ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
 
 # =========================  Podman Metalium Arguments =========================
 # ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
@@ -35,6 +36,7 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([systools-version],,[Specific version of system tools to install],[])
 # ARG_OPTIONAL_SINGLE([smi-version],,[Specific version of tt-smi to install],[])
 # ARG_OPTIONAL_SINGLE([flash-version],,[Specific version of tt-flash to install],[])
+# ARG_OPTIONAL_SINGLE([topology-version],,[Specific version of tt-topology to install],[])
 
 # ========================= Path Arguments =========================
 # ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[$HOME/.tenstorrent-venv])
@@ -133,6 +135,17 @@ fetch_latest_flash_version() {
 	local latest_flash
 	latest_flash=$(wget -qO- https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_flash}"
+}
+
+# Fetch latest tt-topology version
+TT_TOPOLOGY_GH_REPO="tenstorrent/tt-topology"
+fetch_latest_topology_version() {
+	if ! command -v jq &> /dev/null; then
+		exit
+	fi
+	local latest_topology
+	latest_topology=$(wget -qO- https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	echo "${latest_topology}"
 }
 
 # ========================= Backward Compatibility Environment Variables =========================
@@ -903,6 +916,22 @@ main() {
 		else
 			tt-flash --fw-tar "${FW_FILE}"
 		fi
+	fi
+
+	if [[ "${_arg_install_tt_topology}" = "on" ]]; then
+		log "Installing tt-topology"
+
+		if [[ -n "${TT_TOPOLOGY_VERSION:-}" ]]; then
+			TOPOLOGY_VERSION="${TT_TOPOLOGY_VERSION}"
+		elif [[ -n "${_arg_topology_version}" ]]; then
+			TOPOLOGY_VERSION="${_arg_topology_version}"
+		else
+			TOPOLOGY_VERSION="$(fetch_latest_topology_version)"
+		fi
+
+		log "Topology Version: ${TOPOLOGY_VERSION}"
+
+		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-topology.git@"${TOPOLOGY_VERSION}"
 	fi
 
 	# Setup HugePages
