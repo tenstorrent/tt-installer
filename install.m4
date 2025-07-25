@@ -15,7 +15,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
 # ARG_OPTIONAL_BOOLEAN([install-podman],,[Install Podman],[on])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
-# ARG_OPTIONAL_BOOLEAN([update-firmware],,[Update TT device firmware],[on])
+# ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
 
 # =========================  Podman Metalium Arguments =========================
 # ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
@@ -27,6 +27,7 @@ exit 11 #)
 # ========================= String Parameters =========================
 # ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
+# ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[on])
 
 # ========================= Version Arguments =========================
 # ARG_OPTIONAL_SINGLE([kmd-version],,[Specific version of TT-KMD to install],[])
@@ -699,8 +700,14 @@ main() {
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Metalium installation will be skipped"
 	fi
+	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
+		warn "TT-Flash installation will be skipped"
+	fi
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
-		warn "TT-Flash and firmware update will be skipped"
+		warn "Firmware update will be skipped"
+	fi
+	if [[ "${_arg_update_firmware}" = "force" ]]; then
+		warn "Firmware will be forcibly updated"
 	fi
 	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
 		log "Metalium Models container will be installed"
@@ -870,13 +877,18 @@ main() {
 
 	# Install TT-Flash and Firmware
 	# Skip tt-flash installation if flag is set
-	if [[ "${_arg_update_firmware}" = "off" ]]; then
-		log "Skipping TT-Flash and firmware update installation"
+	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
+		log "Skipping TT-Flash installation"
 	else
-		log "Installing TT-Flash and updating firmware"
+		log "Installing TT-Flash"
 		cd "${WORKDIR}"
 		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@"${FLASH_VERSION}"
+	fi
 
+	if [[ "${_arg_update_firmware}" = "off" ]]; then
+		log "Skipping firmware update"
+	else
+		log "Updating firmware"
 		# Create FW_FILE based on FW_VERSION
 		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
 		FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
@@ -886,9 +898,10 @@ main() {
 
 		verify_download "${FW_FILE}"
 
-		if ! tt-flash --fw-tar "${FW_FILE}"; then
-			warn "Initial firmware update failed, attempting force update"
+		if [[ "${_arg_update_firmware}" = "force" ]]; then
 			tt-flash --fw-tar "${FW_FILE}" --force
+		else
+			tt-flash --fw-tar "${FW_FILE}"
 		fi
 	fi
 
