@@ -8,7 +8,11 @@ Install the tenstorrent software stack with one command.
 **WARNING:** Take care with this command! Always be careful running untrusted code.
 
 ## Using tt-metalium
-In addition to our system-level tools, this script installs tt-metalium, Tenstorrent's framework for building and running AI models. Metalium is installed as a container using Podman. Using the container is easy- just run `tt-metalium`. By default, this will launch the container with your home directory mounted so you can access your files. You can also run `tt-metalium <command>` to run commands inside the container, such as `tt-metalium "python3"`.
+In addition to our system-level tools, this script installs tt-metalium, Tenstorrent's framework for building and running AI models. Metalium is installed as a container using Podman. You have two container options, both of which can be installed:
+- tt-metalium container (default): 1GB, appropriate for using TT-NN
+- tt-metalium Model Demos Container (experimental!): 10GB, includes a full build of tt-metalium
+
+Using the containers is easy- just run `tt-metalium` or `tt-metalium-models`. By default, this will launch the container with your home directory mounted so you can access your files. You can also run `tt-metalium <command>` to run commands inside the container, such as `tt-metalium "python3"`.
 
 For more about Metalium and TTNN, check out the [examples page](https://docs.tenstorrent.com/tt-metal/latest/ttnn/ttnn/usage.html#basic-examples). For more information about the container, see [this page](https://github.com/tenstorrent/tt-installer/wiki/Using-the-tt%E2%80%90metalium-container) on the wiki.
 
