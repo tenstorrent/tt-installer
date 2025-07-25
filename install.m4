@@ -449,12 +449,7 @@ fetch_tt_sw_versions() {
 
 # Function to check if Podman is installed
 check_podman_installed() {
-	if command -v podman &> /dev/null; then
-		log "Podman is already installed"
-	else
-		log "Podman is not installed"
-		return 1
-	fi
+	command -v podman &> /dev/null
 }
 
 # Function to install Podman
@@ -615,37 +610,54 @@ EOF
 	return 0
 }
 
-
-
 get_podman_metalium_choice() {
 	# If we're on Ubuntu 20, Podman is not available - force disable
 	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 		_arg_install_metalium_container="off"
+		_arg_install_metalium_models_container="off"
 		_arg_install_podman="off"
 		return
 	fi
-
 	# In non-interactive mode, use the provided arguments
 	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 		log "Non-interactive mode, using Podman Metalium installation preference: ${_arg_install_metalium_container}"
+		log "Non-interactive mode, using Metalium Models installation preference: ${_arg_install_metalium_models_container}"
 		return
 	fi
-
 	# Only ask if Podman is installed or will be installed
 	if [[ "${_arg_install_podman}" = "on" ]] || check_podman_installed; then
 		# Interactive mode - allow override
-		log "Current Metalium installation setting: ${_arg_install_metalium_container}"
-		log "Would you like to install the TT-Metalium library using Podman?"
+		log "Would you like to install the TT-Metalium slim container?"
+		log "This container is appropriate if you only need to use TT-NN"
 		if confirm "Install Metalium"; then
 			_arg_install_metalium_container="on"
 		else
 			_arg_install_metalium_container="off"
-			_arg_install_podman="off" # If we don't want Metalium, we can skip Podman
 		fi
 	else
 		# Podman won't be installed, so don't install Metalium
 		_arg_install_metalium_container="off"
 		warn "Podman is not and will not be installed, skipping Podman Metalium installation"
+	fi
+	# Only ask if Podman is installed or will be installed
+	if [[ "${_arg_install_podman}" = "on" ]] || check_podman_installed; then
+		# Interactive mode - allow override
+		log "Would you like to install the TT-Metalium Model Demos container?"
+		log "This container is best for users who need more TT-Metalium functionality, such as running prebuilt models, but it's large (10GB)"
+		if confirm "Install Metalium Models"; then
+			_arg_install_metalium_models_container="on"
+		else
+			_arg_install_metalium_models_container="off"
+		fi
+	else
+		# Podman won't be installed, so don't install Metalium
+		_arg_install_metalium_models_container="off"
+		warn "Podman is not and will not be installed, skipping Podman Metalium Models installation"
+	fi
+
+	# Disable Podman if both Metalium containers are disabled
+	if [[ "${_arg_install_metalium_container}" = "off" ]] && [[ "${_arg_install_metalium_models_container}" = "off" ]]; then
+		_arg_install_podman="off"
 	fi
 }
 
@@ -767,7 +779,7 @@ main() {
 	get_python_choice
 
 	# Enforce restrictions on Ubuntu 20
-	if [[ "${IS_UBUNTU_20}" = "0" && "${PYTHON_CHOICE}" = "pipx" ]]; then
+	if [[ "${IS_UBUNTU_20}" = "0" ]] && [[ "${PYTHON_CHOICE}" = "pipx" ]]; then
 		warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"
 		PYTHON_CHOICE="new-venv"
 	fi
