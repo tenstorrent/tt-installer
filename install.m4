@@ -89,7 +89,7 @@ fetch_latest_kmd_version() {
 		exit
 	fi
 	local latest_kmd
-	latest_kmd=$(wget -qO- https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_kmd=$(curl -fsL https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_kmd#ttkmd-}"
 }
 
@@ -100,7 +100,7 @@ fetch_latest_fw_version() {
 		exit
 	fi
 	local latest_fw
-	latest_fw=$(wget -qO- https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_fw=$(curl -fsL https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_fw#v}" # Remove 'v' prefix if present
 }
 
@@ -111,7 +111,7 @@ fetch_latest_systools_version() {
 		exit
 	fi
 	local latest_systools
-	latest_systools=$(wget -qO- https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_systools=$(curl -fsL https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_systools#v}" # Remove 'v' prefix if present
 }
 
@@ -122,7 +122,7 @@ fetch_latest_smi_version() {
 		exit
 	fi
 	local latest_smi
-	latest_smi=$(wget -qO- https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_smi=$(curl -fsL https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_smi}"
 }
 
@@ -133,7 +133,7 @@ fetch_latest_flash_version() {
 		exit
 	fi
 	local latest_flash
-	latest_flash=$(wget -qO- https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_flash=$(curl -fsL https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_flash}"
 }
 
@@ -144,7 +144,7 @@ fetch_latest_topology_version() {
 		exit
 	fi
 	local latest_topology
-	latest_topology=$(wget -qO- https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_topology=$(curl -fsL https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_topology}"
 }
 
@@ -737,25 +737,25 @@ main() {
 			sudo apt update
 			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 				# On Ubuntu 20, install python3-venv and don't install pipx
-				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc jq
+				sudo apt install -y git python3-pip python3-venv dkms cargo rustc jq
 			else
-				sudo DEBIAN_FRONTEND=noninteractive apt install -y wget git python3-pip dkms cargo rustc pipx jq
+				sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq
 			fi
 			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt update
-			sudo apt install -y wget git python3-pip dkms pipx jq
+			sudo apt install -y git python3-pip dkms pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
 			;;
 		"fedora")
-			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_FEDORA}"
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_EL}"
 			;;
 		*)
@@ -907,7 +907,7 @@ main() {
 		FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
 
 		# Download from GitHub releases
-		wget "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"
+		curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"
 
 		verify_download "${FW_FILE}"
 
@@ -945,7 +945,7 @@ main() {
 			"ubuntu"|"debian")
 				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
 				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-				wget "${TOOLS_URL}"
+				curl -fsSLO "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
 				sudo dpkg -i "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]
@@ -957,7 +957,7 @@ main() {
 			"fedora"|"rhel"|"centos")
 				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
 				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-				wget "${TOOLS_URL}"
+				curl -fsSLO "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
 				sudo dnf install -y "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]

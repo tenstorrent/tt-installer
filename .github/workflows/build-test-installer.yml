@@ -83,7 +83,7 @@ jobs:
           # Update package manager and install sudo
           if command -v apt >/dev/null; then
             apt update
-            apt install -y wget git python3-pip jq curl sudo
+            apt install -y git python3-pip jq curl sudo
           fi
 
           # Create a non-root user for testing
@@ -143,7 +143,7 @@ jobs:
 
           # Update package manager and install sudo
           dnf update -y
-          dnf install -y wget git python3-pip jq curl sudo
+          dnf install -y git python3-pip jq curl sudo
 
           # Create a non-root user for testing
           useradd -m -s /bin/bash testuser
@@ -247,7 +247,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt update
-        sudo apt install -y jq wget
+        sudo apt install -y jq
 
     - name: Test version fetching functions
       run: |
