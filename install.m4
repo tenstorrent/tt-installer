@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2317
 
 # SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
 # SPDX-License-Identifier: Apache-2.0
@@ -217,6 +218,7 @@ if [[ -n "${TT_MODE_NON_INTERACTIVE:-}" ]]; then
 fi
 
 # If container mode is enabled, disable KMD and HugePages
+# shellcheck disable=SC2154
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
@@ -557,7 +559,7 @@ EOF
 # Install Podman Metalium "models" container
 install_podman_metalium_models() {
 	log "Installing Metalium Models Container via Podman"
-	local PODMAN_METALIUM_MODELS_SCRIPT_DIR="$HOME/.local/bin"
+	local PODMAN_METALIUM_MODELS_SCRIPT_DIR="${HOME}/.local/bin"
 	local PODMAN_METALIUM_MODELS_SCRIPT_NAME="tt-metalium-models"
 	local METALIUM_MODELS_IMAGE_TAG="latest"
 	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
@@ -713,6 +715,7 @@ main() {
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Metalium installation will be skipped"
 	fi
+	# shellcheck disable=SC2154
 	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
 		warn "TT-Flash installation will be skipped"
 	fi
@@ -807,7 +810,7 @@ main() {
 	# Set up Python environment based on choice
 	case ${PYTHON_CHOICE} in
 		"active-venv")
-			if [[ ! -n "${VIRTUAL_ENV:-}" ]]; then
+			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
 				error "No active virtual environment detected!"
 				error "Please activate your virtual environment first and try again"
 				exit 1
@@ -829,13 +832,13 @@ main() {
 			;;
 		"pipx")
 			log "Using pipx for isolated package installation"
-			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
+			pipx ensurepath "${PIPX_ENSUREPATH_EXTRAS}"
 			# Enable the pipx path in this shell session
 			export PATH="${PATH}:${HOME}/.local/bin/"
 			INSTALLED_IN_VENV=1
 			PYTHON_INSTALL_CMD="pipx install ${PIPX_INSTALL_EXTRAS}"
 			;;
-		*|"new-venv")
+		"new-venv"|*)
 			log "Setting up new Python virtual environment"
 			python3 -m venv "${NEW_VENV_LOCATION}"
 			# shellcheck disable=SC1091 # Must exist after previous command
@@ -918,6 +921,7 @@ main() {
 		fi
 	fi
 
+	# shellcheck disable=SC2154
 	if [[ "${_arg_install_tt_topology}" = "on" ]]; then
 		log "Installing tt-topology"
 
@@ -950,8 +954,8 @@ main() {
 				sudo dpkg -i "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]
 				then
-					sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-					sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
+					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
 				fi
 				;;
 			"fedora"|"rhel"|"centos")
@@ -962,8 +966,8 @@ main() {
 				sudo dnf install -y "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]
 				then
-					sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-					sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
+					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
 				fi
 				;;
 			*)
