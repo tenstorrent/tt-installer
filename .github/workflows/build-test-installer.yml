@@ -176,6 +176,19 @@ jobs:
           '
         "
 
+  test-template-syntax:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Test template syntax
+      run: |
+        shellcheck install.m4
+        echo "✓ Template syntax is valid"
+
   test-script-syntax:
     needs: build
     runs-on: ubuntu-latest
