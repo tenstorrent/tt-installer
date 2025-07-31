@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2317
 
 # SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
 # SPDX-License-Identifier: Apache-2.0
@@ -89,7 +90,7 @@ fetch_latest_kmd_version() {
 		exit
 	fi
 	local latest_kmd
-	latest_kmd=$(wget -qO- https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_kmd=$(curl -fsL https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_kmd#ttkmd-}"
 }
 
@@ -100,7 +101,7 @@ fetch_latest_fw_version() {
 		exit
 	fi
 	local latest_fw
-	latest_fw=$(wget -qO- https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_fw=$(curl -fsL https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_fw#v}" # Remove 'v' prefix if present
 }
 
@@ -111,7 +112,7 @@ fetch_latest_systools_version() {
 		exit
 	fi
 	local latest_systools
-	latest_systools=$(wget -qO- https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_systools=$(curl -fsL https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_systools#v}" # Remove 'v' prefix if present
 }
 
@@ -122,7 +123,7 @@ fetch_latest_smi_version() {
 		exit
 	fi
 	local latest_smi
-	latest_smi=$(wget -qO- https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_smi=$(curl -fsL https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_smi}"
 }
 
@@ -133,7 +134,7 @@ fetch_latest_flash_version() {
 		exit
 	fi
 	local latest_flash
-	latest_flash=$(wget -qO- https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_flash=$(curl -fsL https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_flash}"
 }
 
@@ -144,7 +145,7 @@ fetch_latest_topology_version() {
 		exit
 	fi
 	local latest_topology
-	latest_topology=$(wget -qO- https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	latest_topology=$(curl -fsL https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
 	echo "${latest_topology}"
 }
 
@@ -217,6 +218,7 @@ if [[ -n "${TT_MODE_NON_INTERACTIVE:-}" ]]; then
 fi
 
 # If container mode is enabled, disable KMD and HugePages
+# shellcheck disable=SC2154
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
@@ -557,7 +559,7 @@ EOF
 # Install Podman Metalium "models" container
 install_podman_metalium_models() {
 	log "Installing Metalium Models Container via Podman"
-	local PODMAN_METALIUM_MODELS_SCRIPT_DIR="$HOME/.local/bin"
+	local PODMAN_METALIUM_MODELS_SCRIPT_DIR="${HOME}/.local/bin"
 	local PODMAN_METALIUM_MODELS_SCRIPT_NAME="tt-metalium-models"
 	local METALIUM_MODELS_IMAGE_TAG="latest"
 	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
@@ -713,6 +715,7 @@ main() {
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Metalium installation will be skipped"
 	fi
+	# shellcheck disable=SC2154
 	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
 		warn "TT-Flash installation will be skipped"
 	fi
@@ -737,25 +740,25 @@ main() {
 			sudo apt update
 			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 				# On Ubuntu 20, install python3-venv and don't install pipx
-				sudo apt install -y wget git python3-pip python3-venv dkms cargo rustc jq
+				sudo apt install -y git python3-pip python3-venv dkms cargo rustc jq
 			else
-				sudo DEBIAN_FRONTEND=noninteractive apt install -y wget git python3-pip dkms cargo rustc pipx jq
+				sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq
 			fi
 			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt update
-			sudo apt install -y wget git python3-pip dkms pipx jq
+			sudo apt install -y git python3-pip dkms pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
 			;;
 		"fedora")
-			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_FEDORA}"
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_EL}"
 			;;
 		*)
@@ -807,7 +810,7 @@ main() {
 	# Set up Python environment based on choice
 	case ${PYTHON_CHOICE} in
 		"active-venv")
-			if [[ ! -n "${VIRTUAL_ENV:-}" ]]; then
+			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
 				error "No active virtual environment detected!"
 				error "Please activate your virtual environment first and try again"
 				exit 1
@@ -829,13 +832,13 @@ main() {
 			;;
 		"pipx")
 			log "Using pipx for isolated package installation"
-			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
+			pipx ensurepath "${PIPX_ENSUREPATH_EXTRAS}"
 			# Enable the pipx path in this shell session
 			export PATH="${PATH}:${HOME}/.local/bin/"
 			INSTALLED_IN_VENV=1
 			PYTHON_INSTALL_CMD="pipx install ${PIPX_INSTALL_EXTRAS}"
 			;;
-		*|"new-venv")
+		"new-venv"|*)
 			log "Setting up new Python virtual environment"
 			python3 -m venv "${NEW_VENV_LOCATION}"
 			# shellcheck disable=SC1091 # Must exist after previous command
@@ -924,6 +927,7 @@ main() {
 		fi
 	fi
 
+	# shellcheck disable=SC2154
 	if [[ "${_arg_install_tt_topology}" = "on" ]]; then
 		log "Installing tt-topology"
 
@@ -951,25 +955,25 @@ main() {
 			"ubuntu"|"debian")
 				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
 				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-				wget "${TOOLS_URL}"
+				curl -fsSLO "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
 				sudo dpkg -i "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]
 				then
-					sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-					sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
+					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
 				fi
 				;;
 			"fedora"|"rhel"|"centos")
 				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
 				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-				wget "${TOOLS_URL}"
+				curl -fsSLO "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
 				sudo dnf install -y "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]
 				then
-					sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-					sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
+					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
 				fi
 				;;
 			*)
