@@ -620,7 +620,7 @@ EOF
 
 	# Pull the image
 	log "Pulling the tt-metalium-models image (this may take a while)..."
-	podman pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed toghcr.io/tenstorrent/tt-metal/upstream-tests-bh] pull image"
+	podman pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
 
 	log "Metalium Models installation completed"
 	return 0
@@ -908,9 +908,15 @@ main() {
 		# Create FW_FILE based on FW_VERSION
 		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
 		FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
+		BACKUP_FW_RELEASE_URL="https://github.com/tenstorrent/tt-zephyr-platforms/releases/download"
 
 		# Download from GitHub releases
-		curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"
+		if ! curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+			warn "Could not find firmware bundle at main URL- trying backup URL"
+			if ! curl -fsSLO "${BACKUP_FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+				error_exit "Could not download firmware bundle. Ensure firmware version is valid."
+			fi
+		fi
 
 		verify_download "${FW_FILE}"
 
