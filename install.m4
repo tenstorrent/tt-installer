@@ -908,9 +908,9 @@ main() {
 		BACKUP_FW_RELEASE_URL="https://github.com/tenstorrent/tt-zephyr-platforms/releases/download"
 
 		# Download from GitHub releases
-		if ! wget "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+		if ! curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
 			warn "Could not find firmware bundle at main URL- trying backup URL"
-			if ! wget "${BACKUP_FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+			if ! curl -fsSLO "${BACKUP_FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
 				error_exit "Could not download firmware bundle. Ensure firmware version is valid."
 			fi
 		fi
