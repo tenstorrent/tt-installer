@@ -740,25 +740,25 @@ main() {
 			sudo apt update
 			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 				# On Ubuntu 20, install python3-venv and don't install pipx
-				sudo apt install -y git python3-pip python3-venv dkms cargo rustc jq
+				sudo apt install -y git python3-pip python3-venv dkms cargo rustc jq protobuf-compiler
 			else
-				sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq
+				sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
 			fi
 			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt update
-			sudo apt install -y git python3-pip dkms pipx jq
+			sudo apt install -y git python3-pip dkms pipx jq protobuf-compiler
 			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
 			;;
 		"fedora")
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
 			KERNEL_LISTING="${KERNEL_LISTING_FEDORA}"
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
 			KERNEL_LISTING="${KERNEL_LISTING_EL}"
 			;;
 		*)
