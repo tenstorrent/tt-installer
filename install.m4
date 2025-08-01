@@ -294,10 +294,25 @@ warn() {
 }
 
 check_has_sudo_perms() {
-	if ! sudo true; then
-		error "Cannot use sudo, exiting..."
-		exit 1
-	fi
+    if command -v doas >/dev/null 2>&1; then
+        if doas true 2>/dev/null; then
+            ROOT_CMD="doas"
+            return
+        fi
+    fi
+
+    if command -v sudo >/dev/null 2>&1; then
+        if sudo -n true 2>/dev/null; then
+            ROOT_CMD="sudo"
+            return
+        else
+            error "Cannot use sudo , exiting..."
+            exit 1
+        fi
+    fi
+
+    error "Neither doas nor sudo is available or permitted, exiting..."
+    exit 1
 }
 
 detect_distro() {
@@ -475,19 +490,22 @@ install_podman() {
 
 	# Add GUIDs/UIDs for rootless Podman
 	# See https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md
-	sudo usermod --add-subgids 10000-75535 "$(whoami)"
-	sudo usermod --add-subuids 10000-75535 "$(whoami)"
+	$ROOT_CMD usermod --add-subgids 10000-75535 "$(whoami)"
+	$ROOT_CMD usermod --add-subuids 10000-75535 "$(whoami)"
 
 	# Install Podman using package manager
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
-			sudo apt install -y podman
+			$ROOT_CMD apt install -y podman
 			;;
 		"fedora")
-			sudo dnf install -y podman
+			$ROOT_CMD dnf install -y podman
 			;;
 		"rhel"|"centos")
-			sudo dnf install -y podman
+			$ROOT_CMD dnf install -y podman
+			;;
+		"alpine")
+			$ROOT_CMD apk add podman
 			;;
 		*)
 			error "Unsupported distribution for Podman installation: ${DISTRO_ID}"
@@ -737,29 +755,32 @@ main() {
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
 		"ubuntu")
-			sudo apt update
+			$ROOT_CMD apt update
 			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 				# On Ubuntu 20, install python3-venv and don't install pipx
-				sudo apt install -y git python3-pip python3-venv dkms cargo rustc jq
+				$ROOT_CMD apt install -y wget git python3-pip python3-venv dkms cargo rustc jq
 			else
-				sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq
+				$ROOT_CMD DEBIAN_FRONTEND=noninteractive apt install -y wget git python3-pip dkms cargo rustc pipx jq
 			fi
 			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
-			sudo apt update
-			sudo apt install -y git python3-pip dkms pipx jq
+			$ROOT_CMD apt update
+			$ROOT_CMD apt install -y wget git python3-pip dkms pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
 			;;
 		"fedora")
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
+			$ROOT_CMD dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_FEDORA}"
 			;;
 		"rhel"|"centos")
-			sudo dnf install -y epel-release
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
+			$ROOT_CMD dnf install -y epel-release
+			$ROOT_CMD dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_EL}"
+			;;
+		"alpine")
+			doas apk add wget git py3-pip python3-dev akms cargo rust jq findutils shadow shadow-subids
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
@@ -859,18 +880,36 @@ main() {
 		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
 			warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
 			if confirm "Force KMD reinstall?"; then
-				sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
-				git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-				sudo dkms add tt-kmd
-				sudo dkms install "tenstorrent/${KMD_VERSION}"
-				sudo modprobe tenstorrent
+				case "${DISTRO_ID}" in
+					"alpine")
+						$ROOT_CMD akms uninstall tenstorrent
+						git clone --branch "ttkmd-${KMD_VERSION}" "https://github.com/${TT_KMD_GH_REPO}"
+						cd tt-kmd
+						$ROOT_CMD akms install .
+						$ROOT_CMD modprobe tenstorrent
+						;;
+					*)
+						$ROOT_CMD dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
+						git clone --branch "ttkmd-${KMD_VERSION}" "https://github.com/${TT_KMD_GH_REPO}"
+						$ROOT_CMD dkms add tt-kmd
+						$ROOT_CMD dkms install "tenstorrent/${KMD_VERSION}"
+						$ROOT_CMD modprobe tenstorrent
+						;;
+				esac
 			else
 				warn "Skipping KMD installation"
 			fi
 		else
 			# Only install KMD if it's not already installed
 			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-			sudo dkms add tt-kmd
+			case "${DISTRO_ID}" in
+				"alpine")	
+					cd tt-kmd
+					$ROOT_CMD akms install .
+					$ROOT_CMD modprobe tenstorrent
+					;;
+				*)
+					$ROOT_CMD dkms add tt-kmd
 			# Ok so this gets exciting fast, so hang on for a second while I explain
 			# During the offline installer we need to figure out what kernels are actually installed
 			# because the kernel running on the system is not what we just installed and it's going
@@ -882,12 +921,14 @@ main() {
 			# and only then try modprobe
 			for x in $( eval "${KERNEL_LISTING}" )
 			do
-				sudo dkms install "tenstorrent/${KMD_VERSION}" -k "${x}"
+				$ROOT_CMD dkms install "tenstorrent/${KMD_VERSION}" -k "${x}"
 				if [[ "$( uname -r )" == "${x}" ]]
 				then
-					sudo modprobe tenstorrent
+					$ROOT_CMD modprobe tenstorrent
 				fi
 			done
+					;;
+			esac
 		fi
 	fi
 
@@ -960,8 +1001,8 @@ main() {
 				sudo dpkg -i "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]
 				then
-					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+					$ROOT_CMD systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
+					$ROOT_CMD systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
 				fi
 				;;
 			"fedora"|"rhel"|"centos")
@@ -969,12 +1010,23 @@ main() {
 				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
 				curl -fsSLO "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
-				sudo dnf install -y "${TOOLS_FILENAME}"
+				$ROOT_CMD dnf install -y "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]
 				then
-					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+					$ROOT_CMD systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
+					$ROOT_CMD systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
 				fi
+				;;
+			"alpine")
+				TOOLS_FILENAME="tt-system-tools-${SYSTOOLS_VERSION}-r0.apk"
+				TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
+				wget "${TOOLS_URL}"
+				verify_download "${TOOLS_FILENAME}"
+				$ROOT_CMD apk add "${TOOLS_FILENAME}" --allow-untrusted
+				$ROOT_CMD rc-update add tenstorrent-hugepages
+				$ROOT_CMD rc-update add tenstorrent-mount-hugepages
+				$ROOT_CMD rc-service tenstorrent-hugepages start
+				$ROOT_CMD rc-service tenstorrent-mount-hugepages start
 				;;
 			*)
 				error "This distro is unsupported. Skipping HugePages install!"
@@ -1034,12 +1086,12 @@ main() {
 	# Auto-reboot if specified
 	if [[ "${REBOOT_OPTION}" = "always" ]]; then
 		log "Auto-reboot enabled. Rebooting now..."
-		sudo reboot
+		$ROOT_CMD reboot
 	# Otherwise, ask if specified
 	elif [[ "${REBOOT_OPTION}" = "ask" ]]; then
 		if confirm "Would you like to reboot now?"; then
 			log "Rebooting..."
-			sudo reboot
+			$ROOT_CMD reboot
 		fi
 	fi
 }
