@@ -18,6 +18,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
+# ARG_OPTIONAL_BOOLEAN([install-sfpi],,[Install SFPI],[on])
 
 # =========================  Podman Metalium Arguments =========================
 # ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
@@ -38,12 +39,13 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([smi-version],,[Specific version of tt-smi to install],[])
 # ARG_OPTIONAL_SINGLE([flash-version],,[Specific version of tt-flash to install],[])
 # ARG_OPTIONAL_SINGLE([topology-version],,[Specific version of tt-topology to install],[])
+# ARG_OPTIONAL_SINGLE([sfpi-version],,[Specific version of SFPI to install],[])
 
 # ========================= Path Arguments =========================
 # ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[$HOME/.tenstorrent-venv])
 
 # ========================= Mode Arguments =========================
-# ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD and HugePages, never reboots)],[off])
+# ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
 
 # ARGBASH_GO
@@ -149,6 +151,17 @@ fetch_latest_topology_version() {
 	echo "${latest_topology}"
 }
 
+# Fetch latest SFPI version
+TT_SFPI_GH_REPO="tenstorrent/sfpi"
+fetch_latest_sfpi_version() {
+	if ! command -v jq &> /dev/null; then
+		exit
+	fi
+	local latest_sfpi
+	latest_sfpi=$(curl -fsL https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	echo "${latest_sfpi}"
+}
+
 # ========================= Backward Compatibility Environment Variables =========================
 
 # Support environment variables as fallbacks for backward compatibility
@@ -217,12 +230,13 @@ if [[ -n "${TT_MODE_NON_INTERACTIVE:-}" ]]; then
 	fi
 fi
 
-# If container mode is enabled, disable KMD and HugePages
+# If container mode is enabled, disable KMD, HugePages, and SFPI
 # shellcheck disable=SC2154
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
 	_arg_install_podman="off" # No podman in podman
+	_arg_install_sfpi="off"
 	REBOOT_OPTION="never" # Do not reboot
 fi
 
@@ -677,6 +691,62 @@ get_podman_metalium_choice() {
 	fi
 }
 
+# Function to install SFPI
+install_sfpi() {
+	log "Installing SFPI"
+	local arch
+	local SFPI_RELEASE_URL="https://github.com/tenstorrent/sfpi/releases/download"
+	local SFPI_FILE_ARCH
+	local SFPI_FILE_EXT
+	local SFPI_FILE
+
+	arch=$(uname -m)
+
+	case "${arch}" in
+		"aarch64"|"arm64")
+			SFPI_FILE_ARCH="aarch64"
+			;;
+		"amd64"|"x86_64")
+			SFPI_FILE_ARCH="x86_64"
+			;;
+		*)
+			error "Unsupported architecture for SFPI installation: ${arch}"
+			exit 1
+			;;
+	esac
+
+	case "${DISTRO_ID}" in
+		"debian"|"ubuntu")
+			SFPI_FILE_EXT="deb"
+			;;
+		"centos"|"fedora"|"rhel")
+			SFPI_FILE_EXT="rpm"
+			;;
+		*)
+			error "Unsupported distribution for SFPI installation: ${DISTRO_ID}"
+			exit 1
+			;;
+	esac
+
+	SFPI_FILE="sfpi-${SFPI_FILE_ARCH}_Linux.${SFPI_FILE_EXT}"
+
+	curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+	verify_download "${SFPI_FILE}"
+
+	case "${SFPI_FILE_EXT}" in
+		"deb")
+			sudo apt install -y "./${SFPI_FILE}"
+			;;
+		"rpm")
+			sudo dnf install -y "./${SFPI_FILE}"
+			;;
+		*)
+			error "Unexpected SFPI package file extension: '${SFPI_FILE_EXT}'"
+			exit 1
+			;;
+	esac
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -714,6 +784,9 @@ main() {
 	fi
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Metalium installation will be skipped"
+	fi
+	if [[ "${_arg_install_sfpi}" = "off" ]]; then
+		warn "SFPI installation will be skipped"
 	fi
 	# shellcheck disable=SC2154
 	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
@@ -770,6 +843,10 @@ main() {
 	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
 		warn "Metalium installation will be unavailable. To install Metalium, upgrade to Ubuntu 22+"
+		if [[ "${_arg_install_sfpi}" = "on" ]]; then
+			warn "Pre-packaged SFPI is unavailable for Ubuntu 20; disabling"
+			_arg_install_sfpi="off"
+		fi
 	fi
 
 	if [[ "${DISTRO_ID}" = "debian" ]]; then
@@ -1013,6 +1090,18 @@ main() {
 		else
 			install_podman_metalium_models
 		fi
+	fi
+
+	if [[ "${_arg_install_sfpi}" = "on" ]]; then
+		if [[ -n "${TT_SFPI_VERSION:-}" ]]; then
+			SFPI_VERSION="${TT_SFPI_VERSION}"
+		elif [[ -n "${_arg_sfpi_version}" ]]; then
+			SFPI_VERSION="${_arg_sfpi_version}"
+		else
+			SFPI_VERSION="$(fetch_latest_sfpi_version)"
+		fi
+		log "SFPI Version: ${SFPI_VERSION}"
+		install_sfpi
 	fi
 
 	log "Installation completed successfully!"
