@@ -780,7 +780,7 @@ main() {
 			KERNEL_LISTING="${KERNEL_LISTING_EL}"
 			;;
 		"alpine")
-			doas apk add wget git py3-pip python3-dev akms cargo rust jq findutils shadow shadow-subids
+			doas apk add git py3-pip python3-dev akms cargo rust jq findutils shadow shadow-subids
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
