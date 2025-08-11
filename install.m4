@@ -1120,6 +1120,9 @@ main() {
 		log "  tt-metalium python script.py  # Run a Python script"
 	fi
 
+	# Log successful completion message
+	log "✅ Installation completed successfully."
+
 	# Auto-reboot if specified
 	if [[ "${REBOOT_OPTION}" = "always" ]]; then
 		log "Auto-reboot enabled. Rebooting now..."
