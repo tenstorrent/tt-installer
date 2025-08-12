@@ -740,6 +740,9 @@ install_sfpi() {
 		"centos"|"fedora"|"rhel")
 			SFPI_FILE_EXT="rpm"
 			;;
+		"alpine")
+			SFPI_FILE_EXT="apk"
+			;;
 		*)
 			error "Unsupported distribution for SFPI installation: ${DISTRO_ID}"
 			exit 1
@@ -757,6 +760,9 @@ install_sfpi() {
 			;;
 		"rpm")
 			sudo dnf install -y "./${SFPI_FILE}"
+			;;
+		"apk")
+			doas apk add "./${SFPI_FILE}"
 			;;
 		*)
 			error "Unexpected SFPI package file extension: '${SFPI_FILE_EXT}'"
