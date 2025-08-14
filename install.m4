@@ -859,7 +859,7 @@ main() {
 			KERNEL_LISTING="${KERNEL_LISTING_EL}"
 			;;
 		"alpine")
-			${ROOT_CMD} apk add git py3-pip python3-dev akms cargo rust jq findutils shadow shadow-subids protoc
+			${ROOT_CMD} apk add git py3-pip python3-dev akms cargo rust jq findutils shadow shadow-subids protoc maturin patchelf
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
