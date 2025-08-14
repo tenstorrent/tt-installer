@@ -202,7 +202,7 @@ jobs:
 
           # Update package manager and install sudo
           apk update
-          apk add git py3-pip jq curl sudo bash
+          apk add git py3-pip jq curl sudo bash shadow shadow-subids findutils
 
           # Create a non-root user for testing
           useradd -m -s /bin/bash testuser
