@@ -1084,8 +1084,8 @@ main() {
 				sudo dpkg -i "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]
 				then
-					${ROOT_CMD} systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-					${ROOT_CMD} systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
+					${ROOT_CMD} systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+					${ROOT_CMD} systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
 				fi
 				;;
 			"fedora"|"rhel"|"centos")
@@ -1096,8 +1096,8 @@ main() {
 				${ROOT_CMD} dnf install -y "${TOOLS_FILENAME}"
 				if [[ "${SYSTEMD_NO}" != 0 ]]
 				then
-					${ROOT_CMD} systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-					${ROOT_CMD} systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
+					${ROOT_CMD} systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+					${ROOT_CMD} systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
 				fi
 				;;
 			"alpine")

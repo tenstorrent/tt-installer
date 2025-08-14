@@ -195,9 +195,9 @@ jobs:
       with:
         name: install-script
 
-    - name: Test in Fedora container
+    - name: Test in Alpine container
       run: |
-        docker run --rm -v "$PWD:/workspace" -w /workspace ${{ matrix.distro }} bash -c "
+        docker run --rm -v "$PWD:/workspace" -w /workspace ${{ matrix.distro }} sh -c "
           set -e
 
           # Update package manager and install sudo
