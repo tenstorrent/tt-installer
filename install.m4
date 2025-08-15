@@ -575,8 +575,8 @@ install_podman_metalium_models() {
 	log "Installing Metalium Models Container via Podman"
 	local PODMAN_METALIUM_MODELS_SCRIPT_DIR="${HOME}/.local/bin"
 	local PODMAN_METALIUM_MODELS_SCRIPT_NAME="tt-metalium-models"
-	local METALIUM_MODELS_IMAGE_TAG="latest"
-	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
+	local METALIUM_MODELS_IMAGE_TAG="latest-rc"
+	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-models-amd64"
 
 	# Create wrapper script directory
 	mkdir -p "${PODMAN_METALIUM_MODELS_SCRIPT_DIR}" || error_exit "Failed to create script directory"
@@ -673,7 +673,7 @@ get_podman_metalium_choice() {
 	if [[ "${_arg_install_podman}" = "on" ]] || check_podman_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Metalium Model Demos container?"
-		log "This container is best for users who need more TT-Metalium functionality, such as running prebuilt models, but it's large (10GB)"
+		log "This container is best for users who need more TT-Metalium functionality, such as running prebuilt models, but it's large (8GB)"
 		if confirm "Install Metalium Models"; then
 			_arg_install_metalium_models_container="on"
 		else
