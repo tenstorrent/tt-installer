@@ -527,13 +527,13 @@ install_podman() {
 	# Install Podman using package manager
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
-			sudo apt install -y podman
+			sudo apt install -y podman podman-docker
 			;;
 		"fedora")
-			sudo dnf install -y podman
+			sudo dnf install -y podman podman-docker
 			;;
 		"rhel"|"centos")
-			sudo dnf install -y podman
+			sudo dnf install -y podman podman-docker
 			;;
 		*)
 			error "Unsupported distribution for Podman installation: ${DISTRO_ID}"
