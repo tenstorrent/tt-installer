@@ -498,12 +498,14 @@ fetch_tt_sw_versions() {
 		log "  tt-flash: ${FLASH_VERSION#v}"
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
-		error "*** Failed to fetch valid software versions"
+		error "*** Failed to fetch valid software versions!"
 		error "  TT-KMD: '${KMD_VERSION}'"
 		error "  Firmware: '${FW_VERSION}'"
 		error "  System Tools: '${SYSTOOLS_VERSION}'"
 		error "  tt-smi: '${SMI_VERSION}'"
 		error "  tt-flash: '${FLASH_VERSION}'"
+		error "This is likely a GitHub API issue."
+		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for a fix."
 	fi
 }
 
