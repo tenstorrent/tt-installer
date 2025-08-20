@@ -450,6 +450,7 @@ fetch_tt_sw_versions() {
 	else
 		KMD_VERSION="$(fetch_latest_kmd_version)"
 	fi
+	
 	if [[ -n "${TT_FW_VERSION:-}" ]]; then
 		FW_VERSION="${TT_FW_VERSION}"
 	elif [[ -n "${_arg_fw_version}" ]]; then
@@ -457,6 +458,7 @@ fetch_tt_sw_versions() {
 	else
 		FW_VERSION="$(fetch_latest_fw_version)"
 	fi
+	
 	if [[ -n "${TT_SYSTOOLS_VERSION:-}" ]]; then
 		SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION}"
 	elif [[ -n "${_arg_systools_version}" ]]; then
@@ -464,6 +466,7 @@ fetch_tt_sw_versions() {
 	else
 		SYSTOOLS_VERSION="$(fetch_latest_systools_version)"
 	fi
+	
 	if [[ -n "${TT_SMI_VERSION:-}" ]]; then
 		SMI_VERSION="${TT_SMI_VERSION}"
 	elif [[ -n "${_arg_smi_version}" ]]; then
@@ -471,6 +474,7 @@ fetch_tt_sw_versions() {
 	else
 		SMI_VERSION="$(fetch_latest_smi_version)"
 	fi
+	
 	if [[ -n "${TT_FLASH_VERSION:-}" ]]; then
 		FLASH_VERSION="${TT_FLASH_VERSION}"
 	elif [[ -n "${_arg_flash_version}" ]]; then
@@ -479,16 +483,13 @@ fetch_tt_sw_versions() {
 		FLASH_VERSION="$(fetch_latest_flash_version)"
 	fi
 
-	# If the user provides nothing and the functions fail to execute, take note of that,
-	# we will retry later
-	if [[
-		${KMD_VERSION} != "" &&\
-		${FW_VERSION} != "" &&\
-		${SYSTOOLS_VERSION} != "" &&\
-		${SMI_VERSION} != "" &&\
-		${FLASH_VERSION} != ""
-	]]; then
-		HAVE_SET_TT_SW_VERSIONS=0 # True
+	# Validate all version variables are properly set (not empty or "null")
+	if [[ -n "${KMD_VERSION}" && "${KMD_VERSION}" != "null" && \
+	      -n "${FW_VERSION}" && "${FW_VERSION}" != "null" && \
+	      -n "${SYSTOOLS_VERSION}" && "${SYSTOOLS_VERSION}" != "null" && \
+	      -n "${SMI_VERSION}" && "${SMI_VERSION}" != "null" && \
+	      -n "${FLASH_VERSION}" && "${FLASH_VERSION}" != "null" ]]; then
+		HAVE_SET_TT_SW_VERSIONS=0
 		log "Using software versions:"
 		log "  TT-KMD: ${KMD_VERSION}"
 		log "  Firmware: ${FW_VERSION}"
@@ -497,12 +498,12 @@ fetch_tt_sw_versions() {
 		log "  tt-flash: ${FLASH_VERSION#v}"
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
-		error "*** WARNING software versions found:"
-		error "  TT-KMD: ${KMD_VERSION}"
-		error "  Firmware: ${FW_VERSION}"
-		error "  System Tools: ${SYSTOOLS_VERSION}"
-		error "  tt-smi: ${SMI_VERSION#v}"
-		error "  tt-flash: ${FLASH_VERSION#v}"
+		error "*** Failed to fetch valid software versions"
+		error "  TT-KMD: '${KMD_VERSION}'"
+		error "  Firmware: '${FW_VERSION}'"
+		error "  System Tools: '${SYSTOOLS_VERSION}'"
+		error "  tt-smi: '${SMI_VERSION}'"
+		error "  tt-flash: '${FLASH_VERSION}'"
 	fi
 }
 
