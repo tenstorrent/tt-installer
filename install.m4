@@ -27,10 +27,11 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([podman-metalium-script-name],,[Name of the helper wrapper script],["tt-metalium"])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-models-container],,[Install additional TT-Metalium container for running model demos],[off])
 
-# ========================= String Parameters =========================
+# ========================= String Arguments =========================
 # ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 # ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[on])
+# ARG_OPTIONAL_SINGLE([github-token],,[Optional GitHub API auth token],[])
 
 # ========================= Version Arguments =========================
 # ARG_OPTIONAL_SINGLE([kmd-version],,[Specific version of TT-KMD to install],[])
@@ -92,7 +93,11 @@ fetch_latest_kmd_version() {
 		exit
 	fi
 	local latest_kmd
-	latest_kmd=$(curl -fsL https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	if [[ -n "${_arg_github_token}" ]]; then
+		latest_kmd=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	else
+		latest_kmd=$(curl -s --request GET https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	fi
 	echo "${latest_kmd#ttkmd-}"
 }
 
@@ -103,7 +108,11 @@ fetch_latest_fw_version() {
 		exit
 	fi
 	local latest_fw
-	latest_fw=$(curl -fsL https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	if [[ -n "${_arg_github_token}" ]]; then
+		latest_fw=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	else
+		latest_fw=$(curl -s --request GET https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	fi
 	echo "${latest_fw#v}" # Remove 'v' prefix if present
 }
 
@@ -114,7 +123,11 @@ fetch_latest_systools_version() {
 		exit
 	fi
 	local latest_systools
-	latest_systools=$(curl -fsL https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	if [[ -n "${_arg_github_token}" ]]; then
+		latest_systools=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	else
+		latest_systools=$(curl -s --request GET https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	fi
 	echo "${latest_systools#v}" # Remove 'v' prefix if present
 }
 
@@ -125,7 +138,11 @@ fetch_latest_smi_version() {
 		exit
 	fi
 	local latest_smi
-	latest_smi=$(curl -fsL https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	if [[ -n "${_arg_github_token}" ]]; then
+		latest_smi=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	else
+		latest_smi=$(curl -s --request GET https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	fi
 	echo "${latest_smi}"
 }
 
@@ -136,7 +153,11 @@ fetch_latest_flash_version() {
 		exit
 	fi
 	local latest_flash
-	latest_flash=$(curl -fsL https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	if [[ -n "${_arg_github_token}" ]]; then
+		latest_flash=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	else
+		latest_flash=$(curl -s --request GET https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	fi
 	echo "${latest_flash}"
 }
 
@@ -147,7 +168,11 @@ fetch_latest_topology_version() {
 		exit
 	fi
 	local latest_topology
-	latest_topology=$(curl -fsL https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	if [[ -n "${_arg_github_token}" ]]; then
+		latest_topology=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	else
+		latest_topology=$(curl -s --request GET https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	fi
 	echo "${latest_topology}"
 }
 
@@ -158,7 +183,11 @@ fetch_latest_sfpi_version() {
 		exit
 	fi
 	local latest_sfpi
-	latest_sfpi=$(curl -fsL https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	if [[ -n "${_arg_github_token}" ]]; then
+		latest_sfpi=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	else
+		latest_sfpi=$(curl -s --request GET https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+	fi
 	echo "${latest_sfpi}"
 }
 
@@ -436,6 +465,7 @@ fetch_tt_sw_versions() {
 	else
 		KMD_VERSION="$(fetch_latest_kmd_version)"
 	fi
+	
 	if [[ -n "${TT_FW_VERSION:-}" ]]; then
 		FW_VERSION="${TT_FW_VERSION}"
 	elif [[ -n "${_arg_fw_version}" ]]; then
@@ -443,6 +473,7 @@ fetch_tt_sw_versions() {
 	else
 		FW_VERSION="$(fetch_latest_fw_version)"
 	fi
+	
 	if [[ -n "${TT_SYSTOOLS_VERSION:-}" ]]; then
 		SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION}"
 	elif [[ -n "${_arg_systools_version}" ]]; then
@@ -450,6 +481,7 @@ fetch_tt_sw_versions() {
 	else
 		SYSTOOLS_VERSION="$(fetch_latest_systools_version)"
 	fi
+	
 	if [[ -n "${TT_SMI_VERSION:-}" ]]; then
 		SMI_VERSION="${TT_SMI_VERSION}"
 	elif [[ -n "${_arg_smi_version}" ]]; then
@@ -457,6 +489,7 @@ fetch_tt_sw_versions() {
 	else
 		SMI_VERSION="$(fetch_latest_smi_version)"
 	fi
+	
 	if [[ -n "${TT_FLASH_VERSION:-}" ]]; then
 		FLASH_VERSION="${TT_FLASH_VERSION}"
 	elif [[ -n "${_arg_flash_version}" ]]; then
@@ -465,16 +498,13 @@ fetch_tt_sw_versions() {
 		FLASH_VERSION="$(fetch_latest_flash_version)"
 	fi
 
-	# If the user provides nothing and the functions fail to execute, take note of that,
-	# we will retry later
-	if [[
-		${KMD_VERSION} != "" &&\
-		${FW_VERSION} != "" &&\
-		${SYSTOOLS_VERSION} != "" &&\
-		${SMI_VERSION} != "" &&\
-		${FLASH_VERSION} != ""
-	]]; then
-		HAVE_SET_TT_SW_VERSIONS=0 # True
+	# Validate all version variables are properly set (not empty or "null")
+	if [[ -n "${KMD_VERSION}" && "${KMD_VERSION}" != "null" && \
+	      -n "${FW_VERSION}" && "${FW_VERSION}" != "null" && \
+	      -n "${SYSTOOLS_VERSION}" && "${SYSTOOLS_VERSION}" != "null" && \
+	      -n "${SMI_VERSION}" && "${SMI_VERSION}" != "null" && \
+	      -n "${FLASH_VERSION}" && "${FLASH_VERSION}" != "null" ]]; then
+		HAVE_SET_TT_SW_VERSIONS=0
 		log "Using software versions:"
 		log "  TT-KMD: ${KMD_VERSION}"
 		log "  Firmware: ${FW_VERSION}"
@@ -483,12 +513,14 @@ fetch_tt_sw_versions() {
 		log "  tt-flash: ${FLASH_VERSION#v}"
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
-		error "*** WARNING software versions found:"
-		error "  TT-KMD: ${KMD_VERSION}"
-		error "  Firmware: ${FW_VERSION}"
-		error "  System Tools: ${SYSTOOLS_VERSION}"
-		error "  tt-smi: ${SMI_VERSION#v}"
-		error "  tt-flash: ${FLASH_VERSION#v}"
+		error "*** Failed to fetch valid software versions!"
+		error "  TT-KMD: '${KMD_VERSION}'"
+		error "  Firmware: '${FW_VERSION}'"
+		error "  System Tools: '${SYSTOOLS_VERSION}'"
+		error "  tt-smi: '${SMI_VERSION}'"
+		error "  tt-flash: '${FLASH_VERSION}'"
+		error "This is likely a GitHub API issue."
+		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for a fix."
 	fi
 }
 
@@ -593,8 +625,8 @@ install_podman_metalium_models() {
 	log "Installing Metalium Models Container via Podman"
 	local PODMAN_METALIUM_MODELS_SCRIPT_DIR="${HOME}/.local/bin"
 	local PODMAN_METALIUM_MODELS_SCRIPT_NAME="tt-metalium-models"
-	local METALIUM_MODELS_IMAGE_TAG="latest"
-	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/upstream-tests-bh"
+	local METALIUM_MODELS_IMAGE_TAG="latest-rc"
+	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-models-amd64"
 
 	# Create wrapper script directory
 	mkdir -p "${PODMAN_METALIUM_MODELS_SCRIPT_DIR}" || error_exit "Failed to create script directory"
@@ -691,7 +723,7 @@ get_podman_metalium_choice() {
 	if [[ "${_arg_install_podman}" = "on" ]] || check_podman_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Metalium Model Demos container?"
-		log "This container is best for users who need more TT-Metalium functionality, such as running prebuilt models, but it's large (10GB)"
+		log "This container is best for users who need more TT-Metalium functionality, such as running prebuilt models, but it's large (8GB)"
 		if confirm "Install Metalium Models"; then
 			_arg_install_metalium_models_container="on"
 		else
@@ -1177,6 +1209,9 @@ main() {
 		log "  tt-metalium [command]         # Run a specific command"
 		log "  tt-metalium python script.py  # Run a Python script"
 	fi
+
+	# Log successful completion message
+	log "✅ Installation completed successfully."
 
 	# Auto-reboot if specified
 	if [[ "${REBOOT_OPTION}" = "always" ]]; then
