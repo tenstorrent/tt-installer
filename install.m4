@@ -84,113 +84,6 @@ EOF
 KERNEL_LISTING_FEDORA="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matched\" | sed 's/^kernel-devel-//'"
 KERNEL_LISTING_EL="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matched\" | sed 's/^kernel-devel-//'"
 
-# ========================= GIT URLs =========================
-
-# Fetch latest kmd from git tags
-TT_KMD_GH_REPO="tenstorrent/tt-kmd"
-fetch_latest_kmd_version() {
-	if ! command -v jq &> /dev/null; then
-		exit
-	fi
-	local latest_kmd
-	if [[ -n "${_arg_github_token}" ]]; then
-		latest_kmd=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	else
-		latest_kmd=$(curl -s --request GET https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	fi
-	echo "${latest_kmd#ttkmd-}"
-}
-
-# Fetch lastest FW version
-TT_FW_GH_REPO="tenstorrent/tt-firmware"
-fetch_latest_fw_version() {
-	if ! command -v jq &> /dev/null; then
-		exit
-	fi
-	local latest_fw
-	if [[ -n "${_arg_github_token}" ]]; then
-		latest_fw=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	else
-		latest_fw=$(curl -s --request GET https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	fi
-	echo "${latest_fw#v}" # Remove 'v' prefix if present
-}
-
-# Fetch latest systools version
-TT_SYSTOOLS_GH_REPO="tenstorrent/tt-system-tools"
-fetch_latest_systools_version() {
-	if ! command -v jq &> /dev/null; then
-		exit
-	fi
-	local latest_systools
-	if [[ -n "${_arg_github_token}" ]]; then
-		latest_systools=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	else
-		latest_systools=$(curl -s --request GET https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	fi
-	echo "${latest_systools#v}" # Remove 'v' prefix if present
-}
-
-# Fetch latest tt-smi version
-TT_SMI_GH_REPO="tenstorrent/tt-smi"
-fetch_latest_smi_version() {
-	if ! command -v jq &> /dev/null; then
-		exit
-	fi
-	local latest_smi
-	if [[ -n "${_arg_github_token}" ]]; then
-		latest_smi=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	else
-		latest_smi=$(curl -s --request GET https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	fi
-	echo "${latest_smi}"
-}
-
-# Fetch latest tt-flash version
-TT_FLASH_GH_REPO="tenstorrent/tt-flash"
-fetch_latest_flash_version() {
-	if ! command -v jq &> /dev/null; then
-		exit
-	fi
-	local latest_flash
-	if [[ -n "${_arg_github_token}" ]]; then
-		latest_flash=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	else
-		latest_flash=$(curl -s --request GET https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	fi
-	echo "${latest_flash}"
-}
-
-# Fetch latest tt-topology version
-TT_TOPOLOGY_GH_REPO="tenstorrent/tt-topology"
-fetch_latest_topology_version() {
-	if ! command -v jq &> /dev/null; then
-		exit
-	fi
-	local latest_topology
-	if [[ -n "${_arg_github_token}" ]]; then
-		latest_topology=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	else
-		latest_topology=$(curl -s --request GET https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	fi
-	echo "${latest_topology}"
-}
-
-# Fetch latest SFPI version
-TT_SFPI_GH_REPO="tenstorrent/sfpi"
-fetch_latest_sfpi_version() {
-	if ! command -v jq &> /dev/null; then
-		exit
-	fi
-	local latest_sfpi
-	if [[ -n "${_arg_github_token}" ]]; then
-		latest_sfpi=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	else
-		latest_sfpi=$(curl -s --request GET https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest | jq -r '.tag_name')
-	fi
-	echo "${latest_sfpi}"
-}
-
 # ========================= Backward Compatibility Environment Variables =========================
 
 # Support environment variables as fallbacks for backward compatibility
@@ -448,7 +341,7 @@ fetch_tt_sw_versions() {
 	elif [[ -n "${_arg_kmd_version}" ]]; then
 		KMD_VERSION="${_arg_kmd_version}"
 	else
-		KMD_VERSION="$(fetch_latest_kmd_version)"
+		KMD_VERSION="__TEMPLATE_KMD_VERSION__"
 	fi
 	
 	if [[ -n "${TT_FW_VERSION:-}" ]]; then
@@ -456,7 +349,7 @@ fetch_tt_sw_versions() {
 	elif [[ -n "${_arg_fw_version}" ]]; then
 		FW_VERSION="${_arg_fw_version}"
 	else
-		FW_VERSION="$(fetch_latest_fw_version)"
+		FW_VERSION="__TEMPLATE_FW_VERSION__"
 	fi
 	
 	if [[ -n "${TT_SYSTOOLS_VERSION:-}" ]]; then
@@ -464,7 +357,7 @@ fetch_tt_sw_versions() {
 	elif [[ -n "${_arg_systools_version}" ]]; then
 		SYSTOOLS_VERSION="${_arg_systools_version}"
 	else
-		SYSTOOLS_VERSION="$(fetch_latest_systools_version)"
+		SYSTOOLS_VERSION="__TEMPLATE_SYSTOOLS_VERSION__"
 	fi
 	
 	if [[ -n "${TT_SMI_VERSION:-}" ]]; then
@@ -472,7 +365,7 @@ fetch_tt_sw_versions() {
 	elif [[ -n "${_arg_smi_version}" ]]; then
 		SMI_VERSION="${_arg_smi_version}"
 	else
-		SMI_VERSION="$(fetch_latest_smi_version)"
+		SMI_VERSION="__TEMPLATE_SMI_VERSION__"
 	fi
 	
 	if [[ -n "${TT_FLASH_VERSION:-}" ]]; then
@@ -480,7 +373,7 @@ fetch_tt_sw_versions() {
 	elif [[ -n "${_arg_flash_version}" ]]; then
 		FLASH_VERSION="${_arg_flash_version}"
 	else
-		FLASH_VERSION="$(fetch_latest_flash_version)"
+		FLASH_VERSION="__TEMPLATE_FLASH_VERSION__"
 	fi
 
 	# Validate all version variables are properly set (not empty or "null")
@@ -1045,7 +938,7 @@ main() {
 		elif [[ -n "${_arg_topology_version}" ]]; then
 			TOPOLOGY_VERSION="${_arg_topology_version}"
 		else
-			TOPOLOGY_VERSION="$(fetch_latest_topology_version)"
+			TOPOLOGY_VERSION="__TEMPLATE_TOPOLOGY_VERSION__"
 		fi
 
 		log "Topology Version: ${TOPOLOGY_VERSION}"
@@ -1130,7 +1023,7 @@ main() {
 		elif [[ -n "${_arg_sfpi_version}" ]]; then
 			SFPI_VERSION="${_arg_sfpi_version}"
 		else
-			SFPI_VERSION="$(fetch_latest_sfpi_version)"
+			SFPI_VERSION="__TEMPLATE_SFPI_VERSION__"
 		fi
 		log "SFPI Version: ${SFPI_VERSION}"
 		install_sfpi

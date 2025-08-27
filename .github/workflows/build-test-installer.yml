@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -30,13 +32,42 @@ jobs:
           echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
           echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Set version in install.m4
+      - name: Set versions in install.m4
         run: |
+          # Fetch latest versions
+          KMD_VERSION=$(gh api repos/tenstorrent/tt-kmd/releases/latest | jq -r '.tag_name')
+          FW_VERSION=$(gh api repos/tenstorrent/tt-firmware/releases/latest | jq -r '.tag_name')
+          SMI_VERSION=$(gh api repos/tenstorrent/tt-smi/releases/latest | jq -r '.tag_name')
+          FLASH_VERSION=$(gh api repos/tenstorrent/tt-flash/releases/latest | jq -r '.tag_name')
+          TOPOLOGY_VERSION=$(gh api repos/tenstorrent/tt-topology/releases/latest | jq -r '.tag_name')
+          SYSTOOLS_VERSION=$(gh api repos/tenstorrent/tt-system-tools/releases/latest | jq -r '.tag_name')
+          SFPI_VERSION=$(gh api repos/tenstorrent/sfpi/releases/latest | jq -r '.tag_name')
+
+          # Clean up the versions tags
+          KMD_VERSION=${KMD_VERSION#ttkmd-}
+          FW_VERSION=${FW_VERSION#v}
+          SYSTOOLS_VERSION=${SYSTOOLS_VERSION#v}
+
           # Replace the placeholder with actual version
           # Use | as a delimited because / can sometimes show up in the input
           sed -i "s|__INSTALLER_DEVELOPMENT_BUILD__|${{ steps.version.outputs.clean_version }}|g" install.m4
+          sed -i "s|__TEMPLATE_KMD_VERSION__|${KMD_VERSION}|g" install.m4
+          sed -i "s|__TEMPLATE_FW_VERSION__|${FW_VERSION}|g" install.m4
+          sed -i "s|__TEMPLATE_SMI_VERSION__|${SMI_VERSION}|g" install.m4
+          sed -i "s|__TEMPLATE_FLASH_VERSION__|${FLASH_VERSION}|g" install.m4
+          sed -i "s|__TEMPLATE_TOPOLOGY_VERSION__|${TOPOLOGY_VERSION}|g" install.m4
+          sed -i "s|__TEMPLATE_SYSTOOLS_VERSION__|${SYSTOOLS_VERSION}|g" install.m4
+          sed -i "s|__TEMPLATE_SFPI_VERSION__|${SFPI_VERSION}|g" install.m4
+
           # Display the change for verification in workflow logs
           echo "Updated install.m4 with version ${{ steps.version.outputs.clean_version }}"
+          echo "KMD_VERSION: ${KMD_VERSION}"
+          echo "FW_VERSION: ${FW_VERSION}"
+          echo "SMI_VERSION: ${SMI_VERSION}"
+          echo "FLASH_VERSION: ${FLASH_VERSION}"
+          echo "TOPOLOGY_VERSION: ${TOPOLOGY_VERSION}"
+          echo "SYSTOOLS_VERSION: ${SYSTOOLS_VERSION}"
+          echo "SFPI_VERSION: ${SFPI_VERSION}"
 
       - name: Generate install.sh from install.m4
         run: |
