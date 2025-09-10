@@ -86,180 +86,35 @@ KERNEL_LISTING_EL="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matche
 
 # ========================= GIT URLs =========================
 
-# Fetch latest kmd from git tags
+# ========================= Repository Configuration =========================
+
+# GitHub repository URLs
 TT_KMD_GH_REPO="tenstorrent/tt-kmd"
-fetch_latest_kmd_version() {
-	if ! command -v jq &> /dev/null; then
-		return 1  # jq not installed
-	fi
-	
-	local response
-	local latest_kmd
-	
-	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest 2>/dev/null)
-	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest 2>/dev/null)
-	fi
-	
-	# Check if response is valid JSON
-	if ! echo "${response}" | jq . >/dev/null 2>&1; then
-		return 2  # Invalid JSON response
-	fi
-	
-	latest_kmd=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
-	
-	# Check if we got a valid tag_name
-	if [[ -z "${latest_kmd}" || "${latest_kmd}" == "null" ]]; then
-		return 3  # No tag_name found
-	fi
-	
-	echo "${latest_kmd#ttkmd-}"
-	return 0
-}
-
-# Fetch lastest FW version
 TT_FW_GH_REPO="tenstorrent/tt-firmware"
-fetch_latest_fw_version() {
-	if ! command -v jq &> /dev/null; then
-		return 1  # jq not installed
-	fi
-	
-	local response
-	local latest_fw
-	
-	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest 2>/dev/null)
-	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest 2>/dev/null)
-	fi
-	
-	# Check if response is valid JSON
-	if ! echo "${response}" | jq . >/dev/null 2>&1; then
-		return 2  # Invalid JSON response
-	fi
-	
-	latest_fw=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
-	
-	# Check if we got a valid tag_name
-	if [[ -z "${latest_fw}" || "${latest_fw}" == "null" ]]; then
-		return 3  # No tag_name found
-	fi
-	
-	echo "${latest_fw#v}" # Remove 'v' prefix if present
-	return 0
-}
-
-# Fetch latest systools version
 TT_SYSTOOLS_GH_REPO="tenstorrent/tt-system-tools"
-fetch_latest_systools_version() {
-	if ! command -v jq &> /dev/null; then
-		return 1  # jq not installed
-	fi
-	
-	local response
-	local latest_systools
-	
-	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest 2>/dev/null)
-	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest 2>/dev/null)
-	fi
-	
-	# Check if response is valid JSON
-	if ! echo "${response}" | jq . >/dev/null 2>&1; then
-		return 2  # Invalid JSON response
-	fi
-	
-	latest_systools=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
-	
-	# Check if we got a valid tag_name
-	if [[ -z "${latest_systools}" || "${latest_systools}" == "null" ]]; then
-		return 3  # No tag_name found
-	fi
-	
-	echo "${latest_systools#v}" # Remove 'v' prefix if present
-	return 0
-}
-
-# Fetch latest tt-smi version
 TT_SMI_GH_REPO="tenstorrent/tt-smi"
-fetch_latest_smi_version() {
-	if ! command -v jq &> /dev/null; then
-		return 1  # jq not installed
-	fi
-	
-	local response
-	local latest_smi
-	
-	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest 2>/dev/null)
-	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest 2>/dev/null)
-	fi
-	
-	# Check if response is valid JSON
-	if ! echo "${response}" | jq . >/dev/null 2>&1; then
-		return 2  # Invalid JSON response
-	fi
-	
-	latest_smi=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
-	
-	# Check if we got a valid tag_name
-	if [[ -z "${latest_smi}" || "${latest_smi}" == "null" ]]; then
-		return 3  # No tag_name found
-	fi
-	
-	echo "${latest_smi}"
-	return 0
-}
-
-# Fetch latest tt-flash version
 TT_FLASH_GH_REPO="tenstorrent/tt-flash"
-fetch_latest_flash_version() {
-	if ! command -v jq &> /dev/null; then
-		return 1  # jq not installed
-	fi
-	
-	local response
-	local latest_flash
-	
-	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest 2>/dev/null)
-	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest 2>/dev/null)
-	fi
-	
-	# Check if response is valid JSON
-	if ! echo "${response}" | jq . >/dev/null 2>&1; then
-		return 2  # Invalid JSON response
-	fi
-	
-	latest_flash=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
-	
-	# Check if we got a valid tag_name
-	if [[ -z "${latest_flash}" || "${latest_flash}" == "null" ]]; then
-		return 3  # No tag_name found
-	fi
-	
-	echo "${latest_flash}"
-	return 0
-}
-
-# Fetch latest tt-topology version
 TT_TOPOLOGY_GH_REPO="tenstorrent/tt-topology"
-fetch_latest_topology_version() {
+TT_SFPI_GH_REPO="tenstorrent/sfpi"
+
+# Generic function to fetch latest version from any GitHub repository
+# Usage: fetch_latest_version <repo> <prefix_to_remove>
+# Returns: version string with prefix removed, or exits with error code
+fetch_latest_version() {
+	local repo="$1"
+	local prefix_to_remove="${2:-}"
+	
 	if ! command -v jq &> /dev/null; then
 		return 1  # jq not installed
 	fi
 	
 	local response
-	local latest_topology
+	local latest_version
 	
 	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest 2>/dev/null)
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest 2>/dev/null)
 	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest 2>/dev/null)
+		response=$(curl -s --request GET https://api.github.com/repos/"${repo}"/releases/latest 2>/dev/null)
 	fi
 	
 	# Check if response is valid JSON
@@ -267,48 +122,23 @@ fetch_latest_topology_version() {
 		return 2  # Invalid JSON response
 	fi
 	
-	latest_topology=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	latest_version=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
 	
 	# Check if we got a valid tag_name
-	if [[ -z "${latest_topology}" || "${latest_topology}" == "null" ]]; then
+	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
 		return 3  # No tag_name found
 	fi
 	
-	echo "${latest_topology}"
+	# Remove prefix if specified
+	if [[ -n "${prefix_to_remove}" ]]; then
+		echo "${latest_version#${prefix_to_remove}}"
+	else
+		echo "${latest_version}"
+	fi
+	
 	return 0
 }
 
-# Fetch latest SFPI version
-TT_SFPI_GH_REPO="tenstorrent/sfpi"
-fetch_latest_sfpi_version() {
-	if ! command -v jq &> /dev/null; then
-		return 1  # jq not installed
-	fi
-	
-	local response
-	local latest_sfpi
-	
-	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest 2>/dev/null)
-	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest 2>/dev/null)
-	fi
-	
-	# Check if response is valid JSON
-	if ! echo "${response}" | jq . >/dev/null 2>&1; then
-		return 2  # Invalid JSON response
-	fi
-	
-	latest_sfpi=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
-	
-	# Check if we got a valid tag_name
-	if [[ -z "${latest_sfpi}" || "${latest_sfpi}" == "null" ]]; then
-		return 3  # No tag_name found
-	fi
-	
-	echo "${latest_sfpi}"
-	return 0
-}
 
 # ========================= Backward Compatibility Environment Variables =========================
 
@@ -591,76 +421,35 @@ handle_version_fetch_error() {
 fetch_tt_sw_versions() {
 	local fetch_errors=0
 	
-	# Use environment variable if set, then argbash version if present, otherwise latest
-	if [[ -n "${TT_KMD_VERSION:-}" ]]; then
-		KMD_VERSION="${TT_KMD_VERSION}"
-	elif [[ -n "${_arg_kmd_version}" ]]; then
-		KMD_VERSION="${_arg_kmd_version}"
-	else
-		if KMD_VERSION=$(fetch_latest_kmd_version); then
-			: # Success, KMD_VERSION is set
-		else
-			local kmd_exit_code=$?
-			handle_version_fetch_error "TT-KMD" "${kmd_exit_code}" "${TT_KMD_GH_REPO}"
-			fetch_errors=1
-		fi
-	fi
+	# Component configuration: env_var:arg_var:version_var:display_name:repo:prefix
+	local components=(
+		"TT_KMD_VERSION:_arg_kmd_version:KMD_VERSION:TT-KMD:${TT_KMD_GH_REPO}:ttkmd-"
+		"TT_FW_VERSION:_arg_fw_version:FW_VERSION:Firmware:${TT_FW_GH_REPO}:v"
+		"TT_SYSTOOLS_VERSION:_arg_systools_version:SYSTOOLS_VERSION:System Tools:${TT_SYSTOOLS_GH_REPO}:v"
+		"TT_SMI_VERSION:_arg_smi_version:SMI_VERSION:tt-smi:${TT_SMI_GH_REPO}:"
+		"TT_FLASH_VERSION:_arg_flash_version:FLASH_VERSION:tt-flash:${TT_FLASH_GH_REPO}:"
+	)
 	
-	if [[ -n "${TT_FW_VERSION:-}" ]]; then
-		FW_VERSION="${TT_FW_VERSION}"
-	elif [[ -n "${_arg_fw_version}" ]]; then
-		FW_VERSION="${_arg_fw_version}"
-	else
-		if FW_VERSION=$(fetch_latest_fw_version); then
-			: # Success, FW_VERSION is set
+	# Process each component
+	for component_config in "${components[@]}"; do
+		IFS=':' read -r env_var arg_var version_var display_name repo prefix <<< "${component_config}"
+		
+		# Use environment variable if set, then argbash version if present, otherwise latest
+		if [[ -n "${!env_var:-}" ]]; then
+			declare -g "${version_var}=${!env_var}"
+		elif [[ -n "${!arg_var}" ]]; then
+			declare -g "${version_var}=${!arg_var}"
 		else
-			local fw_exit_code=$?
-			handle_version_fetch_error "Firmware" "${fw_exit_code}" "${TT_FW_GH_REPO}"
-			fetch_errors=1
+			local version_result
+			if version_result=$(fetch_latest_version "${repo}" "${prefix}"); then
+				declare -g "${version_var}=${version_result}"
+			else
+				local exit_code=$?
+				handle_version_fetch_error "${display_name}" "${exit_code}" "${repo}"
+				fetch_errors=1
+			fi
 		fi
-	fi
-	
-	if [[ -n "${TT_SYSTOOLS_VERSION:-}" ]]; then
-		SYSTOOLS_VERSION="${TT_SYSTOOLS_VERSION}"
-	elif [[ -n "${_arg_systools_version}" ]]; then
-		SYSTOOLS_VERSION="${_arg_systools_version}"
-	else
-		if SYSTOOLS_VERSION=$(fetch_latest_systools_version); then
-			: # Success, SYSTOOLS_VERSION is set
-		else
-			local systools_exit_code=$?
-			handle_version_fetch_error "System Tools" "${systools_exit_code}" "${TT_SYSTOOLS_GH_REPO}"
-			fetch_errors=1
-		fi
-	fi
-	
-	if [[ -n "${TT_SMI_VERSION:-}" ]]; then
-		SMI_VERSION="${TT_SMI_VERSION}"
-	elif [[ -n "${_arg_smi_version}" ]]; then
-		SMI_VERSION="${_arg_smi_version}"
-	else
-		if SMI_VERSION=$(fetch_latest_smi_version); then
-			: # Success, SMI_VERSION is set
-		else
-			local smi_exit_code=$?
-			handle_version_fetch_error "tt-smi" "${smi_exit_code}" "${TT_SMI_GH_REPO}"
-			fetch_errors=1
-		fi
-	fi
-	
-	if [[ -n "${TT_FLASH_VERSION:-}" ]]; then
-		FLASH_VERSION="${TT_FLASH_VERSION}"
-	elif [[ -n "${_arg_flash_version}" ]]; then
-		FLASH_VERSION="${_arg_flash_version}"
-	else
-		if FLASH_VERSION=$(fetch_latest_flash_version); then
-			: # Success, FLASH_VERSION is set
-		else
-			local flash_exit_code=$?
-			handle_version_fetch_error "tt-flash" "${flash_exit_code}" "${TT_FLASH_GH_REPO}"
-			fetch_errors=1
-		fi
-	fi
+	done
 
 	# If there were fetch errors, exit early
 	if [[ ${fetch_errors} -eq 1 ]]; then
@@ -1231,7 +1020,7 @@ main() {
 		elif [[ -n "${_arg_topology_version}" ]]; then
 			TOPOLOGY_VERSION="${_arg_topology_version}"
 		else
-			if TOPOLOGY_VERSION=$(fetch_latest_topology_version); then
+			if TOPOLOGY_VERSION=$(fetch_latest_version "${TT_TOPOLOGY_GH_REPO}"); then
 				: # Success, TOPOLOGY_VERSION is set
 			else
 				local topology_exit_code=$?
@@ -1322,7 +1111,7 @@ main() {
 		elif [[ -n "${_arg_sfpi_version}" ]]; then
 			SFPI_VERSION="${_arg_sfpi_version}"
 		else
-			if SFPI_VERSION=$(fetch_latest_sfpi_version); then
+			if SFPI_VERSION=$(fetch_latest_version "${TT_SFPI_GH_REPO}"); then
 				: # Success, SFPI_VERSION is set
 			else
 				local sfpi_exit_code=$?
