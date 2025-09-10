@@ -366,15 +366,16 @@ fetch_latest_version() {
 	
 	# Choose curl verbosity based on verbose flag
 	local curl_verbose_flag="-s"
+	# shellcheck disable=SC2154
 	if [[ "${_arg_verbose}" = "on" ]]; then
 		curl_verbose_flag="-v"
 	fi
 	
 	# Use -i to include headers in output for rate limit detection
 	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl ${curl_verbose_flag} -i --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest)
+		response=$(curl "${curl_verbose_flag}" -i --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest)
 	else
-		response=$(curl ${curl_verbose_flag} -i --request GET https://api.github.com/repos/"${repo}"/releases/latest)
+		response=$(curl "${curl_verbose_flag}" -i --request GET https://api.github.com/repos/"${repo}"/releases/latest)
 	fi
 	
 	# Split response into headers and body
@@ -400,7 +401,7 @@ fetch_latest_version() {
 	
 	# Remove prefix if specified
 	if [[ -n "${prefix_to_remove}" ]]; then
-		echo "${latest_version#${prefix_to_remove}}"
+		echo "${latest_version#"${prefix_to_remove}"}"
 	else
 		echo "${latest_version}"
 	fi
