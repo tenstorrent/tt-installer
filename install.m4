@@ -362,9 +362,9 @@ fetch_latest_version() {
 	local latest_version
 	
 	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest 2>/dev/null)
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest)
 	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${repo}"/releases/latest 2>/dev/null)
+		response=$(curl -s --request GET https://api.github.com/repos/"${repo}"/releases/latest)
 	fi
 	
 	# Check if response is valid JSON
