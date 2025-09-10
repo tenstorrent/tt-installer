@@ -360,6 +360,8 @@ fetch_latest_version() {
 	fi
 	
 	local response
+	local response_headers
+	local response_body
 	local latest_version
 	
 	# Choose curl verbosity based on verbose flag
@@ -368,25 +370,32 @@ fetch_latest_version() {
 		curl_verbose_flag="-v"
 	fi
 	
+	# Use -i to include headers in output for rate limit detection
 	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl ${curl_verbose_flag} --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest)
+		response=$(curl ${curl_verbose_flag} -i --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest)
 	else
-		response=$(curl ${curl_verbose_flag} --request GET https://api.github.com/repos/"${repo}"/releases/latest)
+		response=$(curl ${curl_verbose_flag} -i --request GET https://api.github.com/repos/"${repo}"/releases/latest)
 	fi
 	
-	# Check if response is valid JSON
-	if ! echo "${response}" | jq . >/dev/null 2>&1; then
-		return 2  # Invalid JSON response
+	# Split response into headers and body
+	response_headers=$(echo "${response}" | sed '/^\r*$/,$d')
+	response_body=$(echo "${response}" | sed '1,/^\r*$/d')
+	
+	# Check for GitHub API rate limit
+	if echo "${response_headers}" | grep -qi "x-ratelimit-remaining: 0"; then
+		return 2  # GitHub API rate limit exceeded
 	fi
 	
-	latest_version=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	# Check if response body is valid JSON
+	if ! echo "${response_body}" | jq . >/dev/null 2>&1; then
+		return 3  # Invalid JSON response
+	fi
+	
+	latest_version=$(echo "${response_body}" | jq -r '.tag_name' 2>/dev/null)
 
-	echo "HEREsS" >&2
-	echo $latest_version
-	
 	# Check if we got a valid tag_name
 	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
-		return 3  # No tag_name found
+		return 4  # No tag_name found
 	fi
 	
 	# Remove prefix if specified
@@ -411,11 +420,16 @@ handle_version_fetch_error() {
 			error "Please ensure jq is installed: sudo apt install jq (or equivalent for your distro)"
 			;;
 		2)
-			error "Failed to fetch ${component} version: GitHub API returned invalid JSON"
-			error "This may be a network issue or GitHub API rate limiting"
+			error "Failed to fetch ${component} version: GitHub API rate limit exceeded"
+			error "You have exceeded the GitHub API rate limit (60 requests per hour for unauthenticated requests)"
 			error "Repository: ${repo}"
 			;;
 		3)
+			error "Failed to fetch ${component} version: GitHub API returned invalid JSON"
+			error "This may be a network issue or other API issue"
+			error "Repository: ${repo}"
+			;;
+		4)
 			error "Failed to fetch ${component} version: no valid tag_name found in API response"
 			error "The repository may not have any releases or the API response is malformed"
 			error "Repository: ${repo}"
