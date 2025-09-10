@@ -48,6 +48,7 @@ exit 11 #)
 # ========================= Mode Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
+# ARG_OPTIONAL_BOOLEAN([verbose],,[Enable verbose output for debugging])
 
 # ARGBASH_GO
 
@@ -361,10 +362,16 @@ fetch_latest_version() {
 	local response
 	local latest_version
 	
+	# Choose curl verbosity based on verbose flag
+	local curl_verbose_flag="-s"
+	if [[ "${_arg_verbose}" = "on" ]]; then
+		curl_verbose_flag="-v"
+	fi
+	
 	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest)
+		response=$(curl ${curl_verbose_flag} --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest)
 	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${repo}"/releases/latest)
+		response=$(curl ${curl_verbose_flag} --request GET https://api.github.com/repos/"${repo}"/releases/latest)
 	fi
 	
 	# Check if response is valid JSON
@@ -373,6 +380,9 @@ fetch_latest_version() {
 	fi
 	
 	latest_version=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+
+	echo "HEREsS" >&2
+	echo $latest_version
 	
 	# Check if we got a valid tag_name
 	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
