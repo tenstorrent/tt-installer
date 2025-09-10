@@ -97,49 +97,6 @@ TT_FLASH_GH_REPO="tenstorrent/tt-flash"
 TT_TOPOLOGY_GH_REPO="tenstorrent/tt-topology"
 TT_SFPI_GH_REPO="tenstorrent/sfpi"
 
-# Generic function to fetch latest version from any GitHub repository
-# Usage: fetch_latest_version <repo> <prefix_to_remove>
-# Returns: version string with prefix removed, or exits with error code
-fetch_latest_version() {
-	local repo="$1"
-	local prefix_to_remove="${2:-}"
-	
-	if ! command -v jq &> /dev/null; then
-		return 1  # jq not installed
-	fi
-	
-	local response
-	local latest_version
-	
-	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest 2>/dev/null)
-	else
-		response=$(curl -s --request GET https://api.github.com/repos/"${repo}"/releases/latest 2>/dev/null)
-	fi
-	
-	# Check if response is valid JSON
-	if ! echo "${response}" | jq . >/dev/null 2>&1; then
-		return 2  # Invalid JSON response
-	fi
-	
-	latest_version=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
-	
-	# Check if we got a valid tag_name
-	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
-		return 3  # No tag_name found
-	fi
-	
-	# Remove prefix if specified
-	if [[ -n "${prefix_to_remove}" ]]; then
-		echo "${latest_version#${prefix_to_remove}}"
-	else
-		echo "${latest_version}"
-	fi
-	
-	return 0
-}
-
-
 # ========================= Backward Compatibility Environment Variables =========================
 
 # Support environment variables as fallbacks for backward compatibility
@@ -388,6 +345,48 @@ get_python_choice() {
 				;;
 		esac
 	done
+}
+
+# Generic function to fetch latest version from any GitHub repository
+# Usage: fetch_latest_version <repo> <prefix_to_remove>
+# Returns: version string with prefix removed, or exits with error code
+fetch_latest_version() {
+	local repo="$1"
+	local prefix_to_remove="${2:-}"
+	
+	if ! command -v jq &> /dev/null; then
+		return 1  # jq not installed
+	fi
+	
+	local response
+	local latest_version
+	
+	if [[ -n "${_arg_github_token}" ]]; then
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest 2>/dev/null)
+	else
+		response=$(curl -s --request GET https://api.github.com/repos/"${repo}"/releases/latest 2>/dev/null)
+	fi
+	
+	# Check if response is valid JSON
+	if ! echo "${response}" | jq . >/dev/null 2>&1; then
+		return 2  # Invalid JSON response
+	fi
+	
+	latest_version=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
+		return 3  # No tag_name found
+	fi
+	
+	# Remove prefix if specified
+	if [[ -n "${prefix_to_remove}" ]]; then
+		echo "${latest_version#${prefix_to_remove}}"
+	else
+		echo "${latest_version}"
+	fi
+	
+	return 0
 }
 
 # Helper function to handle version fetch errors
