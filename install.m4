@@ -90,105 +90,224 @@ KERNEL_LISTING_EL="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matche
 TT_KMD_GH_REPO="tenstorrent/tt-kmd"
 fetch_latest_kmd_version() {
 	if ! command -v jq &> /dev/null; then
-		exit
+		return 1  # jq not installed
 	fi
+	
+	local response
 	local latest_kmd
+	
 	if [[ -n "${_arg_github_token}" ]]; then
-		latest_kmd=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest 2>/dev/null)
 	else
-		latest_kmd=$(curl -s --request GET https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET https://api.github.com/repos/"${TT_KMD_GH_REPO}"/releases/latest 2>/dev/null)
 	fi
+	
+	# Check if response is valid JSON
+	if ! echo "${response}" | jq . >/dev/null 2>&1; then
+		return 2  # Invalid JSON response
+	fi
+	
+	latest_kmd=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_kmd}" || "${latest_kmd}" == "null" ]]; then
+		return 3  # No tag_name found
+	fi
+	
 	echo "${latest_kmd#ttkmd-}"
+	return 0
 }
 
 # Fetch lastest FW version
 TT_FW_GH_REPO="tenstorrent/tt-firmware"
 fetch_latest_fw_version() {
 	if ! command -v jq &> /dev/null; then
-		exit
+		return 1  # jq not installed
 	fi
+	
+	local response
 	local latest_fw
+	
 	if [[ -n "${_arg_github_token}" ]]; then
-		latest_fw=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest 2>/dev/null)
 	else
-		latest_fw=$(curl -s --request GET https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET https://api.github.com/repos/"${TT_FW_GH_REPO}"/releases/latest 2>/dev/null)
 	fi
+	
+	# Check if response is valid JSON
+	if ! echo "${response}" | jq . >/dev/null 2>&1; then
+		return 2  # Invalid JSON response
+	fi
+	
+	latest_fw=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_fw}" || "${latest_fw}" == "null" ]]; then
+		return 3  # No tag_name found
+	fi
+	
 	echo "${latest_fw#v}" # Remove 'v' prefix if present
+	return 0
 }
 
 # Fetch latest systools version
 TT_SYSTOOLS_GH_REPO="tenstorrent/tt-system-tools"
 fetch_latest_systools_version() {
 	if ! command -v jq &> /dev/null; then
-		exit
+		return 1  # jq not installed
 	fi
+	
+	local response
 	local latest_systools
+	
 	if [[ -n "${_arg_github_token}" ]]; then
-		latest_systools=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest 2>/dev/null)
 	else
-		latest_systools=$(curl -s --request GET https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET https://api.github.com/repos/"${TT_SYSTOOLS_GH_REPO}"/releases/latest 2>/dev/null)
 	fi
+	
+	# Check if response is valid JSON
+	if ! echo "${response}" | jq . >/dev/null 2>&1; then
+		return 2  # Invalid JSON response
+	fi
+	
+	latest_systools=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_systools}" || "${latest_systools}" == "null" ]]; then
+		return 3  # No tag_name found
+	fi
+	
 	echo "${latest_systools#v}" # Remove 'v' prefix if present
+	return 0
 }
 
 # Fetch latest tt-smi version
 TT_SMI_GH_REPO="tenstorrent/tt-smi"
 fetch_latest_smi_version() {
 	if ! command -v jq &> /dev/null; then
-		exit
+		return 1  # jq not installed
 	fi
+	
+	local response
 	local latest_smi
+	
 	if [[ -n "${_arg_github_token}" ]]; then
-		latest_smi=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest 2>/dev/null)
 	else
-		latest_smi=$(curl -s --request GET https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET https://api.github.com/repos/"${TT_SMI_GH_REPO}"/releases/latest 2>/dev/null)
 	fi
+	
+	# Check if response is valid JSON
+	if ! echo "${response}" | jq . >/dev/null 2>&1; then
+		return 2  # Invalid JSON response
+	fi
+	
+	latest_smi=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_smi}" || "${latest_smi}" == "null" ]]; then
+		return 3  # No tag_name found
+	fi
+	
 	echo "${latest_smi}"
+	return 0
 }
 
 # Fetch latest tt-flash version
 TT_FLASH_GH_REPO="tenstorrent/tt-flash"
 fetch_latest_flash_version() {
 	if ! command -v jq &> /dev/null; then
-		exit
+		return 1  # jq not installed
 	fi
+	
+	local response
 	local latest_flash
+	
 	if [[ -n "${_arg_github_token}" ]]; then
-		latest_flash=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest 2>/dev/null)
 	else
-		latest_flash=$(curl -s --request GET https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET https://api.github.com/repos/"${TT_FLASH_GH_REPO}"/releases/latest 2>/dev/null)
 	fi
+	
+	# Check if response is valid JSON
+	if ! echo "${response}" | jq . >/dev/null 2>&1; then
+		return 2  # Invalid JSON response
+	fi
+	
+	latest_flash=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_flash}" || "${latest_flash}" == "null" ]]; then
+		return 3  # No tag_name found
+	fi
+	
 	echo "${latest_flash}"
+	return 0
 }
 
 # Fetch latest tt-topology version
 TT_TOPOLOGY_GH_REPO="tenstorrent/tt-topology"
 fetch_latest_topology_version() {
 	if ! command -v jq &> /dev/null; then
-		exit
+		return 1  # jq not installed
 	fi
+	
+	local response
 	local latest_topology
+	
 	if [[ -n "${_arg_github_token}" ]]; then
-		latest_topology=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest 2>/dev/null)
 	else
-		latest_topology=$(curl -s --request GET https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET https://api.github.com/repos/"${TT_TOPOLOGY_GH_REPO}"/releases/latest 2>/dev/null)
 	fi
+	
+	# Check if response is valid JSON
+	if ! echo "${response}" | jq . >/dev/null 2>&1; then
+		return 2  # Invalid JSON response
+	fi
+	
+	latest_topology=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_topology}" || "${latest_topology}" == "null" ]]; then
+		return 3  # No tag_name found
+	fi
+	
 	echo "${latest_topology}"
+	return 0
 }
 
 # Fetch latest SFPI version
 TT_SFPI_GH_REPO="tenstorrent/sfpi"
 fetch_latest_sfpi_version() {
 	if ! command -v jq &> /dev/null; then
-		exit
+		return 1  # jq not installed
 	fi
+	
+	local response
 	local latest_sfpi
+	
 	if [[ -n "${_arg_github_token}" ]]; then
-		latest_sfpi=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest 2>/dev/null)
 	else
-		latest_sfpi=$(curl -s --request GET https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest | jq -r '.tag_name')
+		response=$(curl -s --request GET https://api.github.com/repos/"${TT_SFPI_GH_REPO}"/releases/latest 2>/dev/null)
 	fi
+	
+	# Check if response is valid JSON
+	if ! echo "${response}" | jq . >/dev/null 2>&1; then
+		return 2  # Invalid JSON response
+	fi
+	
+	latest_sfpi=$(echo "${response}" | jq -r '.tag_name' 2>/dev/null)
+	
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_sfpi}" || "${latest_sfpi}" == "null" ]]; then
+		return 3  # No tag_name found
+	fi
+	
 	echo "${latest_sfpi}"
+	return 0
 }
 
 # ========================= Backward Compatibility Environment Variables =========================
@@ -441,14 +560,50 @@ get_python_choice() {
 	done
 }
 
+# Helper function to handle version fetch errors
+handle_version_fetch_error() {
+	local component="$1"
+	local error_code="$2"
+	local repo="$3"
+	
+	case ${error_code} in
+		1)
+			error "Failed to fetch ${component} version: jq command not found"
+			error "Please ensure jq is installed: sudo apt install jq (or equivalent for your distro)"
+			;;
+		2)
+			error "Failed to fetch ${component} version: GitHub API returned invalid JSON"
+			error "This may be a network issue or GitHub API rate limiting"
+			error "Repository: ${repo}"
+			;;
+		3)
+			error "Failed to fetch ${component} version: no valid tag_name found in API response"
+			error "The repository may not have any releases or the API response is malformed"
+			error "Repository: ${repo}"
+			;;
+		*)
+			error "Failed to fetch ${component} version: unknown error (code ${error_code})"
+			error "Repository: ${repo}"
+			;;
+	esac
+}
+
 fetch_tt_sw_versions() {
+	local fetch_errors=0
+	
 	# Use environment variable if set, then argbash version if present, otherwise latest
 	if [[ -n "${TT_KMD_VERSION:-}" ]]; then
 		KMD_VERSION="${TT_KMD_VERSION}"
 	elif [[ -n "${_arg_kmd_version}" ]]; then
 		KMD_VERSION="${_arg_kmd_version}"
 	else
-		KMD_VERSION="$(fetch_latest_kmd_version)"
+		if KMD_VERSION=$(fetch_latest_kmd_version); then
+			: # Success, KMD_VERSION is set
+		else
+			local kmd_exit_code=$?
+			handle_version_fetch_error "TT-KMD" "${kmd_exit_code}" "${TT_KMD_GH_REPO}"
+			fetch_errors=1
+		fi
 	fi
 	
 	if [[ -n "${TT_FW_VERSION:-}" ]]; then
@@ -456,7 +611,13 @@ fetch_tt_sw_versions() {
 	elif [[ -n "${_arg_fw_version}" ]]; then
 		FW_VERSION="${_arg_fw_version}"
 	else
-		FW_VERSION="$(fetch_latest_fw_version)"
+		if FW_VERSION=$(fetch_latest_fw_version); then
+			: # Success, FW_VERSION is set
+		else
+			local fw_exit_code=$?
+			handle_version_fetch_error "Firmware" "${fw_exit_code}" "${TT_FW_GH_REPO}"
+			fetch_errors=1
+		fi
 	fi
 	
 	if [[ -n "${TT_SYSTOOLS_VERSION:-}" ]]; then
@@ -464,7 +625,13 @@ fetch_tt_sw_versions() {
 	elif [[ -n "${_arg_systools_version}" ]]; then
 		SYSTOOLS_VERSION="${_arg_systools_version}"
 	else
-		SYSTOOLS_VERSION="$(fetch_latest_systools_version)"
+		if SYSTOOLS_VERSION=$(fetch_latest_systools_version); then
+			: # Success, SYSTOOLS_VERSION is set
+		else
+			local systools_exit_code=$?
+			handle_version_fetch_error "System Tools" "${systools_exit_code}" "${TT_SYSTOOLS_GH_REPO}"
+			fetch_errors=1
+		fi
 	fi
 	
 	if [[ -n "${TT_SMI_VERSION:-}" ]]; then
@@ -472,7 +639,13 @@ fetch_tt_sw_versions() {
 	elif [[ -n "${_arg_smi_version}" ]]; then
 		SMI_VERSION="${_arg_smi_version}"
 	else
-		SMI_VERSION="$(fetch_latest_smi_version)"
+		if SMI_VERSION=$(fetch_latest_smi_version); then
+			: # Success, SMI_VERSION is set
+		else
+			local smi_exit_code=$?
+			handle_version_fetch_error "tt-smi" "${smi_exit_code}" "${TT_SMI_GH_REPO}"
+			fetch_errors=1
+		fi
 	fi
 	
 	if [[ -n "${TT_FLASH_VERSION:-}" ]]; then
@@ -480,7 +653,20 @@ fetch_tt_sw_versions() {
 	elif [[ -n "${_arg_flash_version}" ]]; then
 		FLASH_VERSION="${_arg_flash_version}"
 	else
-		FLASH_VERSION="$(fetch_latest_flash_version)"
+		if FLASH_VERSION=$(fetch_latest_flash_version); then
+			: # Success, FLASH_VERSION is set
+		else
+			local flash_exit_code=$?
+			handle_version_fetch_error "tt-flash" "${flash_exit_code}" "${TT_FLASH_GH_REPO}"
+			fetch_errors=1
+		fi
+	fi
+
+	# If there were fetch errors, exit early
+	if [[ ${fetch_errors} -eq 1 ]]; then
+		HAVE_SET_TT_SW_VERSIONS=1
+		error "*** Failed to fetch software versions due to the errors above!"
+		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for troubleshooting help."
 	fi
 
 	# Validate all version variables are properly set (not empty or "null")
@@ -498,13 +684,13 @@ fetch_tt_sw_versions() {
 		log "  tt-flash: ${FLASH_VERSION#v}"
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
-		error "*** Failed to fetch valid software versions!"
+		error "*** Software versions are empty or null after successful fetch!"
 		error "  TT-KMD: '${KMD_VERSION}'"
 		error "  Firmware: '${FW_VERSION}'"
 		error "  System Tools: '${SYSTOOLS_VERSION}'"
 		error "  tt-smi: '${SMI_VERSION}'"
 		error "  tt-flash: '${FLASH_VERSION}'"
-		error "This is likely a GitHub API issue."
+		error "This may indicate an issue with the GitHub API responses."
 		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for a fix."
 	fi
 }
@@ -1045,7 +1231,13 @@ main() {
 		elif [[ -n "${_arg_topology_version}" ]]; then
 			TOPOLOGY_VERSION="${_arg_topology_version}"
 		else
-			TOPOLOGY_VERSION="$(fetch_latest_topology_version)"
+			if TOPOLOGY_VERSION=$(fetch_latest_topology_version); then
+				: # Success, TOPOLOGY_VERSION is set
+			else
+				local topology_exit_code=$?
+				handle_version_fetch_error "tt-topology" "${topology_exit_code}" "${TT_TOPOLOGY_GH_REPO}"
+				error_exit "Failed to fetch tt-topology version. Installation cannot continue."
+			fi
 		fi
 
 		log "Topology Version: ${TOPOLOGY_VERSION}"
@@ -1130,7 +1322,13 @@ main() {
 		elif [[ -n "${_arg_sfpi_version}" ]]; then
 			SFPI_VERSION="${_arg_sfpi_version}"
 		else
-			SFPI_VERSION="$(fetch_latest_sfpi_version)"
+			if SFPI_VERSION=$(fetch_latest_sfpi_version); then
+				: # Success, SFPI_VERSION is set
+			else
+				local sfpi_exit_code=$?
+				handle_version_fetch_error "SFPI" "${sfpi_exit_code}" "${TT_SFPI_GH_REPO}"
+				error_exit "Failed to fetch SFPI version. Installation cannot continue."
+			fi
 		fi
 		log "SFPI Version: ${SFPI_VERSION}"
 		install_sfpi
