@@ -767,7 +767,7 @@ install_sfpi() {
 			;;
 	esac
 
-	SFPI_FILE="sfpi-${SFPI_FILE_ARCH}_Linux.${SFPI_FILE_EXT}"
+	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}.${SFPI_FILE_EXT}"
 
 	curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
 	verify_download "${SFPI_FILE}"
