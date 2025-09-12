@@ -373,9 +373,12 @@ fetch_latest_version() {
 	
 	# Use -i to include headers in output for rate limit detection
 	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl "${curl_verbose_flag}" -i --request GET -H "Authorization: token ${_arg_github_token}" https://api.github.com/repos/"${repo}"/releases/latest)
+		response=$(curl "${curl_verbose_flag}" -i --request GET \
+		    	   -H "Authorization: token ${_arg_github_token}" \
+				   https://api.github.com/repos/"${repo}"/releases/latest)
 	else
-		response=$(curl "${curl_verbose_flag}" -i --request GET https://api.github.com/repos/"${repo}"/releases/latest)
+		response=$(curl "${curl_verbose_flag}" -i --request GET \
+				  https://api.github.com/repos/"${repo}"/releases/latest)
 	fi
 	
 	# Split response into headers and body
