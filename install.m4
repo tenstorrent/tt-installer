@@ -420,27 +420,32 @@ handle_version_fetch_error() {
 	
 	case ${error_code} in
 		1)
-			error "Failed to fetch ${component} version: jq command not found"
+			error "jq command not found!"
 			error "Please ensure jq is installed: sudo apt install jq (or equivalent for your distro)"
+			error "Failed to fetch ${component} version."
 			;;
 		2)
-			error "Failed to fetch ${component} version: GitHub API rate limit exceeded"
+			error "GitHub API rate limit exceeded"
 			error "You have exceeded the GitHub API rate limit (60 requests per hour for unauthenticated requests)"
 			error "Repository: ${repo}"
+			error "Failed to fetch ${component} version."
 			;;
 		3)
-			error "Failed to fetch ${component} version: GitHub API returned invalid JSON"
+			error "GitHub API returned invalid JSON"
 			error "This may be a network issue or other API issue"
 			error "Repository: ${repo}"
+			error "Failed to fetch ${component} version."
 			;;
 		4)
-			error "Failed to fetch ${component} version: no valid tag_name found in API response"
+			error "No valid tag_name found in API response"
 			error "The repository may not have any releases or the API response is malformed"
 			error "Repository: ${repo}"
+			error "Failed to fetch ${component} version."
 			;;
 		*)
-			error "Failed to fetch ${component} version: unknown error (code ${error_code})"
+			error "Unknown error (code ${error_code})"
 			error "Repository: ${repo}"
+			error "Failed to fetch ${component} version."
 			;;
 	esac
 }
