@@ -769,7 +769,7 @@ install_sfpi() {
 
 	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}.${SFPI_FILE_EXT}"
 
-	curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+	curl -fsSLO "${SFPI_RELEASE_URL}/v${SFPI_VERSION}/${SFPI_FILE}"
 	verify_download "${SFPI_FILE}"
 
 	case "${SFPI_FILE_EXT}" in
@@ -1143,7 +1143,7 @@ main() {
 		elif [[ -n "${_arg_sfpi_version}" ]]; then
 			SFPI_VERSION="${_arg_sfpi_version}"
 		else
-			if SFPI_VERSION=$(fetch_latest_version "${TT_SFPI_GH_REPO}"); then
+			if SFPI_VERSION=$(fetch_latest_version "${TT_SFPI_GH_REPO}" "v"); then
 				: # Success, SFPI_VERSION is set
 			else
 				local sfpi_exit_code=$?
