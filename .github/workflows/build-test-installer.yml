@@ -266,42 +266,45 @@ jobs:
 
     - name: Test version fetching functions
       run: |
-        # Source the script to test individual functions
+        # Source the script to test the version fetching function
         set +e  # Don't exit on function failures
 
-        # Extract and test the version fetching functions
-        source <(grep -A 10 "fetch_latest_.*_version()" install.sh)
+        # Extract and test the generic version fetching function
+        source <(grep -A 30 "fetch_latest_version()" install.sh)
+        source <(grep "TT_.*_GH_REPO=" install.sh)
 
         echo "Testing version fetch functions..."
 
         # Test KMD version fetching
-        if kmd_ver=$(fetch_latest_kmd_version); then
+        if kmd_ver=$(fetch_latest_version "${TT_KMD_GH_REPO}" "ttkmd-"); then
           echo "✓ KMD version fetched: $kmd_ver"
         else
           echo "⚠ KMD version fetch failed (may be rate limited)"
         fi
 
         # Test FW version fetching
-        if fw_ver=$(fetch_latest_fw_version); then
+        if fw_ver=$(fetch_latest_version "${TT_FW_GH_REPO}" "v"); then
           echo "✓ FW version fetched: $fw_ver"
         else
           echo "⚠ FW version fetch failed (may be rate limited)"
         fi
 
-        # Test other version fetches
-        if systools_ver=$(fetch_latest_systools_version); then
+        # Test system tools version fetching
+        if systools_ver=$(fetch_latest_version "${TT_SYSTOOLS_GH_REPO}" "v"); then
           echo "✓ System tools version fetched: $systools_ver"
-        else /bin/bash -c "$(curl -fsSL https://github.com/knauth/tt-installer/releases/download//install.sh)"
+        else
           echo "⚠ System tools version fetch failed (may be rate limited)"
         fi
 
-        if smi_ver=$(fetch_latest_smi_version); then
+        # Test SMI version fetching
+        if smi_ver=$(fetch_latest_version "${TT_SMI_GH_REPO}"); then
           echo "✓ SMI version fetched: $smi_ver"
         else
           echo "⚠ SMI version fetch failed (may be rate limited)"
         fi
 
-        if flash_ver=$(fetch_latest_flash_version); then
+        # Test Flash version fetching
+        if flash_ver=$(fetch_latest_version "${TT_FLASH_GH_REPO}"); then
           echo "✓ Flash version fetched: $flash_ver"
         else
           echo "⚠ Flash version fetch failed (may be rate limited)"
