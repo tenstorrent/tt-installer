@@ -762,7 +762,14 @@ install_sfpi() {
 
 	SFPI_FILE="sfpi-${SFPI_FILE_ARCH}_Linux.${SFPI_FILE_EXT}"
 
-	curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+	if curl -fsLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"; then
+        log "Successfully downloaded SFPI package"
+    else
+        warn "SFPI package is not found, retrying download with alternative link"
+        SFPI_FILE="sfpi_${SFPI_VERSION:1}_${SFPI_FILE_ARCH}.${SFPI_FILE_EXT}" # New file name format based on v 6.21.0
+        curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+    fi
+
 	verify_download "${SFPI_FILE}"
 
 	case "${SFPI_FILE_EXT}" in
