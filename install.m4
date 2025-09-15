@@ -1171,7 +1171,7 @@ main() {
 
 	# Log successful completion message
 	log "✅ Installation completed successfully."
-  log "Installation log saved to: ${LOG_FILE}"
+	log "Installation log saved to: ${LOG_FILE}"
 
 	# Auto-reboot if specified
 	if [[ "${REBOOT_OPTION}" = "always" ]]; then
