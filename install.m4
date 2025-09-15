@@ -1155,8 +1155,6 @@ main() {
 		install_sfpi
 	fi
 
-	log "Installation completed successfully!"
-	log "Installation log saved to: ${LOG_FILE}"
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
 		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent's Python tools."
 	fi
@@ -1173,6 +1171,7 @@ main() {
 
 	# Log successful completion message
 	log "✅ Installation completed successfully."
+	log "Installation log saved to: ${LOG_FILE}"
 
 	# Auto-reboot if specified
 	if [[ "${REBOOT_OPTION}" = "always" ]]; then
