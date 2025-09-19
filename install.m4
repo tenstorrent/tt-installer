@@ -770,6 +770,40 @@ log "Installing Kernel-Mode Driver"
 	fi
 }
 
+build_install_hugepages() {
+	log "Setting up HugePages"
+	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
+			TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
+			curl -fsSLO "${TOOLS_URL}"
+			verify_download "${TOOLS_FILENAME}"
+			sudo dpkg -i "${TOOLS_FILENAME}"
+			if [[ "${SYSTEMD_NO}" != 0 ]]
+			then
+				sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+				sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+			fi
+			;;
+		"fedora"|"rhel"|"centos")
+			TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
+			TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
+			curl -fsSLO "${TOOLS_URL}"
+			verify_download "${TOOLS_FILENAME}"
+			sudo dnf install -y "${TOOLS_FILENAME}"
+			if [[ "${SYSTEMD_NO}" != 0 ]]
+			then
+				sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+				sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+			fi
+			;;
+		*)
+			error "This distro is unsupported. Skipping HugePages install!"
+			;;
+	esac
+}
+
 # Function to install SFPI
 install_sfpi() {
 	log "Installing SFPI"
@@ -1072,41 +1106,11 @@ main() {
 	fi
 
 	# Setup HugePages
-	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
 	# Skip HugePages installation if flag is set
 	if [[ "${_arg_install_hugepages}" = "off" ]]; then
 		warn "Skipping HugePages setup"
 	else
-		log "Setting up HugePages"
-		case "${DISTRO_ID}" in
-			"ubuntu"|"debian")
-				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
-				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-				curl -fsSLO "${TOOLS_URL}"
-				verify_download "${TOOLS_FILENAME}"
-				sudo dpkg -i "${TOOLS_FILENAME}"
-				if [[ "${SYSTEMD_NO}" != 0 ]]
-				then
-					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
-				fi
-				;;
-			"fedora"|"rhel"|"centos")
-				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
-				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-				curl -fsSLO "${TOOLS_URL}"
-				verify_download "${TOOLS_FILENAME}"
-				sudo dnf install -y "${TOOLS_FILENAME}"
-				if [[ "${SYSTEMD_NO}" != 0 ]]
-				then
-					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
-				fi
-				;;
-			*)
-				error "This distro is unsupported. Skipping HugePages install!"
-				;;
-		esac
+		build_install_hugepages
 	fi
 
 	# Install TT-SMI
