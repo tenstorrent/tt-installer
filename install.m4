@@ -877,7 +877,7 @@ manual_install_sfpi() {
 }
 
 install_tt_repos () {
-	info "Installing TT repositories to your distribution package manager"
+	log "Installing TT repositories to your distribution package manager"
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
 			# Add the apt listing
@@ -903,7 +903,7 @@ install_tt_repos () {
 }
 
 install_sw_from_repos () {
-	info "Installing software from TT repositories"
+	log "Installing software from TT repositories"
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
 			# For now, install the big three
