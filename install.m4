@@ -1207,11 +1207,11 @@ main() {
 		fi
 	fi
 
-	if [[ ${INSTALL_TT_REPOS} = "on" ]]; then
+	if [[ ${INSTALL_TT_REPOS:-} = "on" ]]; then
 		install_tt_repos
 	fi
 
-	if [[ ${INSTALL_SW_FROM_REPOS} = "on" ]]; then
+	if [[ ${INSTALL_SW_FROM_REPOS:-} = "on" ]]; then
 		install_sw_from_repos
 	fi
 
