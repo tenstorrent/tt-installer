@@ -894,10 +894,10 @@ install_tt_repos () {
 			error_exit "Cannot install TT repos on RPM distros just yet!"
 			;;
 		"rhel"|"centos")
+			error_exit "Cannot install TT repos on RPM distros just yet!"
 			;;
 		*)
-			error_exit "Cannot install TT repos on RPM distros just yet!"
-			exit 1
+			error_exit "Unsupported distro: ${DISTRO_ID}"
 			;;
 	esac
 }
@@ -914,10 +914,10 @@ install_sw_from_repos () {
 			error_exit "Cannot install from TT repos on RPM distros just yet!"
 			;;
 		"rhel"|"centos")
+			error_exit "Cannot install from TT repos on RPM distros just yet!"
 			;;
 		*)
-			error_exit "Cannot install from TT repos on RPM distros just yet!"
-			exit 1
+			error_exit "Unsupported distro: ${DISTRO_ID}"
 			;;
 	esac
 }
