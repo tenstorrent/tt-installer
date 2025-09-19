@@ -881,6 +881,7 @@ install_tt_repos () {
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
 			# Add the apt listing
+			# shellcheck disable=2002
 			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
 
 			# Setup the keyring
