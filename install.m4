@@ -188,6 +188,7 @@ fi
 
 # For the repository mode beta, we will disable the existing install functions
 # and call a new function which installs the dependencies using the APT repo.
+# shellcheck disable=SC2154
 if [[ "${_arg_mode_repository_beta}" = "on" ]]; then
 	_arg_install_hugepages="off"
 	_arg_install_sfpi="off"
