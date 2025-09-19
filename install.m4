@@ -908,7 +908,7 @@ install_sw_from_repos () {
 		"ubuntu"|"debian")
 			# For now, install the big three
 			sudo apt update
-			sudo apt install tenstorrent-dkms tenstorrent-tools sfpi
+			sudo apt install -y tenstorrent-dkms tenstorrent-tools sfpi
 			;;
 		"fedora")
 			error_exit "Cannot install from TT repos on RPM distros just yet!"
