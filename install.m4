@@ -461,6 +461,7 @@ fetch_tt_sw_versions() {
 		"TT_SYSTOOLS_VERSION:_arg_systools_version:SYSTOOLS_VERSION:System Tools:${TT_SYSTOOLS_GH_REPO}:v"
 		"TT_SMI_VERSION:_arg_smi_version:SMI_VERSION:tt-smi:${TT_SMI_GH_REPO}:"
 		"TT_FLASH_VERSION:_arg_flash_version:FLASH_VERSION:tt-flash:${TT_FLASH_GH_REPO}:"
+		"TT_SFPI_VERSION:_arg_sfpi_version:SFPI_VERSION:SFPI:${TT_SFPI_GH_REPO}:v"
 	)
 	
 	# Process each component
@@ -496,7 +497,8 @@ fetch_tt_sw_versions() {
 	      -n "${FW_VERSION}" && "${FW_VERSION}" != "null" && \
 	      -n "${SYSTOOLS_VERSION}" && "${SYSTOOLS_VERSION}" != "null" && \
 	      -n "${SMI_VERSION}" && "${SMI_VERSION}" != "null" && \
-	      -n "${FLASH_VERSION}" && "${FLASH_VERSION}" != "null" ]]; then
+	      -n "${FLASH_VERSION}" && "${FLASH_VERSION}" != "null" && \
+	      -n "${SFPI_VERSION}" && "${SFPI_VERSION}" != "null" ]]; then
 		HAVE_SET_TT_SW_VERSIONS=0
 		log "Using software versions:"
 		log "  TT-KMD: ${KMD_VERSION}"
@@ -504,6 +506,7 @@ fetch_tt_sw_versions() {
 		log "  System Tools: ${SYSTOOLS_VERSION}"
 		log "  tt-smi: ${SMI_VERSION#v}"
 		log "  tt-flash: ${FLASH_VERSION#v}"
+		log "  SFPI: ${SFPI_VERSION#v}"
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
 		error "*** Software versions are empty or null after successful fetch!"
@@ -512,6 +515,7 @@ fetch_tt_sw_versions() {
 		error "  System Tools: '${SYSTOOLS_VERSION}'"
 		error "  tt-smi: '${SMI_VERSION}'"
 		error "  tt-flash: '${FLASH_VERSION}'"
+		error "  SFPI: '${SFPI_VERSION}'"
 		error "This may indicate an issue with the GitHub API responses."
 		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for a fix."
 	fi
@@ -842,6 +846,7 @@ install_sfpi() {
 	esac
 
 	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}.${SFPI_FILE_EXT}"
+	log "Downloading ${SFPI_FILE}"
 
 	curl -fsSLO "${SFPI_RELEASE_URL}/v${SFPI_VERSION}/${SFPI_FILE}"
 	verify_download "${SFPI_FILE}"
@@ -1147,20 +1152,6 @@ main() {
 	fi
 
 	if [[ "${_arg_install_sfpi}" = "on" ]]; then
-		if [[ -n "${TT_SFPI_VERSION:-}" ]]; then
-			SFPI_VERSION="${TT_SFPI_VERSION}"
-		elif [[ -n "${_arg_sfpi_version}" ]]; then
-			SFPI_VERSION="${_arg_sfpi_version}"
-		else
-			if SFPI_VERSION=$(fetch_latest_version "${TT_SFPI_GH_REPO}" "v"); then
-				: # Success, SFPI_VERSION is set
-			else
-				local sfpi_exit_code=$?
-				handle_version_fetch_error "SFPI" "${sfpi_exit_code}" "${TT_SFPI_GH_REPO}"
-				error_exit "Failed to fetch SFPI version. Installation cannot continue."
-			fi
-		fi
-		log "SFPI Version: ${SFPI_VERSION}"
 		install_sfpi
 	fi
 
