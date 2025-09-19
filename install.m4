@@ -49,7 +49,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
 # ARG_OPTIONAL_BOOLEAN([verbose],,[Enable verbose output for debugging])
-# ARG_OPTIONAL_BOOLEAN([mode-repository],,[BETA: Use external repository for package installation.],[off])
+# ARG_OPTIONAL_BOOLEAN([mode-repository-beta],,[BETA: Use external repository for package installation.],[off])
 
 # ARGBASH_GO
 
@@ -184,6 +184,16 @@ if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 	if [[ "${REBOOT_OPTION}" = "ask" ]]; then
 		REBOOT_OPTION="never" # Do not reboot
 	fi
+fi
+
+# For the repository mode beta, we will disable the existing install functions
+# and call a new function which installs the dependencies using the APT repo.
+if [[ "${_arg_mode_repository_beta}" = "on" ]]; then
+	_arg_install_hugepages="off"
+	_arg_install_sfpi="off"
+	_arg_install_kmd="off"
+	export INSTALL_TT_REPOS="on"
+	export INSTALL_SW_FROM_REPOS="on"
 fi
 
 SYSTEMD_NOW="${TT_SYSTEMD_NOW:---now}"
@@ -865,6 +875,51 @@ install_sfpi() {
 	esac
 }
 
+install_tt_repos () {
+	info "Installing TT repositories to your distribution package manager"
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			# Add the apt listing
+			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
+
+			# Setup the keyring
+			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
+
+			# Download the key
+			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
+			;;
+		"fedora")
+			error_exit "Cannot install TT repos on RPM distros just yet!"
+			;;
+		"rhel"|"centos")
+			;;
+		*)
+			error_exit "Cannot install TT repos on RPM distros just yet!"
+			exit 1
+			;;
+	esac
+}
+
+install_sw_from_repos () {
+	info "Installing software from TT repositories"
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			# For now, install the big three
+			sudo apt update
+			sudo apt install tenstorrent-dkms tenstorrent-tools sfpi
+			;;
+		"fedora")
+			error_exit "Cannot install from TT repos on RPM distros just yet!"
+			;;
+		"rhel"|"centos")
+			;;
+		*)
+			error_exit "Cannot install from TT repos on RPM distros just yet!"
+			exit 1
+			;;
+	esac
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -1149,6 +1204,14 @@ main() {
 		else
 			install_podman_metalium_models
 		fi
+	fi
+
+	if [[ ${INSTALL_TT_REPOS} = "on" ]]; then
+		install_tt_repos
+	fi
+
+	if [[ ${INSTALL_SW_FROM_REPOS} = "on" ]]; then
+		install_sw_from_repos
 	fi
 
 	if [[ "${_arg_install_sfpi}" = "on" ]]; then
