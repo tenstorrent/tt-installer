@@ -745,7 +745,7 @@ get_podman_metalium_choice() {
 	fi
 }
 
-build_install_kmd() {
+manual_install_kmd() {
 log "Installing Kernel-Mode Driver"
 	cd "${WORKDIR}"
 	# Get the KMD version, if installed, while silencing errors
@@ -784,7 +784,7 @@ log "Installing Kernel-Mode Driver"
 	fi
 }
 
-build_install_hugepages() {
+manual_install_hugepages() {
 	log "Setting up HugePages"
 	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
 	case "${DISTRO_ID}" in
@@ -819,7 +819,7 @@ build_install_hugepages() {
 }
 
 # Function to install SFPI
-install_sfpi() {
+manual_install_sfpi() {
 	log "Installing SFPI"
 	local arch
 	local SFPI_RELEASE_URL="https://github.com/tenstorrent/sfpi/releases/download"
@@ -1103,7 +1103,7 @@ main() {
 	if [[ "${_arg_install_kmd}" = "off" ]]; then
 		log "Skipping KMD installation"
 	else
-		build_install_kmd
+		manual_install_kmd
 	fi
 
 	# Install TT-Flash and Firmware
@@ -1170,7 +1170,7 @@ main() {
 	if [[ "${_arg_install_hugepages}" = "off" ]]; then
 		warn "Skipping HugePages setup"
 	else
-		build_install_hugepages
+		manual_install_hugepages
 	fi
 
 	# Install TT-SMI
@@ -1215,7 +1215,7 @@ main() {
 	fi
 
 	if [[ "${_arg_install_sfpi}" = "on" ]]; then
-		install_sfpi
+		manual_install_sfpi
 	fi
 
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
