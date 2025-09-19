@@ -49,6 +49,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
 # ARG_OPTIONAL_BOOLEAN([verbose],,[Enable verbose output for debugging])
+# ARG_OPTIONAL_BOOLEAN([mode-repository],,[BETA: Use external repository for package installation.],[off])
 
 # ARGBASH_GO
 
@@ -730,6 +731,45 @@ get_podman_metalium_choice() {
 	fi
 }
 
+build_install_kmd() {
+log "Installing Kernel-Mode Driver"
+	cd "${WORKDIR}"
+	# Get the KMD version, if installed, while silencing errors
+	if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
+		warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
+		if confirm "Force KMD reinstall?"; then
+			sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
+			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+			sudo dkms add tt-kmd
+			sudo dkms install "tenstorrent/${KMD_VERSION}"
+			sudo modprobe tenstorrent
+		else
+			warn "Skipping KMD installation"
+		fi
+	else
+		# Only install KMD if it's not already installed
+		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+		sudo dkms add tt-kmd
+		# Ok so this gets exciting fast, so hang on for a second while I explain
+		# During the offline installer we need to figure out what kernels are actually installed
+		# because the kernel running on the system is not what we just installed and it's going
+		# to complain up a storm if we don't have the headers for the running kernel, which we don't
+		# so lets start by figuring out what kernels we do have (packaging, we can do this by doing a
+		# ls on /lib/modules too but right now I'm doing it this way, deal.
+		# Then we wander through and do dkms for the installed kernels only.  After that instead of
+		# trying to modprobe the module on a system we might not have built for, we check if we match
+		# and only then try modprobe
+		for x in $( eval "${KERNEL_LISTING}" )
+		do
+			sudo dkms install "tenstorrent/${KMD_VERSION}" -k "${x}"
+			if [[ "$( uname -r )" == "${x}" ]]
+			then
+				sudo modprobe tenstorrent
+			fi
+		done
+	fi
+}
+
 # Function to install SFPI
 install_sfpi() {
 	log "Installing SFPI"
@@ -969,42 +1009,7 @@ main() {
 	if [[ "${_arg_install_kmd}" = "off" ]]; then
 		log "Skipping KMD installation"
 	else
-		log "Installing Kernel-Mode Driver"
-		cd "${WORKDIR}"
-		# Get the KMD version, if installed, while silencing errors
-		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
-			warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
-			if confirm "Force KMD reinstall?"; then
-				sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
-				git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-				sudo dkms add tt-kmd
-				sudo dkms install "tenstorrent/${KMD_VERSION}"
-				sudo modprobe tenstorrent
-			else
-				warn "Skipping KMD installation"
-			fi
-		else
-			# Only install KMD if it's not already installed
-			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-			sudo dkms add tt-kmd
-			# Ok so this gets exciting fast, so hang on for a second while I explain
-			# During the offline installer we need to figure out what kernels are actually installed
-			# because the kernel running on the system is not what we just installed and it's going
-			# to complain up a storm if we don't have the headers for the running kernel, which we don't
-			# so lets start by figuring out what kernels we do have (packaging, we can do this by doing a
-			# ls on /lib/modules too but right now I'm doing it this way, deal.
-			# Then we wander through and do dkms for the installed kernels only.  After that instead of
-			# trying to modprobe the module on a system we might not have built for, we check if we match
-			# and only then try modprobe
-			for x in $( eval "${KERNEL_LISTING}" )
-			do
-				sudo dkms install "tenstorrent/${KMD_VERSION}" -k "${x}"
-				if [[ "$( uname -r )" == "${x}" ]]
-				then
-					sudo modprobe tenstorrent
-				fi
-			done
-		fi
+		build_install_kmd
 	fi
 
 	# Install TT-Flash and Firmware
