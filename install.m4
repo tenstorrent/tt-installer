@@ -49,6 +49,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
 # ARG_OPTIONAL_BOOLEAN([verbose],,[Enable verbose output for debugging])
+# ARG_OPTIONAL_BOOLEAN([mode-repository-beta],,[BETA: Use external repository for package installation.],[off])
 
 # ARGBASH_GO
 
@@ -183,6 +184,17 @@ if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 	if [[ "${REBOOT_OPTION}" = "ask" ]]; then
 		REBOOT_OPTION="never" # Do not reboot
 	fi
+fi
+
+# For the repository mode beta, we will disable the existing install functions
+# and call a new function which installs the dependencies using the APT repo.
+# shellcheck disable=SC2154
+if [[ "${_arg_mode_repository_beta}" = "on" ]]; then
+	_arg_install_hugepages="off"
+	_arg_install_sfpi="off"
+	_arg_install_kmd="off"
+	export INSTALL_TT_REPOS="on"
+	export INSTALL_SW_FROM_REPOS="on"
 fi
 
 SYSTEMD_NOW="${TT_SYSTEMD_NOW:---now}"
@@ -460,6 +472,7 @@ fetch_tt_sw_versions() {
 		"TT_SYSTOOLS_VERSION:_arg_systools_version:SYSTOOLS_VERSION:System Tools:${TT_SYSTOOLS_GH_REPO}:v"
 		"TT_SMI_VERSION:_arg_smi_version:SMI_VERSION:tt-smi:${TT_SMI_GH_REPO}:"
 		"TT_FLASH_VERSION:_arg_flash_version:FLASH_VERSION:tt-flash:${TT_FLASH_GH_REPO}:"
+		"TT_SFPI_VERSION:_arg_sfpi_version:SFPI_VERSION:SFPI:${TT_SFPI_GH_REPO}:v"
 	)
 	
 	# Process each component
@@ -495,7 +508,8 @@ fetch_tt_sw_versions() {
 	      -n "${FW_VERSION}" && "${FW_VERSION}" != "null" && \
 	      -n "${SYSTOOLS_VERSION}" && "${SYSTOOLS_VERSION}" != "null" && \
 	      -n "${SMI_VERSION}" && "${SMI_VERSION}" != "null" && \
-	      -n "${FLASH_VERSION}" && "${FLASH_VERSION}" != "null" ]]; then
+	      -n "${FLASH_VERSION}" && "${FLASH_VERSION}" != "null" && \
+	      -n "${SFPI_VERSION}" && "${SFPI_VERSION}" != "null" ]]; then
 		HAVE_SET_TT_SW_VERSIONS=0
 		log "Using software versions:"
 		log "  TT-KMD: ${KMD_VERSION}"
@@ -503,6 +517,7 @@ fetch_tt_sw_versions() {
 		log "  System Tools: ${SYSTOOLS_VERSION}"
 		log "  tt-smi: ${SMI_VERSION#v}"
 		log "  tt-flash: ${FLASH_VERSION#v}"
+		log "  SFPI: ${SFPI_VERSION#v}"
 	else
 		HAVE_SET_TT_SW_VERSIONS=1
 		error "*** Software versions are empty or null after successful fetch!"
@@ -511,6 +526,7 @@ fetch_tt_sw_versions() {
 		error "  System Tools: '${SYSTOOLS_VERSION}'"
 		error "  tt-smi: '${SMI_VERSION}'"
 		error "  tt-flash: '${FLASH_VERSION}'"
+		error "  SFPI: '${SFPI_VERSION}'"
 		error "This may indicate an issue with the GitHub API responses."
 		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for a fix."
 	fi
@@ -730,8 +746,81 @@ get_podman_metalium_choice() {
 	fi
 }
 
+manual_install_kmd() {
+log "Installing Kernel-Mode Driver"
+	cd "${WORKDIR}"
+	# Get the KMD version, if installed, while silencing errors
+	if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
+		warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
+		if confirm "Force KMD reinstall?"; then
+			sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
+			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+			sudo dkms add tt-kmd
+			sudo dkms install "tenstorrent/${KMD_VERSION}"
+			sudo modprobe tenstorrent
+		else
+			warn "Skipping KMD installation"
+		fi
+	else
+		# Only install KMD if it's not already installed
+		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+		sudo dkms add tt-kmd
+		# Ok so this gets exciting fast, so hang on for a second while I explain
+		# During the offline installer we need to figure out what kernels are actually installed
+		# because the kernel running on the system is not what we just installed and it's going
+		# to complain up a storm if we don't have the headers for the running kernel, which we don't
+		# so lets start by figuring out what kernels we do have (packaging, we can do this by doing a
+		# ls on /lib/modules too but right now I'm doing it this way, deal.
+		# Then we wander through and do dkms for the installed kernels only.  After that instead of
+		# trying to modprobe the module on a system we might not have built for, we check if we match
+		# and only then try modprobe
+		for x in $( eval "${KERNEL_LISTING}" )
+		do
+			sudo dkms install "tenstorrent/${KMD_VERSION}" -k "${x}"
+			if [[ "$( uname -r )" == "${x}" ]]
+			then
+				sudo modprobe tenstorrent
+			fi
+		done
+	fi
+}
+
+manual_install_hugepages() {
+	log "Setting up HugePages"
+	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
+			TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
+			curl -fsSLO "${TOOLS_URL}"
+			verify_download "${TOOLS_FILENAME}"
+			sudo dpkg -i "${TOOLS_FILENAME}"
+			if [[ "${SYSTEMD_NO}" != 0 ]]
+			then
+				sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+				sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+			fi
+			;;
+		"fedora"|"rhel"|"centos")
+			TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
+			TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
+			curl -fsSLO "${TOOLS_URL}"
+			verify_download "${TOOLS_FILENAME}"
+			sudo dnf install -y "${TOOLS_FILENAME}"
+			if [[ "${SYSTEMD_NO}" != 0 ]]
+			then
+				sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
+				sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+			fi
+			;;
+		*)
+			error "This distro is unsupported. Skipping HugePages install!"
+			;;
+	esac
+}
+
 # Function to install SFPI
-install_sfpi() {
+manual_install_sfpi() {
 	log "Installing SFPI"
 	local arch
 	local SFPI_RELEASE_URL="https://github.com/tenstorrent/sfpi/releases/download"
@@ -768,6 +857,7 @@ install_sfpi() {
 	esac
 
 	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}.${SFPI_FILE_EXT}"
+	log "Downloading ${SFPI_FILE}"
 
 	curl -fsSLO "${SFPI_RELEASE_URL}/v${SFPI_VERSION}/${SFPI_FILE}"
 	verify_download "${SFPI_FILE}"
@@ -782,6 +872,52 @@ install_sfpi() {
 		*)
 			error "Unexpected SFPI package file extension: '${SFPI_FILE_EXT}'"
 			exit 1
+			;;
+	esac
+}
+
+install_tt_repos () {
+	log "Installing TT repositories to your distribution package manager"
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			# Add the apt listing
+			# shellcheck disable=2002
+			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
+
+			# Setup the keyring
+			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
+
+			# Download the key
+			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
+			;;
+		"fedora")
+			error_exit "Cannot install TT repos on RPM distros just yet!"
+			;;
+		"rhel"|"centos")
+			error_exit "Cannot install TT repos on RPM distros just yet!"
+			;;
+		*)
+			error_exit "Unsupported distro: ${DISTRO_ID}"
+			;;
+	esac
+}
+
+install_sw_from_repos () {
+	log "Installing software from TT repositories"
+	case "${DISTRO_ID}" in
+		"ubuntu"|"debian")
+			# For now, install the big three
+			sudo apt update
+			sudo apt install -y tenstorrent-dkms tenstorrent-tools sfpi
+			;;
+		"fedora")
+			error_exit "Cannot install from TT repos on RPM distros just yet!"
+			;;
+		"rhel"|"centos")
+			error_exit "Cannot install from TT repos on RPM distros just yet!"
+			;;
+		*)
+			error_exit "Unsupported distro: ${DISTRO_ID}"
 			;;
 	esac
 }
@@ -969,42 +1105,7 @@ main() {
 	if [[ "${_arg_install_kmd}" = "off" ]]; then
 		log "Skipping KMD installation"
 	else
-		log "Installing Kernel-Mode Driver"
-		cd "${WORKDIR}"
-		# Get the KMD version, if installed, while silencing errors
-		if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
-			warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
-			if confirm "Force KMD reinstall?"; then
-				sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
-				git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-				sudo dkms add tt-kmd
-				sudo dkms install "tenstorrent/${KMD_VERSION}"
-				sudo modprobe tenstorrent
-			else
-				warn "Skipping KMD installation"
-			fi
-		else
-			# Only install KMD if it's not already installed
-			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-			sudo dkms add tt-kmd
-			# Ok so this gets exciting fast, so hang on for a second while I explain
-			# During the offline installer we need to figure out what kernels are actually installed
-			# because the kernel running on the system is not what we just installed and it's going
-			# to complain up a storm if we don't have the headers for the running kernel, which we don't
-			# so lets start by figuring out what kernels we do have (packaging, we can do this by doing a
-			# ls on /lib/modules too but right now I'm doing it this way, deal.
-			# Then we wander through and do dkms for the installed kernels only.  After that instead of
-			# trying to modprobe the module on a system we might not have built for, we check if we match
-			# and only then try modprobe
-			for x in $( eval "${KERNEL_LISTING}" )
-			do
-				sudo dkms install "tenstorrent/${KMD_VERSION}" -k "${x}"
-				if [[ "$( uname -r )" == "${x}" ]]
-				then
-					sudo modprobe tenstorrent
-				fi
-			done
-		fi
+		manual_install_kmd
 	fi
 
 	# Install TT-Flash and Firmware
@@ -1067,41 +1168,11 @@ main() {
 	fi
 
 	# Setup HugePages
-	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
 	# Skip HugePages installation if flag is set
 	if [[ "${_arg_install_hugepages}" = "off" ]]; then
 		warn "Skipping HugePages setup"
 	else
-		log "Setting up HugePages"
-		case "${DISTRO_ID}" in
-			"ubuntu"|"debian")
-				TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
-				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-				curl -fsSLO "${TOOLS_URL}"
-				verify_download "${TOOLS_FILENAME}"
-				sudo dpkg -i "${TOOLS_FILENAME}"
-				if [[ "${SYSTEMD_NO}" != 0 ]]
-				then
-					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
-				fi
-				;;
-			"fedora"|"rhel"|"centos")
-				TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
-				TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-				curl -fsSLO "${TOOLS_URL}"
-				verify_download "${TOOLS_FILENAME}"
-				sudo dnf install -y "${TOOLS_FILENAME}"
-				if [[ "${SYSTEMD_NO}" != 0 ]]
-				then
-					sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-					sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
-				fi
-				;;
-			*)
-				error "This distro is unsupported. Skipping HugePages install!"
-				;;
-		esac
+		manual_install_hugepages
 	fi
 
 	# Install TT-SMI
@@ -1137,22 +1208,16 @@ main() {
 		fi
 	fi
 
+	if [[ ${INSTALL_TT_REPOS:-} = "on" ]]; then
+		install_tt_repos
+	fi
+
+	if [[ ${INSTALL_SW_FROM_REPOS:-} = "on" ]]; then
+		install_sw_from_repos
+	fi
+
 	if [[ "${_arg_install_sfpi}" = "on" ]]; then
-		if [[ -n "${TT_SFPI_VERSION:-}" ]]; then
-			SFPI_VERSION="${TT_SFPI_VERSION}"
-		elif [[ -n "${_arg_sfpi_version}" ]]; then
-			SFPI_VERSION="${_arg_sfpi_version}"
-		else
-			if SFPI_VERSION=$(fetch_latest_version "${TT_SFPI_GH_REPO}" "v"); then
-				: # Success, SFPI_VERSION is set
-			else
-				local sfpi_exit_code=$?
-				handle_version_fetch_error "SFPI" "${sfpi_exit_code}" "${TT_SFPI_GH_REPO}"
-				error_exit "Failed to fetch SFPI version. Installation cannot continue."
-			fi
-		fi
-		log "SFPI Version: ${SFPI_VERSION}"
-		install_sfpi
+		manual_install_sfpi
 	fi
 
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
