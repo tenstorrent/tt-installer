@@ -885,13 +885,13 @@ manual_install_sfpi() {
 
 	case "${SFPI_FILE_EXT}" in
 		"deb")
-			sudo apt install -y "./${SFPI_FILE}"
+			${ROOT_CMD} apt install -y "./${SFPI_FILE}"
 			;;
 		"rpm")
-			sudo dnf install -y "./${SFPI_FILE}"
+			${ROOT_CMD} dnf install -y "./${SFPI_FILE}"
 			;;
 		"apk")
-			doas apk add "./${SFPI_FILE}"
+			${ROOT_CMD} apk add "./${SFPI_FILE}"
 			;;
 		*)
 			error "Unexpected SFPI package file extension: '${SFPI_FILE_EXT}'"
@@ -1012,25 +1012,25 @@ main() {
 			${ROOT_CMD} apt update
 			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 				# On Ubuntu 20, install python3-venv and don't install pipx
-				${ROOT_CMD} apt install -y wget git python3-pip python3-venv dkms cargo rustc jq
+				${ROOT_CMD} apt install -y git python3-pip python3-venv dkms cargo rustc jq
 			else
-				${ROOT_CMD} DEBIAN_FRONTEND=noninteractive apt install -y wget git python3-pip dkms cargo rustc pipx jq
+				${ROOT_CMD} DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq
 			fi
 			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			${ROOT_CMD} apt update
-			${ROOT_CMD} apt install -y wget git python3-pip dkms pipx jq
+			${ROOT_CMD} apt install -y git python3-pip dkms pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
 			;;
 		"fedora")
-			${ROOT_CMD} dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
+			${ROOT_CMD} dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_FEDORA}"
 			;;
 		"rhel"|"centos")
 			${ROOT_CMD} dnf install -y epel-release
-			${ROOT_CMD} dnf install -y wget git python3-pip python3-devel dkms cargo rust pipx jq
+			${ROOT_CMD} dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq
 			KERNEL_LISTING="${KERNEL_LISTING_EL}"
 			;;
 		"alpine")
@@ -1284,7 +1284,7 @@ main() {
 			"alpine")
 				TOOLS_FILENAME="tt-system-tools-${SYSTOOLS_VERSION}-r0.apk"
 				TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-				wget "${TOOLS_URL}"
+				curl -fsSLO "${TOOLS_URL}"
 				verify_download "${TOOLS_FILENAME}"
 				${ROOT_CMD} apk add "${TOOLS_FILENAME}" --allow-untrusted
 				${ROOT_CMD} rc-update add tenstorrent-hugepages
