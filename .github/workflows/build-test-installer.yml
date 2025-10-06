@@ -53,129 +53,19 @@ jobs:
           name: install-script
           path: install.sh
 
-  test-installer:
-    name: Test installer
+  test-debian-ubuntu:
+    name: Test Debian/Ubuntu
     needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        distro:
-          - ubuntu:22.04
-          - ubuntu:24.04
-          - debian:12
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download install.sh
-      uses: actions/download-artifact@v4
-      with:
-        name: install-script
-
-    - name: Test in container
-      run: |
-        docker run --rm -v "$PWD:/workspace" -w /workspace ${{ matrix.distro }} bash -c "
-          set -e
-
-          # Update package manager and install sudo
-          if command -v apt >/dev/null; then
-            apt update
-            apt install -y git python3-pip jq curl sudo
-          fi
-
-          # Create a non-root user for testing
-          useradd -m -s /bin/bash testuser
-          echo 'testuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/testuser
-
-          # Copy workspace to user home and change ownership
-          cp -r /workspace /home/testuser/workspace
-          chown -R testuser:testuser /home/testuser/workspace
-
-          # Switch to test user and run installer
-          su - testuser -c '
-            cd /home/testuser/workspace
-
-            # Test configuration (skip hardware-dependent steps)
-            export TT_MODE_NON_INTERACTIVE=0
-            export TT_INSTALL_KMD=1
-            export TT_INSTALL_HUGEPAGES=1
-            export TT_UPDATE_FIRMWARE=1
-            export TT_INSTALL_METALIUM_CONTAINER=1
-            export TT_SFPI_INSTALL=1
-            export TT_PYTHON_CHOICE=new-venv
-            export TT_REBOOT_OPTION=never
-
-            # Run installer
-            timeout 600 bash install.sh || {
-              echo \"Installer timed out or failed\"
-              exit 1
-            }
-
-            echo \"✓ Installer completed successfully in container mode\"
-          '
-        "
+    uses: ./.github/workflows/test-debian-ubuntu.yml
+    with:
+      artifact_name: install-script
 
   test-fedora:
+    name: Test Fedora
     needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        distro:
-          - fedora:41
-          - fedora:42
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download install.sh
-      uses: actions/download-artifact@v4
-      with:
-        name: install-script
-
-    - name: Test in Fedora container
-      run: |
-        docker run --rm -v "$PWD:/workspace" -w /workspace ${{ matrix.distro }} bash -c "
-          set -e
-
-          # Update package manager and install sudo
-          dnf update -y
-          dnf install -y git python3-pip jq curl sudo
-
-          # Create a non-root user for testing
-          useradd -m -s /bin/bash testuser
-          echo 'testuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/testuser
-
-          # Copy workspace to user home and change ownership
-          cp -r /workspace /home/testuser/workspace
-          chown -R testuser:testuser /home/testuser/workspace
-
-          # Switch to test user and run installer
-          su - testuser -c '
-            cd /home/testuser/workspace
-
-            # Test configuration (skip hardware-dependent steps)
-            export TT_MODE_NON_INTERACTIVE=0
-            export TT_INSTALL_KMD=1
-            export TT_INSTALL_HUGEPAGES=1
-            export TT_UPDATE_FIRMWARE=1
-            export TT_INSTALL_METALIUM_CONTAINER=1
-            export TT_SFPI_INSTALL=1
-            export TT_PYTHON_CHOICE=new-venv
-            export TT_REBOOT_OPTION=never
-
-            # Run installer
-            timeout 300 bash install.sh || {
-              echo \"Installer timed out or failed\"
-              exit 1
-            }
-
-            echo \"✓ Installer completed successfully in Fedora\"
-          '
-        "
+    uses: ./.github/workflows/test-fedora.yml
+    with:
+      artifact_name: install-script
 
   test-template-syntax:
     needs: build
@@ -317,7 +207,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only run if the build workflow completed successfully AND it was triggered by a version tag
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, test-installer, test-fedora]
+    needs: [build, test-debian-ubuntu, test-fedora]
 
     permissions:
       contents: write
