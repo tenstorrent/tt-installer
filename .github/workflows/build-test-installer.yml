@@ -67,6 +67,13 @@ jobs:
     with:
       artifact_name: install-script
 
+  test-hosted-n150:
+    name: Test Hosted N150
+    needs: build
+    uses: ./.github/workflows/test-hosted-n150.yml
+    with:
+      artifact_name: install-script
+
   test-template-syntax:
     needs: build
     runs-on: ubuntu-latest
@@ -207,7 +214,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only run if the build workflow completed successfully AND it was triggered by a version tag
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, test-debian-ubuntu, test-fedora]
+    needs: [build, test-debian-ubuntu, test-fedora, test-hosted-n150]
 
     permissions:
       contents: write
