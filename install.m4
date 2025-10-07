@@ -376,26 +376,35 @@ fetch_latest_version() {
 	local response_body
 	local latest_version
 
-	# Choose curl verbosity based on verbose flag
-	local curl_verbose_flag="-s"
-	# shellcheck disable=SC2154
+	# Curl options
+	# We always suppress connect headers (fixes issues with systems using proxies)
+	# -D - dumps the headers to stdout
+	curl_opts=(--suppress-connect-headers -D -)
+
 	if [[ "${_arg_verbose}" = "on" ]]; then
-		curl_verbose_flag="-v"
-	fi
-
-	# Use -i to include headers in output for rate limit detection
-	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl "${curl_verbose_flag}" -i --request GET \
-		    	   -H "Authorization: token ${_arg_github_token}" \
-				   https://api.github.com/repos/"${repo}"/releases/latest)
+		curl_opts+=(-v)
 	else
-		response=$(curl "${curl_verbose_flag}" -i --request GET \
-				  https://api.github.com/repos/"${repo}"/releases/latest)
+		curl_opts+=(-s -S)
 	fi
 
-	# Split response into headers and body
+	if [[ -n "${_arg_github_token}" ]]; then
+		curl_opts+=(-H "Authorization: token ${_arg_github_token}")
+	fi
+
+	response=$(curl "${curl_opts[@]}" \
+		https://api.github.com/repos/"${repo}"/releases/latest)
+
+	# Split at the first blank line
 	response_headers=$(echo "${response}" | sed '/^\r*$/,$d')
 	response_body=$(echo "${response}" | sed '1,/^\r*$/d')
+
+	if [[ "${_arg_verbose}" = "on" ]]; then
+		echo "=== GitHub API Response Headers ===" >&2
+		echo "${response_headers}" >&2
+		echo "=== GitHub API Response Body ===" >&2
+		echo "${response_body}" >&2
+		echo "===================================" >&2
+	fi
 
 	# Check for GitHub API rate limit
 	if echo "${response_headers}" | grep -qi "x-ratelimit-remaining: 0"; then
@@ -404,14 +413,6 @@ fetch_latest_version() {
 
 	# Check if response body is valid JSON
 	if ! echo "${response_body}" | jq . >/dev/null 2>&1; then
-		# In verbose mode, print headers and content for debugging
-		if [[ "${_arg_verbose}" = "on" ]]; then
-			echo "=== GitHub API Response Headers ===" >&2
-			echo "${response_headers}" >&2
-			echo "=== GitHub API Response Body ===" >&2
-			echo "${response_body}" >&2
-			echo "===================================" >&2
-		fi
 		return 3  # Invalid JSON response
 	fi
 
