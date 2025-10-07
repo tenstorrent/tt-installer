@@ -404,6 +404,14 @@ fetch_latest_version() {
 
 	# Check if response body is valid JSON
 	if ! echo "${response_body}" | jq . >/dev/null 2>&1; then
+		# In verbose mode, print headers and content for debugging
+		if [[ "${_arg_verbose}" = "on" ]]; then
+			echo "=== GitHub API Response Headers ===" >&2
+			echo "${response_headers}" >&2
+			echo "=== GitHub API Response Body ===" >&2
+			echo "${response_body}" >&2
+			echo "===================================" >&2
+		fi
 		return 3  # Invalid JSON response
 	fi
 
