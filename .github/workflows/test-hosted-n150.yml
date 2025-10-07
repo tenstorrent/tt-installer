@@ -15,6 +15,12 @@ jobs:
     runs-on: tt-ubuntu-2204-n150-stable
 
     steps:
+    - name: Prepare system
+      run: |
+        # The runners come with docker preinstalled but we want to
+        # simulate a completely blank system for our Podman install
+        sudo apt-get purge -y docker-ce docker-ce-cli containerd.io
+
     - name: Checkout code
       uses: actions/checkout@v4
 
