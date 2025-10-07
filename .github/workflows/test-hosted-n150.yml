@@ -27,6 +27,6 @@ jobs:
       run: |
         # Run installer with all components enabled except firmware update
         # This tests the full installation process on real hardware
-        timeout 1800 sudo bash install.sh --update-firmware=off --mode-non-interactive
+        timeout 1800 sudo bash install.sh --update-firmware=off --mode-non-interactive --verbose
 
         echo "✓ Installer completed successfully on hosted N150"
