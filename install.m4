@@ -381,6 +381,8 @@ fetch_latest_version() {
 	# -D - dumps the headers to stdout
 	curl_opts=(--suppress-connect-headers -D -)
 
+	# SC is worried this might not exist, but argbash guarantees it will
+    # shellcheck disable=SC2154
 	if [[ "${_arg_verbose}" = "on" ]]; then
 		curl_opts+=(-v)
 	else
