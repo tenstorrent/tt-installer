@@ -1,0 +1,38 @@
+name: Test Installer - Hosted N150
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: 'Name of the install script artifact'
+        required: true
+        type: string
+        default: 'install-script'
+
+jobs:
+  test-hosted-n150:
+    name: Test on hosted N150
+    runs-on: tt-ubuntu-2204-n150-stable
+
+    steps:
+    - name: Prepare system
+      run: |
+        # The runners come with docker preinstalled but we want to
+        # simulate a completely blank system for our Podman install
+        sudo apt-get purge -y docker-ce docker-ce-cli containerd.io
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+
+    - name: Run installer on hosted N150
+      run: |
+        # Run installer with all components enabled except firmware update
+        # This tests the full installation process on real hardware
+        timeout 1800 sudo bash install.sh --update-firmware=off --mode-non-interactive --verbose
+
+        echo "✓ Installer completed successfully on hosted N150"

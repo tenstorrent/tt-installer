@@ -1,0 +1,70 @@
+name: Test Installer - Fedora
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: 'Name of the install script artifact'
+        required: true
+        type: string
+        default: 'install-script'
+
+jobs:
+  test-fedora:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - fedora:41
+          - fedora:42
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+
+    - name: Test in Fedora container
+      run: |
+        docker run --rm -v "$PWD:/workspace" -w /workspace ${{ matrix.distro }} bash -c "
+          set -e
+
+          # Update package manager and install sudo
+          dnf update -y
+          dnf install -y git python3-pip jq curl sudo
+
+          # Create a non-root user for testing
+          useradd -m -s /bin/bash testuser
+          echo 'testuser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/testuser
+
+          # Copy workspace to user home and change ownership
+          cp -r /workspace /home/testuser/workspace
+          chown -R testuser:testuser /home/testuser/workspace
+
+          # Switch to test user and run installer
+          su - testuser -c '
+            cd /home/testuser/workspace
+
+            # Test configuration (skip hardware-dependent steps)
+            export TT_MODE_NON_INTERACTIVE=0
+            export TT_INSTALL_KMD=1
+            export TT_INSTALL_HUGEPAGES=1
+            export TT_UPDATE_FIRMWARE=1
+            export TT_INSTALL_METALIUM_CONTAINER=1
+            export TT_SFPI_INSTALL=1
+            export TT_PYTHON_CHOICE=new-venv
+            export TT_REBOOT_OPTION=never
+
+            # Run installer
+            timeout 300 bash install.sh || {
+              echo \"Installer timed out or failed\"
+              exit 1
+            }
+
+            echo \"✓ Installer completed successfully in Fedora\"
+          '
+        "

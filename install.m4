@@ -366,61 +366,72 @@ get_python_choice() {
 fetch_latest_version() {
 	local repo="$1"
 	local prefix_to_remove="${2:-}"
-	
+
 	if ! command -v jq &> /dev/null; then
 		return 1  # jq not installed
 	fi
-	
+
 	local response
 	local response_headers
 	local response_body
 	local latest_version
-	
-	# Choose curl verbosity based on verbose flag
-	local curl_verbose_flag="-s"
-	# shellcheck disable=SC2154
+
+	# Curl options
+	# We always suppress connect headers (fixes issues with systems using proxies)
+	# -D - dumps the headers to stdout
+	curl_opts=(--suppress-connect-headers -D -)
+
+	# SC is worried this might not exist, but argbash guarantees it will
+    # shellcheck disable=SC2154
 	if [[ "${_arg_verbose}" = "on" ]]; then
-		curl_verbose_flag="-v"
-	fi
-	
-	# Use -i to include headers in output for rate limit detection
-	if [[ -n "${_arg_github_token}" ]]; then
-		response=$(curl "${curl_verbose_flag}" -i --request GET \
-		    	   -H "Authorization: token ${_arg_github_token}" \
-				   https://api.github.com/repos/"${repo}"/releases/latest)
+		curl_opts+=(-v)
 	else
-		response=$(curl "${curl_verbose_flag}" -i --request GET \
-				  https://api.github.com/repos/"${repo}"/releases/latest)
+		curl_opts+=(-s -S)
 	fi
-	
-	# Split response into headers and body
+
+	if [[ -n "${_arg_github_token}" ]]; then
+		curl_opts+=(-H "Authorization: token ${_arg_github_token}")
+	fi
+
+	response=$(curl "${curl_opts[@]}" \
+		https://api.github.com/repos/"${repo}"/releases/latest)
+
+	# Split at the first blank line
 	response_headers=$(echo "${response}" | sed '/^\r*$/,$d')
 	response_body=$(echo "${response}" | sed '1,/^\r*$/d')
-	
+
+	if [[ "${_arg_verbose}" = "on" ]]; then
+		echo "=== GitHub API Response Headers ===" >&2
+		echo "${response_headers}" >&2
+		echo "=== GitHub API Response Body ===" >&2
+		echo "${response_body}" >&2
+		echo "===================================" >&2
+	fi
+
 	# Check for GitHub API rate limit
 	if echo "${response_headers}" | grep -qi "x-ratelimit-remaining: 0"; then
 		return 2  # GitHub API rate limit exceeded
 	fi
-	
+
 	# Check if response body is valid JSON
 	if ! echo "${response_body}" | jq . >/dev/null 2>&1; then
 		return 3  # Invalid JSON response
 	fi
-	
+
 	latest_version=$(echo "${response_body}" | jq -r '.tag_name' 2>/dev/null)
 
 	# Check if we got a valid tag_name
 	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
 		return 4  # No tag_name found
 	fi
-	
+
 	# Remove prefix if specified
 	if [[ -n "${prefix_to_remove}" ]]; then
 		echo "${latest_version#"${prefix_to_remove}"}"
 	else
 		echo "${latest_version}"
 	fi
-	
+
 	return 0
 }
 
@@ -429,7 +440,7 @@ handle_version_fetch_error() {
 	local component="$1"
 	local error_code="$2"
 	local repo="$3"
-	
+
 	case ${error_code} in
 		1)
 			error "jq command not found!"
@@ -464,7 +475,7 @@ handle_version_fetch_error() {
 
 fetch_tt_sw_versions() {
 	local fetch_errors=0
-	
+
 	# Component configuration: env_var:arg_var:version_var:display_name:repo:prefix
 	local components=(
 		"TT_KMD_VERSION:_arg_kmd_version:KMD_VERSION:TT-KMD:${TT_KMD_GH_REPO}:ttkmd-"
@@ -474,11 +485,11 @@ fetch_tt_sw_versions() {
 		"TT_FLASH_VERSION:_arg_flash_version:FLASH_VERSION:tt-flash:${TT_FLASH_GH_REPO}:"
 		"TT_SFPI_VERSION:_arg_sfpi_version:SFPI_VERSION:SFPI:${TT_SFPI_GH_REPO}:v"
 	)
-	
+
 	# Process each component
 	for component_config in "${components[@]}"; do
 		IFS=':' read -r env_var arg_var version_var display_name repo prefix <<< "${component_config}"
-		
+
 		# Use environment variable if set, then argbash version if present, otherwise latest
 		if [[ -n "${!env_var:-}" ]]; then
 			declare -g "${version_var}=${!env_var}"
