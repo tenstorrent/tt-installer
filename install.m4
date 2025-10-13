@@ -71,6 +71,7 @@ KERNEL_LISTING_DEBIAN=$( cat << EOF
 	grep linux-image |
 	awk 'BEGIN { FS="/"; } { print \$1; }' |
 	sed 's/^linux-image-//g' |
+	sed 's/^unsigned-//g' |
 	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$\|virtual"
 EOF
 )
@@ -80,6 +81,7 @@ KERNEL_LISTING_UBUNTU=$( cat << EOF
 	grep linux-image |
 	awk 'BEGIN { FS="/"; } { print \$1; }' |
 	sed 's/^linux-image-//g' |
+	sed 's/^unsigned-//g' |
 	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$\|virtual"
 EOF
 )
