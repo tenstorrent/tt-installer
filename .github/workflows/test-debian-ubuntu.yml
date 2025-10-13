@@ -1,4 +1,4 @@
-name: Test Installer - Debian/Ubuntu
+name: Test Installer - Debian/Ubuntu/openKylin
 
 on:
   workflow_call:
@@ -20,6 +20,7 @@ jobs:
           - ubuntu:22.04
           - ubuntu:24.04
           - debian:12
+          - openkylin:2.0
 
     steps:
     - name: Checkout code
