@@ -562,7 +562,7 @@ install_podman() {
 
 	# Install Podman using package manager
 	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
+		"ubuntu"|"debian"|"openkylin")
 			sudo apt install -y podman podman-docker
 			;;
 		"fedora")
@@ -802,7 +802,7 @@ manual_install_hugepages() {
 	log "Setting up HugePages"
 	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
 	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
+		"ubuntu"|"debian"|"openkylin")
 			TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
 			TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
 			curl -fsSLO "${TOOLS_URL}"
@@ -857,7 +857,7 @@ manual_install_sfpi() {
 	esac
 
 	case "${DISTRO_ID}" in
-		"debian"|"ubuntu")
+		"debian"|"ubuntu"|"openkylin")
 			SFPI_FILE_EXT="deb"
 			;;
 		"centos"|"fedora"|"rhel")
@@ -892,7 +892,7 @@ manual_install_sfpi() {
 install_tt_repos () {
 	log "Installing TT repositories to your distribution package manager"
 	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
+		"ubuntu"|"debian"|"openkylin")
 			# Add the apt listing
 			# shellcheck disable=2002
 			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
@@ -918,7 +918,7 @@ install_tt_repos () {
 install_sw_from_repos () {
 	log "Installing software from TT repositories"
 	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
+		"ubuntu"|"debian"|"openkylin")
 			# For now, install the big three
 			sudo apt update
 			sudo apt install -y tenstorrent-dkms tenstorrent-tools sfpi
@@ -939,7 +939,7 @@ install_sw_from_repos () {
 main() {
 	echo -e "${LOGO}"
 	echo # newline
-	INSTALLER_VERSION="__INSTALLER_DEVELOPMENT_BUILD__" # Set to semver at release time by GitHub Actions
+	INSTALLER_VERSION="1.8.1" # Set to semver at release time by GitHub Actions
 	log "Welcome to tenstorrent!"
 	log "This is tt-installer version ${INSTALLER_VERSION}"
 	log "Log is at ${LOG_FILE}"
@@ -1007,7 +1007,7 @@ main() {
 			fi
 			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
-		"debian")
+		"debian"|"openkylin")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt update
 			sudo apt install -y git python3-pip dkms pipx jq protobuf-compiler
