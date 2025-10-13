@@ -939,7 +939,7 @@ install_sw_from_repos () {
 main() {
 	echo -e "${LOGO}"
 	echo # newline
-	INSTALLER_VERSION="1.8.1" # Set to semver at release time by GitHub Actions
+	INSTALLER_VERSION="__INSTALLER_DEVELOPMENT_BUILD__" # Set to semver at release time by GitHub Actions
 	log "Welcome to tenstorrent!"
 	log "This is tt-installer version ${INSTALLER_VERSION}"
 	log "Log is at ${LOG_FILE}"
