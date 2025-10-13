@@ -20,7 +20,7 @@ jobs:
           - ubuntu:22.04
           - ubuntu:24.04
           - debian:12
-          - openkylin:2.0
+          - openkylin/openkylin:2.0
 
     steps:
     - name: Checkout code
