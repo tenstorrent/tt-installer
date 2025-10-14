@@ -808,8 +808,14 @@ manual_install_hugepages() {
 			sudo dpkg -i "${TOOLS_FILENAME}"
 			if [[ "${SYSTEMD_NO}" != 0 ]]
 			then
-				sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-				sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+				# adding quotes around SYSTEMD_NOW means they won't be
+				# interpretted, which is exactly what we want them to be
+				# shellcheck disable=2086
+				sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
+				# adding quotes around SYSTEMD_NOW means they won't be
+				# interpretted, which is exactly what we want them to be
+				# shellcheck disable=2086
+				sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
 			fi
 			;;
 		"fedora"|"rhel"|"centos")
@@ -820,8 +826,14 @@ manual_install_hugepages() {
 			sudo dnf install -y "${TOOLS_FILENAME}"
 			if [[ "${SYSTEMD_NO}" != 0 ]]
 			then
-				sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-				sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+				# adding quotes around SYSTEMD_NOW means they won't be
+				# interpretted, which is exactly what we want them to be
+				# shellcheck disable=2086
+				sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
+				# adding quotes around SYSTEMD_NOW means they won't be
+				# interpretted, which is exactly what we want them to be
+				# shellcheck disable=2086
+				sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
 			fi
 			;;
 		*)
@@ -1095,7 +1107,10 @@ main() {
 			;;
 		"pipx")
 			log "Using pipx for isolated package installation"
-			pipx ensurepath "${PIPX_ENSUREPATH_EXTRAS}"
+			# adding quotes around PIPX_ENSUREPATH_EXTRAS means they won't be
+			# interpretted, which is exactly what we want them to be
+			# shellcheck disable=2086
+			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
 			# Enable the pipx path in this shell session
 			export PATH="${PATH}:${HOME}/.local/bin/"
 			INSTALLED_IN_VENV=1
