@@ -889,7 +889,6 @@ manual_install_sfpi() {
 		curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
 	fi
 
-
 	verify_download "${SFPI_FILE}"
 
 	case "${SFPI_FILE_EXT}" in
