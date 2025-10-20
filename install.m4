@@ -882,7 +882,14 @@ manual_install_sfpi() {
 	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}_linux.${SFPI_FILE_EXT}"
 	log "Downloading ${SFPI_FILE}"
 
-	curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+    # shellcheck disable=SC2154
+	if [[ "${_arg_verbose}" = "on" ]]; then
+		curl -fvSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+	else
+		curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+	fi
+
+
 	verify_download "${SFPI_FILE}"
 
 	case "${SFPI_FILE_EXT}" in
