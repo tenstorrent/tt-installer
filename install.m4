@@ -848,6 +848,7 @@ manual_install_sfpi() {
 	local arch
 	local SFPI_RELEASE_URL="https://github.com/tenstorrent/sfpi/releases/download"
 	local SFPI_FILE_ARCH
+	local SFPI_DISTRO_TYPE
 	local SFPI_FILE_EXT
 	local SFPI_FILE
 
@@ -869,9 +870,11 @@ manual_install_sfpi() {
 	case "${DISTRO_ID}" in
 		"debian"|"ubuntu")
 			SFPI_FILE_EXT="deb"
+			SFPI_DISTRO_TYPE="debian"
 			;;
 		"centos"|"fedora"|"rhel")
 			SFPI_FILE_EXT="rpm"
+			SFPI_DISTRO_TYPE="fedora"
 			;;
 		*)
 			error "Unsupported distribution for SFPI installation: ${DISTRO_ID}"
@@ -879,7 +882,7 @@ manual_install_sfpi() {
 			;;
 	esac
 
-	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}_linux.${SFPI_FILE_EXT}"
+	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}_${SFPI_DISTRO_TYPE}.${SFPI_FILE_EXT}"
 	log "Downloading ${SFPI_FILE}"
 
     # shellcheck disable=SC2154
