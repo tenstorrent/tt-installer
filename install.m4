@@ -19,6 +19,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
 # ARG_OPTIONAL_BOOLEAN([install-sfpi],,[Install SFPI],[on])
+# ARG_OPTIONAL_BOOLEAN([install-inference-server],,[Install tt-inference-server],[on])
 
 # =========================  Podman Metalium Arguments =========================
 # ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
@@ -757,6 +758,23 @@ get_podman_metalium_choice() {
 	fi
 }
 
+get_inference_server_choice() {
+	# In non-interactive mode, use the provided argument
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+		log "Non-interactive mode, using tt-inference-server installation preference: ${_arg_install_inference_server}"
+		return
+	fi
+
+	# Interactive mode - allow override
+	log "Would you like to install tt-inference-server?"
+	log "This will clone the inference server repository to ~/.local/lib and create a wrapper script"
+	if confirm "Install tt-inference-server"; then
+		_arg_install_inference_server="on"
+	else
+		_arg_install_inference_server="off"
+	fi
+}
+
 manual_install_kmd() {
 log "Installing Kernel-Mode Driver"
 	cd "${WORKDIR}"
@@ -954,6 +972,53 @@ install_sw_from_repos () {
 	esac
 }
 
+install_inference_server () {
+	log "Installing tt-inference-server"
+	local INFERENCE_SERVER_LIB_DIR="${HOME}/.local/lib"
+	local INFERENCE_SERVER_BIN_DIR="${HOME}/.local/bin"
+	local INFERENCE_SERVER_SCRIPT_NAME="tt-inference-server"
+	local INFERENCE_SERVER_REPO_URL="https://github.com/tenstorrent/tt-inference-server.git"
+
+	# Create directories
+	mkdir -p "${INFERENCE_SERVER_LIB_DIR}" || error_exit "Failed to create library directory"
+	mkdir -p "${INFERENCE_SERVER_BIN_DIR}" || error_exit "Failed to create bin directory"
+
+	# Clone the repository
+	log "Cloning tt-inference-server repository..."
+	if [[ -d "${INFERENCE_SERVER_LIB_DIR}/tt-inference-server" ]]; then
+		warn "tt-inference-server directory already exists at ${INFERENCE_SERVER_LIB_DIR}/tt-inference-server"
+		if confirm "Remove existing directory and re-clone?"; then
+			rm -rf "${INFERENCE_SERVER_LIB_DIR}/tt-inference-server"
+			git clone "${INFERENCE_SERVER_REPO_URL}" "${INFERENCE_SERVER_LIB_DIR}/tt-inference-server" || error_exit "Failed to clone tt-inference-server"
+		else
+			warn "Skipping clone, will create wrapper script only"
+		fi
+	else
+		git clone "${INFERENCE_SERVER_REPO_URL}" "${INFERENCE_SERVER_LIB_DIR}/tt-inference-server" || error_exit "Failed to clone tt-inference-server"
+	fi
+
+	# Create wrapper script
+	log "Creating wrapper script..."
+	cat > "${INFERENCE_SERVER_BIN_DIR}/${INFERENCE_SERVER_SCRIPT_NAME}" << 'EOF'
+#!/bin/bash
+
+cd ${HOME}/.local/lib/tt-inference-server
+python ${HOME}/.local/lib/tt-inference-server/run.py "$@"
+EOF
+
+	# Make the script executable
+	chmod +x "${INFERENCE_SERVER_BIN_DIR}/${INFERENCE_SERVER_SCRIPT_NAME}" || error_exit "Failed to make script executable"
+
+	# Check if the directory is in PATH
+	if [[ ":${PATH}:" != *":${INFERENCE_SERVER_BIN_DIR}:"* ]]; then
+		warn "${INFERENCE_SERVER_BIN_DIR} is not in your PATH."
+		warn "A restart may fix this, or you may need to update your shell RC"
+	fi
+
+	log "tt-inference-server installation completed"
+	return 0
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -994,6 +1059,9 @@ main() {
 	fi
 	if [[ "${_arg_install_sfpi}" = "off" ]]; then
 		warn "SFPI installation will be skipped"
+	fi
+	if [[ "${_arg_install_inference_server}" = "off" ]]; then
+		warn "tt-inference-server installation will be skipped"
 	fi
 	# shellcheck disable=SC2154
 	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
@@ -1081,6 +1149,9 @@ main() {
 
 	# Get Podman Metalium installation choice
 	get_podman_metalium_choice
+
+	# Get tt-inference-server installation choice
+	get_inference_server_choice
 
 	# Python package installation preference
 	get_python_choice
@@ -1255,6 +1326,10 @@ main() {
 		manual_install_sfpi
 	fi
 
+	if [[ "${_arg_install_inference_server}" = "on" ]]; then
+		install_inference_server
+	fi
+
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
 		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent's Python tools."
 	fi
@@ -1267,6 +1342,11 @@ main() {
 		log "  tt-metalium                   # Start an interactive shell"
 		log "  tt-metalium [command]         # Run a specific command"
 		log "  tt-metalium python script.py  # Run a Python script"
+	fi
+	if [[ "${_arg_install_inference_server}" = "on" ]]; then
+		log "Use 'tt-inference-server' to run the inference server"
+		log "The inference server has been installed to ~/.local/lib/tt-inference-server"
+		log "Usage: tt-inference-server [arguments]"
 	fi
 
 	# Log successful completion message
