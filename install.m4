@@ -268,19 +268,9 @@ detect_distro() {
 		. /etc/os-release
 		DISTRO_ID=${ID}
 		DISTRO_VERSION=${VERSION_ID}
-		check_is_ubuntu_20
 	else
 		error "Cannot detect Linux distribution"
 		exit 1
-	fi
-}
-
-check_is_ubuntu_20() {
-	# Check if it's Ubuntu and version starts with 20
-	if [[ "${DISTRO_ID}" = "ubuntu" ]] && [[ "${DISTRO_VERSION}" == 20* ]]; then
-		IS_UBUNTU_20=0 # Ubuntu 20.xx
-	else
-		IS_UBUNTU_20=1 # Not that
 	fi
 }
 
@@ -324,9 +314,7 @@ get_python_choice() {
 		echo "1) active-venv: Use the active virtual environment"
 		echo "2) new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
 		echo "3) system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
-		if [[ "${IS_UBUNTU_20}" != "0" ]]; then
-			echo "4) pipx: Use pipx for isolated package installation"
-		fi
+		echo "4) pipx: Use pipx for isolated package installation"
 		read -rp "Enter your choice (1-4) or press enter for default (${_arg_python_choice}): " user_choice
 		echo # newline
 
@@ -707,13 +695,6 @@ EOF
 }
 
 get_podman_metalium_choice() {
-	# If we're on Ubuntu 20, Podman is not available - force disable
-	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
-		_arg_install_metalium_container="off"
-		_arg_install_metalium_models_container="off"
-		_arg_install_podman="off"
-		return
-	fi
 	# In non-interactive mode, use the provided arguments
 	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 		log "Non-interactive mode, using Podman Metalium installation preference: ${_arg_install_metalium_container}"
@@ -1034,12 +1015,7 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu")
 			sudo apt update
-			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
-				# On Ubuntu 20, install python3-venv and don't install pipx
-				sudo apt install -y git python3-pip python3-venv dkms cargo rustc jq protobuf-compiler
-			else
-				sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
-			fi
+			sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
 			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
@@ -1062,15 +1038,6 @@ main() {
 			exit 1
 			;;
 	esac
-
-	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
-		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
-		warn "Metalium installation will be unavailable. To install Metalium, upgrade to Ubuntu 22+"
-		if [[ "${_arg_install_sfpi}" = "on" ]]; then
-			warn "Pre-packaged SFPI is unavailable for Ubuntu 20; disabling"
-			_arg_install_sfpi="off"
-		fi
-	fi
 
 	if [[ "${DISTRO_ID}" = "debian" ]]; then
 		warn "rustc and cargo cannot be automatically installed on Debian. Ensure the latest versions are installed before continuing."
@@ -1100,12 +1067,6 @@ main() {
 
 	# Python package installation preference
 	get_python_choice
-
-	# Enforce restrictions on Ubuntu 20
-	if [[ "${IS_UBUNTU_20}" = "0" ]] && [[ "${PYTHON_CHOICE}" = "pipx" ]]; then
-		warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"
-		PYTHON_CHOICE="new-venv"
-	fi
 
 	# Set up Python environment based on choice
 	case ${PYTHON_CHOICE} in
