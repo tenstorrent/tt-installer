@@ -958,11 +958,11 @@ install_sw_from_repos () {
 			sudo apt install -y tenstorrent-dkms tenstorrent-tools sfpi
 			;;
 		"fedora")
-			sudo dnf install tenstorrent-dkms tenstorrent-tools sfpi
+			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
 			;;
 		"rhel"|"centos")
 			warn "RHEL and CentOS are not officially supported. Using Fedora repos."
-			sudo dnf install tenstorrent-dkms tenstorrent-tools sfpi
+			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
 			;;
 		*)
 			error_exit "Unsupported distro: ${DISTRO_ID}"
