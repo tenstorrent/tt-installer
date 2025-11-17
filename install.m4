@@ -924,24 +924,24 @@ install_tt_repos () {
 			;;
 		"fedora")
 			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
-			[Tenstorrent]
-			name=Tenstorrent
-			baseurl=https://ppa.tenstorrent.com/fedora
-			enabled=1
-			gpgcheck=1
-			gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
-			EOF'
+[Tenstorrent]
+name=Tenstorrent
+baseurl=https://ppa.tenstorrent.com/fedora
+enabled=1
+gpgcheck=1
+gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
+EOF'
 			;;
 		"rhel"|"centos")
 			warn "RHEL and CentOS are not officially supported. Using Fedora repos."
 			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
-			[Tenstorrent]
-			name=Tenstorrent
-			baseurl=https://ppa.tenstorrent.com/fedora
-			enabled=1
-			gpgcheck=1
-			gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
-			EOF'
+[Tenstorrent]
+name=Tenstorrent
+baseurl=https://ppa.tenstorrent.com/fedora
+enabled=1
+gpgcheck=1
+gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
+EOF'
 			;;
 		*)
 			error_exit "Unsupported distro: ${DISTRO_ID}"
