@@ -348,189 +348,6 @@ get_python_choice() {
 	done
 }
 
-# Generic function to fetch latest version from any GitHub repository
-# Usage: fetch_latest_version <repo> <prefix_to_remove>
-# Returns: version string with prefix removed, or exits with error code
-fetch_latest_version() {
-	local repo="$1"
-	local prefix_to_remove="${2:-}"
-
-	if ! command -v jq &> /dev/null; then
-		return 1  # jq not installed
-	fi
-
-	local response
-	local response_headers
-	local response_body
-	local latest_version
-
-	# Curl options
-	# We always suppress connect headers (fixes issues with systems using proxies)
-	# -D - dumps the headers to stdout
-	curl_opts=(--suppress-connect-headers -D -)
-
-	# SC is worried this might not exist, but argbash guarantees it will
-    # shellcheck disable=SC2154
-	if [[ "${_arg_verbose}" = "on" ]]; then
-		curl_opts+=(-v)
-	else
-		curl_opts+=(-s -S)
-	fi
-
-	if [[ -n "${_arg_github_token}" ]]; then
-		curl_opts+=(-H "Authorization: token ${_arg_github_token}")
-	fi
-
-	response=$(curl "${curl_opts[@]}" \
-		https://api.github.com/repos/"${repo}"/releases/latest)
-
-	# Split at the first blank line
-	response_headers=$(echo "${response}" | sed '/^\r*$/,$d')
-	response_body=$(echo "${response}" | sed '1,/^\r*$/d')
-
-	if [[ "${_arg_verbose}" = "on" ]]; then
-		echo "=== GitHub API Response Headers ===" >&2
-		echo "${response_headers}" >&2
-		echo "=== GitHub API Response Body ===" >&2
-		echo "${response_body}" >&2
-		echo "===================================" >&2
-	fi
-
-	# Check for GitHub API rate limit
-	if echo "${response_headers}" | grep -qi "x-ratelimit-remaining: 0"; then
-		return 2  # GitHub API rate limit exceeded
-	fi
-
-	# Check if response body is valid JSON
-	if ! echo "${response_body}" | jq . >/dev/null 2>&1; then
-		return 3  # Invalid JSON response
-	fi
-
-	latest_version=$(echo "${response_body}" | jq -r '.tag_name' 2>/dev/null)
-
-	# Check if we got a valid tag_name
-	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
-		return 4  # No tag_name found
-	fi
-
-	# Remove prefix if specified
-	if [[ -n "${prefix_to_remove}" ]]; then
-		echo "${latest_version#"${prefix_to_remove}"}"
-	else
-		echo "${latest_version}"
-	fi
-
-	return 0
-}
-
-# Helper function to handle version fetch errors
-handle_version_fetch_error() {
-	local component="$1"
-	local error_code="$2"
-	local repo="$3"
-
-	case ${error_code} in
-		1)
-			error "jq command not found!"
-			error "Please ensure jq is installed: sudo apt install jq (or equivalent for your distro)"
-			error "Failed to fetch ${component} version."
-			;;
-		2)
-			error "GitHub API rate limit exceeded"
-			error "You have exceeded the GitHub API rate limit (60 requests per hour for unauthenticated requests)"
-			error "Repository: ${repo}"
-			error "Failed to fetch ${component} version."
-			;;
-		3)
-			error "GitHub API returned invalid JSON"
-			error "This may be a network issue or other API issue"
-			error "Repository: ${repo}"
-			error "Failed to fetch ${component} version."
-			;;
-		4)
-			error "No valid tag_name found in API response"
-			error "The repository may not have any releases or the API response is malformed"
-			error "Repository: ${repo}"
-			error "Failed to fetch ${component} version."
-			;;
-		*)
-			error "Unknown error (code ${error_code})"
-			error "Repository: ${repo}"
-			error "Failed to fetch ${component} version."
-			;;
-	esac
-}
-
-fetch_tt_sw_versions() {
-	local fetch_errors=0
-
-	# Component configuration: env_var:arg_var:version_var:display_name:repo:prefix
-	local components=(
-		"TT_KMD_VERSION:_arg_kmd_version:KMD_VERSION:TT-KMD:${TT_KMD_GH_REPO}:ttkmd-"
-		"TT_FW_VERSION:_arg_fw_version:FW_VERSION:Firmware:${TT_FW_GH_REPO}:v"
-		"TT_SYSTOOLS_VERSION:_arg_systools_version:SYSTOOLS_VERSION:System Tools:${TT_SYSTOOLS_GH_REPO}:v"
-		"TT_SMI_VERSION:_arg_smi_version:SMI_VERSION:tt-smi:${TT_SMI_GH_REPO}:"
-		"TT_FLASH_VERSION:_arg_flash_version:FLASH_VERSION:tt-flash:${TT_FLASH_GH_REPO}:"
-		"TT_SFPI_VERSION:_arg_sfpi_version:SFPI_VERSION:SFPI:${TT_SFPI_GH_REPO}:v"
-	)
-
-	# Process each component
-	for component_config in "${components[@]}"; do
-		IFS=':' read -r env_var arg_var version_var display_name repo prefix <<< "${component_config}"
-
-		# Use environment variable if set, then argbash version if present, otherwise latest
-		if [[ -n "${!env_var:-}" ]]; then
-			declare -g "${version_var}=${!env_var}"
-		elif [[ -n "${!arg_var}" ]]; then
-			declare -g "${version_var}=${!arg_var}"
-		else
-			local version_result
-			if version_result=$(fetch_latest_version "${repo}" "${prefix}"); then
-				declare -g "${version_var}=${version_result}"
-			else
-				local exit_code=$?
-				handle_version_fetch_error "${display_name}" "${exit_code}" "${repo}"
-				fetch_errors=1
-			fi
-		fi
-	done
-
-	# If there were fetch errors, exit early
-	if [[ ${fetch_errors} -eq 1 ]]; then
-		HAVE_SET_TT_SW_VERSIONS=1
-		error "*** Failed to fetch software versions due to the errors above!"
-		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for troubleshooting help."
-	fi
-
-	# Validate all version variables are properly set (not empty or "null")
-	if [[ -n "${KMD_VERSION}" && "${KMD_VERSION}" != "null" && \
-	      -n "${FW_VERSION}" && "${FW_VERSION}" != "null" && \
-	      -n "${SYSTOOLS_VERSION}" && "${SYSTOOLS_VERSION}" != "null" && \
-	      -n "${SMI_VERSION}" && "${SMI_VERSION}" != "null" && \
-	      -n "${FLASH_VERSION}" && "${FLASH_VERSION}" != "null" && \
-	      -n "${SFPI_VERSION}" && "${SFPI_VERSION}" != "null" ]]; then
-		HAVE_SET_TT_SW_VERSIONS=0
-		log "Using software versions:"
-		log "  TT-KMD: ${KMD_VERSION}"
-		log "  Firmware: ${FW_VERSION}"
-		log "  System Tools: ${SYSTOOLS_VERSION}"
-		log "  tt-smi: ${SMI_VERSION#v}"
-		log "  tt-flash: ${FLASH_VERSION#v}"
-		log "  SFPI: ${SFPI_VERSION#v}"
-	else
-		HAVE_SET_TT_SW_VERSIONS=1
-		error "*** Software versions are empty or null after successful fetch!"
-		error "  TT-KMD: '${KMD_VERSION}'"
-		error "  Firmware: '${FW_VERSION}'"
-		error "  System Tools: '${SYSTOOLS_VERSION}'"
-		error "  tt-smi: '${SMI_VERSION}'"
-		error "  tt-flash: '${FLASH_VERSION}'"
-		error "  SFPI: '${SFPI_VERSION}'"
-		error "This may indicate an issue with the GitHub API responses."
-		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for a fix."
-	fi
-}
-
 # Function to check if Podman is installed
 check_podman_installed() {
 	command -v podman &> /dev/null
@@ -738,157 +555,6 @@ get_podman_metalium_choice() {
 	fi
 }
 
-manual_install_kmd() {
-log "Installing Kernel-Mode Driver"
-	cd "${WORKDIR}"
-	# Get the KMD version, if installed, while silencing errors
-	if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
-		warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
-		if confirm "Force KMD reinstall?"; then
-			sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
-			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-			sudo dkms add tt-kmd
-			sudo dkms install "tenstorrent/${KMD_VERSION}"
-			sudo modprobe tenstorrent
-		else
-			warn "Skipping KMD installation"
-		fi
-	else
-		# Only install KMD if it's not already installed
-		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-		sudo dkms add tt-kmd
-		# Ok so this gets exciting fast, so hang on for a second while I explain
-		# During the offline installer we need to figure out what kernels are actually installed
-		# because the kernel running on the system is not what we just installed and it's going
-		# to complain up a storm if we don't have the headers for the running kernel, which we don't
-		# so lets start by figuring out what kernels we do have (packaging, we can do this by doing a
-		# ls on /lib/modules too but right now I'm doing it this way, deal.
-		# Then we wander through and do dkms for the installed kernels only.  After that instead of
-		# trying to modprobe the module on a system we might not have built for, we check if we match
-		# and only then try modprobe
-		for x in $( eval "${KERNEL_LISTING}" )
-		do
-			sudo dkms install "tenstorrent/${KMD_VERSION}" -k "${x}"
-			if [[ "$( uname -r )" == "${x}" ]]
-			then
-				sudo modprobe tenstorrent
-			fi
-		done
-	fi
-}
-
-manual_install_hugepages() {
-	log "Setting up HugePages"
-	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
-	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
-			TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
-			TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-			curl -fsSLO "${TOOLS_URL}"
-			verify_download "${TOOLS_FILENAME}"
-			sudo dpkg -i "${TOOLS_FILENAME}"
-			if [[ "${SYSTEMD_NO}" != 0 ]]
-			then
-				# adding quotes around SYSTEMD_NOW means they won't be
-				# interpretted, which is exactly what we want them to be
-				# shellcheck disable=2086
-				sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-				# adding quotes around SYSTEMD_NOW means they won't be
-				# interpretted, which is exactly what we want them to be
-				# shellcheck disable=2086
-				sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
-			fi
-			;;
-		"fedora"|"rhel"|"centos")
-			TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
-			TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-			curl -fsSLO "${TOOLS_URL}"
-			verify_download "${TOOLS_FILENAME}"
-			sudo dnf install -y "${TOOLS_FILENAME}"
-			if [[ "${SYSTEMD_NO}" != 0 ]]
-			then
-				# adding quotes around SYSTEMD_NOW means they won't be
-				# interpretted, which is exactly what we want them to be
-				# shellcheck disable=2086
-				sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-				# adding quotes around SYSTEMD_NOW means they won't be
-				# interpretted, which is exactly what we want them to be
-				# shellcheck disable=2086
-				sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
-			fi
-			;;
-		*)
-			error "This distro is unsupported. Skipping HugePages install!"
-			;;
-	esac
-}
-
-# Function to install SFPI
-manual_install_sfpi() {
-	log "Installing SFPI"
-	local arch
-	local SFPI_RELEASE_URL="https://github.com/tenstorrent/sfpi/releases/download"
-	local SFPI_FILE_ARCH
-	local SFPI_DISTRO_TYPE
-	local SFPI_FILE_EXT
-	local SFPI_FILE
-
-	arch=$(uname -m)
-
-	case "${arch}" in
-		"aarch64"|"arm64")
-			SFPI_FILE_ARCH="aarch64"
-			;;
-		"amd64"|"x86_64")
-			SFPI_FILE_ARCH="x86_64"
-			;;
-		*)
-			error "Unsupported architecture for SFPI installation: ${arch}"
-			exit 1
-			;;
-	esac
-
-	case "${DISTRO_ID}" in
-		"debian"|"ubuntu")
-			SFPI_FILE_EXT="deb"
-			SFPI_DISTRO_TYPE="debian"
-			;;
-		"centos"|"fedora"|"rhel")
-			SFPI_FILE_EXT="rpm"
-			SFPI_DISTRO_TYPE="fedora"
-			;;
-		*)
-			error "Unsupported distribution for SFPI installation: ${DISTRO_ID}"
-			exit 1
-			;;
-	esac
-
-	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}_${SFPI_DISTRO_TYPE}.${SFPI_FILE_EXT}"
-	log "Downloading ${SFPI_FILE}"
-
-    # shellcheck disable=SC2154
-	if [[ "${_arg_verbose}" = "on" ]]; then
-		curl -fvSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
-	else
-		curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
-	fi
-
-	verify_download "${SFPI_FILE}"
-
-	case "${SFPI_FILE_EXT}" in
-		"deb")
-			sudo apt install -y "./${SFPI_FILE}"
-			;;
-		"rpm")
-			sudo dnf install -y "./${SFPI_FILE}"
-			;;
-		*)
-			error "Unexpected SFPI package file extension: '${SFPI_FILE_EXT}'"
-			exit 1
-			;;
-	esac
-}
-
 install_tt_repos () {
 	log "Installing TT repositories to your distribution package manager"
 	case "${DISTRO_ID}" in
@@ -959,8 +625,6 @@ main() {
 	log "Welcome to tenstorrent!"
 	log "This is tt-installer version ${INSTALLER_VERSION}"
 	log "Log is at ${LOG_FILE}"
-
-	fetch_tt_sw_versions
 
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
 
@@ -1044,24 +708,6 @@ main() {
 		warn "If you are unsure how to do this, use rustup: https://rustup.rs/"
 	fi
 
-	# If jq wasn't installed before, we need to fetch these now that we have it installed
-	if [[ "${HAVE_SET_TT_SW_VERSIONS}" = "1" ]]; then
-		fetch_tt_sw_versions
-	fi
-	# If we still haven't successfully retrieved the versions, there is an error, so exit
-	if [[ "${HAVE_SET_TT_SW_VERSIONS}" = "1" ]]; then
-		echo "HAVE_SET_TT_SW_VERSIONS: ${HAVE_SET_TT_SW_VERSIONS}"
-
-		which jq > /dev/null 2>&1
-		res=$?
-		if [[ "${res}" == "0" ]]
-		then
-			error_exit "Cannot fetch versions of TT software, likely a transient error in getting the versions - please try again"
-		else
-			error_exit "Cannot fetch versions of TT software. Is jq installed?"
-		fi
-	fi
-
 	# Get Podman Metalium installation choice
 	get_podman_metalium_choice
 
@@ -1117,7 +763,19 @@ main() {
 	if [[ "${_arg_install_kmd}" = "off" ]]; then
 		log "Skipping KMD installation"
 	else
-		manual_install_kmd
+		install_kmd
+	fi
+
+	if [[ "${_arg_install_sfpi}" = "on" ]]; then
+		install_sfpi
+	fi
+
+	# Setup HugePages
+	# Skip HugePages installation if flag is set
+	if [[ "${_arg_install_hugepages}" = "off" ]]; then
+		warn "Skipping HugePages setup"
+	else
+		install_hugepages
 	fi
 
 	# Install TT-Flash and Firmware
@@ -1179,14 +837,6 @@ main() {
 		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-topology.git@"${TOPOLOGY_VERSION}"
 	fi
 
-	# Setup HugePages
-	# Skip HugePages installation if flag is set
-	if [[ "${_arg_install_hugepages}" = "off" ]]; then
-		warn "Skipping HugePages setup"
-	else
-		manual_install_hugepages
-	fi
-
 	# Install TT-SMI
 	log "Installing System Management Interface"
 	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@"${SMI_VERSION}"
@@ -1226,10 +876,6 @@ main() {
 
 	if [[ ${INSTALL_SW_FROM_REPOS:-} = "on" ]]; then
 		install_sw_from_repos
-	fi
-
-	if [[ "${_arg_install_sfpi}" = "on" ]]; then
-		manual_install_sfpi
 	fi
 
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
