@@ -923,10 +923,25 @@ install_tt_repos () {
 			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
 			;;
 		"fedora")
-			error_exit "Cannot install TT repos on RPM distros just yet!"
+			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
+[Tenstorrent]
+name=Tenstorrent
+baseurl=https://ppa.tenstorrent.com/fedora
+enabled=1
+gpgcheck=1
+gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
+EOF'
 			;;
 		"rhel"|"centos")
-			error_exit "Cannot install TT repos on RPM distros just yet!"
+			warn "RHEL and CentOS are not officially supported. Using Fedora repos."
+			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
+[Tenstorrent]
+name=Tenstorrent
+baseurl=https://ppa.tenstorrent.com/fedora
+enabled=1
+gpgcheck=1
+gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
+EOF'
 			;;
 		*)
 			error_exit "Unsupported distro: ${DISTRO_ID}"
@@ -943,10 +958,11 @@ install_sw_from_repos () {
 			sudo apt install -y tenstorrent-dkms tenstorrent-tools sfpi
 			;;
 		"fedora")
-			error_exit "Cannot install from TT repos on RPM distros just yet!"
+			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
 			;;
 		"rhel"|"centos")
-			error_exit "Cannot install from TT repos on RPM distros just yet!"
+			warn "RHEL and CentOS are not officially supported. Using Fedora repos."
+			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
 			;;
 		*)
 			error_exit "Unsupported distro: ${DISTRO_ID}"
