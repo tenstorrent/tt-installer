@@ -60,6 +60,13 @@ jobs:
     with:
       artifact_name: install-script
 
+  test-openkylin:
+    name: Test openKylin
+    needs: build
+    uses: ./.github/workflows/test-openkylin.yml
+    with:
+      artifact_name: install-script
+
   test-fedora:
     name: Test Fedora
     needs: build
