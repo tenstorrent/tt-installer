@@ -808,8 +808,14 @@ manual_install_hugepages() {
 			sudo dpkg -i "${TOOLS_FILENAME}"
 			if [[ "${SYSTEMD_NO}" != 0 ]]
 			then
-				sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-				sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+				# adding quotes around SYSTEMD_NOW means they won't be
+				# interpretted, which is exactly what we want them to be
+				# shellcheck disable=2086
+				sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
+				# adding quotes around SYSTEMD_NOW means they won't be
+				# interpretted, which is exactly what we want them to be
+				# shellcheck disable=2086
+				sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
 			fi
 			;;
 		"fedora"|"rhel"|"centos")
@@ -820,8 +826,14 @@ manual_install_hugepages() {
 			sudo dnf install -y "${TOOLS_FILENAME}"
 			if [[ "${SYSTEMD_NO}" != 0 ]]
 			then
-				sudo systemctl enable "${SYSTEMD_NOW}" tenstorrent-hugepages.service
-				sudo systemctl enable "${SYSTEMD_NOW}" 'dev-hugepages\x2d1G.mount'
+				# adding quotes around SYSTEMD_NOW means they won't be
+				# interpretted, which is exactly what we want them to be
+				# shellcheck disable=2086
+				sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
+				# adding quotes around SYSTEMD_NOW means they won't be
+				# interpretted, which is exactly what we want them to be
+				# shellcheck disable=2086
+				sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
 			fi
 			;;
 		*)
@@ -836,6 +848,7 @@ manual_install_sfpi() {
 	local arch
 	local SFPI_RELEASE_URL="https://github.com/tenstorrent/sfpi/releases/download"
 	local SFPI_FILE_ARCH
+	local SFPI_DISTRO_TYPE
 	local SFPI_FILE_EXT
 	local SFPI_FILE
 
@@ -857,9 +870,11 @@ manual_install_sfpi() {
 	case "${DISTRO_ID}" in
 		"debian"|"ubuntu"|"openkylin")
 			SFPI_FILE_EXT="deb"
+			SFPI_DISTRO_TYPE="debian"
 			;;
 		"centos"|"fedora"|"rhel")
 			SFPI_FILE_EXT="rpm"
+			SFPI_DISTRO_TYPE="fedora"
 			;;
 		*)
 			error "Unsupported distribution for SFPI installation: ${DISTRO_ID}"
@@ -867,10 +882,16 @@ manual_install_sfpi() {
 			;;
 	esac
 
-	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}.${SFPI_FILE_EXT}"
+	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}_${SFPI_DISTRO_TYPE}.${SFPI_FILE_EXT}"
 	log "Downloading ${SFPI_FILE}"
 
-	curl -fsSLO "${SFPI_RELEASE_URL}/v${SFPI_VERSION}/${SFPI_FILE}"
+    # shellcheck disable=SC2154
+	if [[ "${_arg_verbose}" = "on" ]]; then
+		curl -fvSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+	else
+		curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+	fi
+
 	verify_download "${SFPI_FILE}"
 
 	case "${SFPI_FILE_EXT}" in
@@ -1095,7 +1116,10 @@ main() {
 			;;
 		"pipx")
 			log "Using pipx for isolated package installation"
-			pipx ensurepath "${PIPX_ENSUREPATH_EXTRAS}"
+			# adding quotes around PIPX_ENSUREPATH_EXTRAS means they won't be
+			# interpretted, which is exactly what we want them to be
+			# shellcheck disable=2086
+			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
 			# Enable the pipx path in this shell session
 			export PATH="${PATH}:${HOME}/.local/bin/"
 			INSTALLED_IN_VENV=1
