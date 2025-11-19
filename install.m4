@@ -66,44 +66,6 @@ LOGO=$(cat << "EOF"
 EOF
 )
 
-KERNEL_LISTING_DEBIAN=$( cat << EOF
-	apt list --installed |
-	grep linux-image |
-	awk 'BEGIN { FS="/"; } { print \$1; }' |
-	sed 's/^linux-image-//g' |
-	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$\|virtual"
-EOF
-)
-
-KERNEL_LISTING_UBUNTU=$( cat << EOF
-	apt list --installed |
-	grep linux-image |
-	awk 'BEGIN { FS="/"; } { print \$1; }' |
-	sed 's/^linux-image-//g' |
-	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$\|virtual"
-EOF
-)
-KERNEL_LISTING_FEDORA="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matched\" | sed 's/^kernel-devel-//'"
-KERNEL_LISTING_EL="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matched\" | sed 's/^kernel-devel-//'"
-
-# ========================= GIT URLs =========================
-
-# ========================= Repository Configuration =========================
-
-# GitHub repository URLs
-TT_KMD_GH_REPO="tenstorrent/tt-kmd"
-TT_FW_GH_REPO="tenstorrent/tt-firmware"
-TT_SYSTOOLS_GH_REPO="tenstorrent/tt-system-tools"
-TT_SMI_GH_REPO="tenstorrent/tt-smi"
-TT_FLASH_GH_REPO="tenstorrent/tt-flash"
-TT_TOPOLOGY_GH_REPO="tenstorrent/tt-topology"
-TT_SFPI_GH_REPO="tenstorrent/sfpi"
-
-# ========================= Backward Compatibility Environment Variables =========================
-
-# Support environment variables as fallbacks for backward compatibility
-# If env var is set, use it; otherwise use argbash value with default
-
 # Podman Metalium URLs and Settings
 METALIUM_IMAGE_URL="${TT_METALIUM_IMAGE_URL:-${_arg_metalium_image_url}}"
 METALIUM_IMAGE_TAG="${TT_METALIUM_IMAGE_TAG:-${_arg_metalium_image_tag}}"
@@ -194,11 +156,8 @@ if [[ "${_arg_mode_repository_beta}" = "on" ]]; then
 	_arg_install_sfpi="off"
 	_arg_install_kmd="off"
 	export INSTALL_TT_REPOS="on"
-	export INSTALL_SW_FROM_REPOS="on"
 fi
 
-SYSTEMD_NOW="${TT_SYSTEMD_NOW:---now}"
-SYSTEMD_NO="${TT_SYSTEMD_NO:-1}"
 PIPX_ENSUREPATH_EXTRAS="${TT_PIPX_ENSUREPATH_EXTRAS:- }"
 PIPX_INSTALL_EXTRAS="${TT_PIPX_INSTALL_EXTRAS:- }"
 
@@ -353,42 +312,13 @@ check_podman_installed() {
 	command -v podman &> /dev/null
 }
 
-# Function to install Podman
-install_podman() {
-	log "Installing Podman"
-	cd "${WORKDIR}"
-
+# Function to setup rootless Podman
+setup_rootless_podman() {
+	log "Configuring rootless Podman"
 	# Add GUIDs/UIDs for rootless Podman
 	# See https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md
 	sudo usermod --add-subgids 10000-75535 "$(whoami)"
 	sudo usermod --add-subuids 10000-75535 "$(whoami)"
-
-	# Install Podman using package manager
-	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
-			sudo apt install -y podman podman-docker
-			;;
-		"fedora")
-			sudo dnf install -y podman podman-docker
-			;;
-		"rhel"|"centos")
-			sudo dnf install -y podman podman-docker
-			;;
-		*)
-			error "Unsupported distribution for Podman installation: ${DISTRO_ID}"
-			return 1
-			;;
-	esac
-
-	# Verify Podman installation
-	if podman --version; then
-		log "Podman installed successfully"
-	else
-		error "Podman installation failed"
-		return 1
-	fi
-
-	return 0
 }
 
 # Install Podman Metalium container
@@ -596,20 +526,39 @@ EOF'
 	esac
 }
 
-install_sw_from_repos () {
-	log "Installing software from TT repositories"
+build_package_list() {
+	local packages=()
+
+	# Map arguments to packages
+	[[ "${_arg_install_kmd}" = "on" ]] && packages+=("tenstorrent-dkms")
+	[[ "${_arg_install_hugepages}" = "on" ]] && packages+=("tenstorrent-tools")
+	[[ "${_arg_install_sfpi}" = "on" ]] && packages+=("sfpi")
+	[[ "${_arg_install_podman}" = "on" ]] && packages+=("podman" "podman-docker")
+
+	echo "${packages[@]}"
+}
+
+install_sw_from_repos() {
+	local packages=("$@")
+
+	if [[ ${#packages[@]} -eq 0 ]]; then
+		warn "No packages specified for installation"
+		return 0
+	fi
+
+	log "Installing packages from TT repositories: ${packages[*]}"
+
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
-			# For now, install the big three
 			sudo apt update
-			sudo apt install -y tenstorrent-dkms tenstorrent-tools sfpi
+			sudo apt install -y "${packages[@]}"
 			;;
 		"fedora")
-			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
+			sudo dnf install -y "${packages[@]}"
 			;;
 		"rhel"|"centos")
 			warn "RHEL and CentOS are not officially supported. Using Fedora repos."
-			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
+			sudo dnf install -y "${packages[@]}"
 			;;
 		*)
 			error_exit "Unsupported distro: ${DISTRO_ID}"
@@ -680,22 +629,18 @@ main() {
 		"ubuntu")
 			sudo apt update
 			sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
-			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt update
 			sudo apt install -y git python3-pip dkms pipx jq protobuf-compiler
-			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
 			;;
 		"fedora")
 			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
-			KERNEL_LISTING="${KERNEL_LISTING_FEDORA}"
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
 			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
-			KERNEL_LISTING="${KERNEL_LISTING_EL}"
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
@@ -758,35 +703,8 @@ main() {
 			;;
 	esac
 
-	# Install TT-KMD
-	# Skip KMD installation if flag is set
-	if [[ "${_arg_install_kmd}" = "off" ]]; then
-		log "Skipping KMD installation"
-	else
-		install_kmd
-	fi
-
-	if [[ "${_arg_install_sfpi}" = "on" ]]; then
-		install_sfpi
-	fi
-
-	# Setup HugePages
-	# Skip HugePages installation if flag is set
-	if [[ "${_arg_install_hugepages}" = "off" ]]; then
-		warn "Skipping HugePages setup"
-	else
-		install_hugepages
-	fi
-
-	# Install TT-Flash and Firmware
-	# Skip tt-flash installation if flag is set
-	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
-		log "Skipping TT-Flash installation"
-	else
-		log "Installing TT-Flash"
-		cd "${WORKDIR}"
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@"${FLASH_VERSION}"
-	fi
+	# Repository-based installations are now handled later in the script
+	# through build_package_list() and install_sw_from_repos()
 
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
 		log "Skipping firmware update"
@@ -841,12 +759,20 @@ main() {
 	log "Installing System Management Interface"
 	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@"${SMI_VERSION}"
 
-	# Install Podman if requested
-	if [[ "${_arg_install_podman}" = "off" ]]; then
-		warn "Skipping Podman installation"
-	else
-		if ! check_podman_installed; then
-			install_podman
+	# Install from repositories first (KMD, tools, SFPI, Podman)
+	if [[ ${INSTALL_TT_REPOS:-} = "on" ]]; then
+		install_tt_repos
+		# Build package list based on arguments and install
+		packages_to_install=($(build_package_list))
+		install_sw_from_repos "${packages_to_install[@]}"
+	fi
+
+	# Setup rootless Podman if it was just installed
+	if [[ "${_arg_install_podman}" = "on" ]]; then
+		if check_podman_installed; then
+			setup_rootless_podman
+		else
+			warn "Podman was not installed successfully"
 		fi
 	fi
 
@@ -868,14 +794,6 @@ main() {
 		else
 			install_podman_metalium_models
 		fi
-	fi
-
-	if [[ ${INSTALL_TT_REPOS:-} = "on" ]]; then
-		install_tt_repos
-	fi
-
-	if [[ ${INSTALL_SW_FROM_REPOS:-} = "on" ]]; then
-		install_sw_from_repos
 	fi
 
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
