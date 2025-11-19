@@ -807,7 +807,7 @@ main() {
 	# Install Python packages
 	if [[ ${#python_packages[@]} -gt 0 ]]; then
 		echo "Installing Python packages: ${python_packages[*]}"
-		$PYTHON_INSTALL_CMD install "${python_packages[@]}"
+		$PYTHON_INSTALL_CMD "${python_packages[@]}"
 	fi
 
 	# Update firmware using tt-flash
