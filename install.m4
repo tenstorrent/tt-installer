@@ -15,8 +15,10 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-kmd],,[Kernel-Mode-Driver installation],[on])
 # ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
 # ARG_OPTIONAL_BOOLEAN([install-podman],,[Install Podman],[on])
+# ARG_OPTIONAL_BOOLEAN([install-podman-docker],,[Install podman-docker shim (disable to keep docker)],[off])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
+# ARG_OPTIONAL_BOOLEAN([install-tt-smi],,[Install tt-smi for device monitoring],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
 # ARG_OPTIONAL_BOOLEAN([install-sfpi],,[Install SFPI],[on])
 
@@ -294,6 +296,50 @@ get_python_choice() {
 				;;
 		esac
 	done
+
+	# Set up Python environment based on choice
+	case ${PYTHON_CHOICE} in
+		"active-venv")
+			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+				error "No active virtual environment detected!"
+				error_exit "Please activate your virtual environment first and try again"
+			fi
+			log "Using active virtual environment: ${VIRTUAL_ENV}"
+			INSTALLED_IN_VENV=0
+			PYTHON_INSTALL_CMD="pip install"
+			;;
+		"system-python")
+			log "Using system pathing"
+			INSTALLED_IN_VENV=1
+			# Check Python version to determine if --break-system-packages is needed (Python 3.11+)
+			PYTHON_VERSION_MINOR=$(python3 -c "import sys; print(f'{sys.version_info.minor}')")
+			if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then # Is version greater than 3.10?
+				PYTHON_INSTALL_CMD="pip install --break-system-packages"
+			else
+				PYTHON_INSTALL_CMD="pip install"
+			fi
+			;;
+		"pipx")
+			log "Using pipx for isolated package installation"
+			# adding quotes around PIPX_ENSUREPATH_EXTRAS means they won't be
+			# interpretted, which is exactly what we want them to be
+			# shellcheck disable=2086
+			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
+			# Enable the pipx path in this shell session
+			export PATH="${PATH}:${HOME}/.local/bin/"
+			INSTALLED_IN_VENV=1
+			PYTHON_INSTALL_CMD="pipx install ${PIPX_INSTALL_EXTRAS}"
+			;;
+		"new-venv"|*)
+			log "Setting up new Python virtual environment"
+			python3 -m venv "${NEW_VENV_LOCATION}"
+			# shellcheck disable=SC1091 # Must exist after previous command
+			source "${NEW_VENV_LOCATION}/bin/activate"
+			INSTALLED_IN_VENV=0
+			PYTHON_INSTALL_CMD="pip install"
+			;;
+	esac
+
 }
 
 # Function to check if Podman is installed
@@ -515,46 +561,6 @@ EOF'
 	esac
 }
 
-build_package_list() {
-	local packages=()
-
-	# Map arguments to packages
-	[[ "${_arg_install_kmd}" = "on" ]] && packages+=("tenstorrent-dkms")
-	[[ "${_arg_install_hugepages}" = "on" ]] && packages+=("tenstorrent-tools")
-	[[ "${_arg_install_sfpi}" = "on" ]] && packages+=("sfpi")
-	[[ "${_arg_install_podman}" = "on" ]] && packages+=("podman" "podman-docker")
-
-	echo "${packages[@]}"
-}
-
-install_sw_from_repos() {
-	local packages=("$@")
-
-	if [[ ${#packages[@]} -eq 0 ]]; then
-		warn "No packages specified for installation"
-		return 0
-	fi
-
-	log "Installing packages from TT repositories: ${packages[*]}"
-
-	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
-			sudo apt update
-			sudo apt install -y "${packages[@]}"
-			;;
-		"fedora")
-			sudo dnf install -y "${packages[@]}"
-			;;
-		"rhel"|"centos")
-			warn "RHEL and CentOS are not officially supported. Using Fedora repos."
-			sudo dnf install -y "${packages[@]}"
-			;;
-		*)
-			error_exit "Unsupported distro: ${DISTRO_ID}"
-			;;
-	esac
-}
-
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -613,6 +619,7 @@ main() {
 
 	# Check distribution and install base packages
 	detect_distro
+
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
 		"ubuntu")
@@ -647,67 +654,92 @@ main() {
 
 	# Python package installation preference
 	get_python_choice
+	install_tt_repos
 
-	# Set up Python environment based on choice
-	case ${PYTHON_CHOICE} in
-		"active-venv")
-			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
-				error "No active virtual environment detected!"
-				error "Please activate your virtual environment first and try again"
-				exit 1
-			fi
-			log "Using active virtual environment: ${VIRTUAL_ENV}"
-			INSTALLED_IN_VENV=0
-			PYTHON_INSTALL_CMD="pip install"
-			;;
-		"system-python")
-			log "Using system pathing"
-			INSTALLED_IN_VENV=1
-			# Check Python version to determine if --break-system-packages is needed (Python 3.11+)
-			PYTHON_VERSION_MINOR=$(python3 -c "import sys; print(f'{sys.version_info.minor}')")
-			if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then # Is version greater than 3.10?
-				PYTHON_INSTALL_CMD="pip install --break-system-packages"
-			else
-				PYTHON_INSTALL_CMD="pip install"
-			fi
-			;;
-		"pipx")
-			log "Using pipx for isolated package installation"
-			# adding quotes around PIPX_ENSUREPATH_EXTRAS means they won't be
-			# interpretted, which is exactly what we want them to be
-			# shellcheck disable=2086
-			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
-			# Enable the pipx path in this shell session
-			export PATH="${PATH}:${HOME}/.local/bin/"
-			INSTALLED_IN_VENV=1
-			PYTHON_INSTALL_CMD="pipx install ${PIPX_INSTALL_EXTRAS}"
-			;;
-		"new-venv"|*)
-			log "Setting up new Python virtual environment"
-			python3 -m venv "${NEW_VENV_LOCATION}"
-			# shellcheck disable=SC1091 # Must exist after previous command
-			source "${NEW_VENV_LOCATION}/bin/activate"
-			INSTALLED_IN_VENV=0
-			PYTHON_INSTALL_CMD="pip install"
-			;;
-	esac
+	# 1. Define the package registry
+	# Format: "package_name|install_flag|version|type"
+	declare -A package_registry=(
+		# System packages
+		["kmd"]="tenstorrent-dkms|$_arg_install_kmd|$_arg_kmd_version|system"
+		["hugepages"]="tenstorrent-tools|$_arg_install_hugepages|$_arg_systools_version|system"
+		["sfpi"]="sfpi|$_arg_install_sfpi|$_arg_sfpi_version|system"
+		["podman"]="podman|$_arg_install_podman||system"
+		["podman-docker"]="podman-docker|$_arg_install_podman_docker||system"
+		["podman-compose"]="podman-compose|$_arg_install_podman_docker||system"
 
-	# Repository-based installations are now handled later in the script
-	# through build_package_list() and install_sw_from_repos()
+		# Python packages
+		["tt-topology"]="tt-topology|$_arg_install_tt_topology|$_arg_topology_version|python"
+		["tt-flash"]="tt-flash|$_arg_install_tt_flash|$_arg_flash_version|python"
+		["tt-smi"]="tt-smi|$_arg_install_tt_smi|$_arg_smi_version|python"
+	)
 
+	# 2. Parse the registry to obtain lists of packages
+	declare -a system_packages=()
+	declare -a python_packages=()
+
+	for key in "${!package_registry[@]}"; do
+		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[$key]}"
+
+		# Skip if not marked for installation
+		[[ "$install_flag" != "on" ]] && continue
+
+		# Add to appropriate list with version formatting
+		case "$pkg_type" in
+			system)
+				if [[ -z "$version" ]]; then
+					system_packages+=("$pkg_name")
+				else
+					# Format based on package manager
+					if [[ "$PKG_MANAGER" = "apt" ]]; then
+						system_packages+=("${pkg_name}=${version}")
+					elif [[ "$PKG_MANAGER" = "dnf" ]]; then
+						system_packages+=("${pkg_name}-${version}")
+					else
+						system_packages+=("$pkg_name")  # fallback to no version
+					fi
+				fi
+				;;
+			python)
+				if [[ -z "$version" ]]; then
+					python_packages+=("$pkg_name")
+				else
+					python_packages+=("${pkg_name}==${version}")
+				fi
+				;;
+		esac
+	done
+
+	# 3. Act on the lists
+	# Install system packages
+	if [[ ${#system_packages[@]} -gt 0 ]]; then
+		echo "Installing system packages: ${system_packages[*]}"
+		if [[ "$PKG_MANAGER" = "apt" ]]; then
+			sudo apt install -y "${system_packages[@]}"
+		elif [[ "$PKG_MANAGER" = "dnf" ]]; then
+			sudo dnf install -y "${system_packages[@]}"
+		fi
+	fi
+
+	# Install Python packages
+	if [[ ${#python_packages[@]} -gt 0 ]]; then
+		echo "Installing Python packages: ${python_packages[*]}"
+		$PYTHON_INSTALL_CMD install "${python_packages[@]}"
+	fi
+
+	# Update firmware using tt-flash
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
 		log "Skipping firmware update"
 	else
 		log "Updating firmware"
 		# Create FW_FILE based on FW_VERSION
-		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
+		FW_FILE="fw_pack-${_arg_fw_version}.fwbundle"
 		FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
 		BACKUP_FW_RELEASE_URL="https://github.com/tenstorrent/tt-zephyr-platforms/releases/download"
 
 		# Download from GitHub releases
-		if ! curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+		if ! curl -fsSLO "${FW_RELEASE_URL}/v${_arg_fw_version}/${FW_FILE}"; then
 			warn "Could not find firmware bundle at main URL- trying backup URL"
-			if ! curl -fsSLO "${BACKUP_FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+			if ! curl -fsSLO "${BACKUP_FW_RELEASE_URL}/v${_arg_fw_version}/${FW_FILE}"; then
 				error_exit "Could not download firmware bundle. Ensure firmware version is valid."
 			fi
 		fi
@@ -720,39 +752,6 @@ main() {
 			tt-flash --fw-tar "${FW_FILE}"
 		fi
 	fi
-
-	# shellcheck disable=SC2154
-	if [[ "${_arg_install_tt_topology}" = "on" ]]; then
-		log "Installing tt-topology"
-
-		if [[ -n "${TT_TOPOLOGY_VERSION:-}" ]]; then
-			TOPOLOGY_VERSION="${TT_TOPOLOGY_VERSION}"
-		elif [[ -n "${_arg_topology_version}" ]]; then
-			TOPOLOGY_VERSION="${_arg_topology_version}"
-		else
-			if TOPOLOGY_VERSION=$(fetch_latest_version "${TT_TOPOLOGY_GH_REPO}"); then
-				: # Success, TOPOLOGY_VERSION is set
-			else
-				local topology_exit_code=$?
-				handle_version_fetch_error "tt-topology" "${topology_exit_code}" "${TT_TOPOLOGY_GH_REPO}"
-				error_exit "Failed to fetch tt-topology version. Installation cannot continue."
-			fi
-		fi
-
-		log "Topology Version: ${TOPOLOGY_VERSION}"
-
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-topology.git@"${TOPOLOGY_VERSION}"
-	fi
-
-	# Install TT-SMI
-	log "Installing System Management Interface"
-	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@"${SMI_VERSION}"
-
-	# Install from repositories (KMD, tools, SFPI, Podman)
-	install_tt_repos
-	# Build package list based on arguments and install
-	packages_to_install=($(build_package_list))
-	install_sw_from_repos "${packages_to_install[@]}"
 
 	# Setup rootless Podman if it was just installed
 	if [[ "${_arg_install_podman}" = "on" ]]; then
