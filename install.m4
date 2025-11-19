@@ -269,6 +269,26 @@ detect_distro() {
 		. /etc/os-release
 		DISTRO_ID=${ID}
 		DISTRO_VERSION=${VERSION_ID}
+
+		case ${DISTRO_ID} in
+			ubuntu|debian|fedora|rhel|centos)
+				;; # It's a known distro, do nothing.
+			*)
+				# Not a known distro, try to read ID_LIKE
+				if [[ -n "${ID_LIKE:-}" ]]; then
+					# ID_LIKE can be a space-separated list. Check each of them.
+					for id_like_distro in ${ID_LIKE}; do
+						case ${id_like_distro} in
+							ubuntu|debian|fedora|rhel)
+								DISTRO_ID=${id_like_distro}
+								break # Use the first one found.
+								;;
+						esac
+					done
+				fi
+				;;
+		esac
+
 		check_is_ubuntu_20
 	else
 		error "Cannot detect Linux distribution"
