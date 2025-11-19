@@ -49,7 +49,6 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
 # ARG_OPTIONAL_BOOLEAN([verbose],,[Enable verbose output for debugging])
-# ARG_OPTIONAL_BOOLEAN([mode-repository-beta],,[BETA: Use external repository for package installation.],[off])
 
 # ARGBASH_GO
 
@@ -146,16 +145,6 @@ if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 	if [[ "${REBOOT_OPTION}" = "ask" ]]; then
 		REBOOT_OPTION="never" # Do not reboot
 	fi
-fi
-
-# For the repository mode beta, we will disable the existing install functions
-# and call a new function which installs the dependencies using the APT repo.
-# shellcheck disable=SC2154
-if [[ "${_arg_mode_repository_beta}" = "on" ]]; then
-	_arg_install_hugepages="off"
-	_arg_install_sfpi="off"
-	_arg_install_kmd="off"
-	export INSTALL_TT_REPOS="on"
 fi
 
 PIPX_ENSUREPATH_EXTRAS="${TT_PIPX_ENSUREPATH_EXTRAS:- }"
@@ -759,13 +748,11 @@ main() {
 	log "Installing System Management Interface"
 	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@"${SMI_VERSION}"
 
-	# Install from repositories first (KMD, tools, SFPI, Podman)
-	if [[ ${INSTALL_TT_REPOS:-} = "on" ]]; then
-		install_tt_repos
-		# Build package list based on arguments and install
-		packages_to_install=($(build_package_list))
-		install_sw_from_repos "${packages_to_install[@]}"
-	fi
+	# Install from repositories (KMD, tools, SFPI, Podman)
+	install_tt_repos
+	# Build package list based on arguments and install
+	packages_to_install=($(build_package_list))
+	install_sw_from_repos "${packages_to_install[@]}"
 
 	# Setup rootless Podman if it was just installed
 	if [[ "${_arg_install_podman}" = "on" ]]; then
