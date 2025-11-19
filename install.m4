@@ -218,6 +218,20 @@ detect_distro() {
 		. /etc/os-release
 		DISTRO_ID=${ID}
 		DISTRO_VERSION=${VERSION_ID}
+
+		# Set package manager based on distribution
+		case "${DISTRO_ID}" in
+			"ubuntu"|"debian")
+				PKG_MANAGER="apt"
+				;;
+			"fedora"|"rhel"|"centos")
+				PKG_MANAGER="dnf"
+				;;
+			*)
+				error "Unsupported distribution: ${DISTRO_ID}"
+				exit 1
+				;;
+		esac
 	else
 		error "Cannot detect Linux distribution"
 		exit 1
