@@ -270,47 +270,46 @@ get_python_choice() {
 	# In non-interactive mode, use the provided argument
 	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 		log "Non-interactive mode, using Python installation method: ${_arg_python_choice}"
-		return
+	else
+		log "How would you like to install Python packages?"
+		# Interactive mode - show current choice and allow override
+		while true; do
+			echo "1) active-venv: Use the active virtual environment"
+			echo "2) new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
+			echo "3) system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
+			echo "4) pipx: Use pipx for isolated package installation"
+			read -rp "Enter your choice (1-4) or press enter for default (${_arg_python_choice}): " user_choice
+			echo # newline
+
+			# If user provided no value, use default and exit
+			if [[ -z "${user_choice}" ]]; then
+				break
+			fi
+
+			# Process user choice
+			case "${user_choice}" in
+				1|active-venv)
+					PYTHON_CHOICE="active-venv"
+					break
+					;;
+				2|new-venv)
+					PYTHON_CHOICE="new-venv"
+					break
+					;;
+				3|system-python)
+					PYTHON_CHOICE="system-python"
+					break
+					;;
+				4|pipx)
+					PYTHON_CHOICE="pipx"
+					break
+					;;
+				*)
+					warn "Invalid choice '${user_choice}'. Please try again."
+					;;
+			esac
+		done
 	fi
-
-	log "How would you like to install Python packages?"
-	# Interactive mode - show current choice and allow override
-	while true; do
-		echo "1) active-venv: Use the active virtual environment"
-		echo "2) new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
-		echo "3) system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
-		echo "4) pipx: Use pipx for isolated package installation"
-		read -rp "Enter your choice (1-4) or press enter for default (${_arg_python_choice}): " user_choice
-		echo # newline
-
-		# If user provided no value, use default and exit
-		if [[ -z "${user_choice}" ]]; then
-			break
-		fi
-
-		# Process user choice
-		case "${user_choice}" in
-			1|active-venv)
-				PYTHON_CHOICE="active-venv"
-				break
-				;;
-			2|new-venv)
-				PYTHON_CHOICE="new-venv"
-				break
-				;;
-			3|system-python)
-				PYTHON_CHOICE="system-python"
-				break
-				;;
-			4|pipx)
-				PYTHON_CHOICE="pipx"
-				break
-				;;
-			*)
-				warn "Invalid choice '${user_choice}'. Please try again."
-				;;
-		esac
-	done
 
 	# Set up Python environment based on choice
 	case ${PYTHON_CHOICE} in
