@@ -783,7 +783,7 @@ log "Installing Kernel-Mode Driver"
 		warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
 		if confirm "Force KMD reinstall?"; then
 			sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
-			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/${TT_KMD_GH_REPO}.git
 			sudo dkms add tt-kmd
 			sudo dkms install "tenstorrent/${KMD_VERSION}"
 			sudo modprobe tenstorrent
@@ -792,7 +792,7 @@ log "Installing Kernel-Mode Driver"
 		fi
 	else
 		# Only install KMD if it's not already installed
-		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/${TT_KMD_GH_REPO}.git
 		sudo dkms add tt-kmd
 		# Ok so this gets exciting fast, so hang on for a second while I explain
 		# During the offline installer we need to figure out what kernels are actually installed
@@ -1237,7 +1237,7 @@ main() {
 	else
 		log "Installing TT-Flash"
 		cd "${WORKDIR}"
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@"${FLASH_VERSION}"
+		${PYTHON_INSTALL_CMD} git+https://github.com/${TT_FLASH_GH_REPO}.git@"${FLASH_VERSION}"
 	fi
 
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
@@ -1286,7 +1286,7 @@ main() {
 
 		log "Topology Version: ${TOPOLOGY_VERSION}"
 
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-topology.git@"${TOPOLOGY_VERSION}"
+		${PYTHON_INSTALL_CMD} git+https://github.com/${TT_TOPOLOGY_GH_REPO}.git@"${TOPOLOGY_VERSION}"
 	fi
 
 	# Setup HugePages
