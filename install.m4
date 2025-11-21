@@ -68,7 +68,7 @@ EOF
 )
 
 KERNEL_LISTING_DEBIAN=$( cat << EOF
-	apt list --installed |
+	apt-get list --installed |
 	grep linux-image |
 	awk 'BEGIN { FS="/"; } { print \$1; }' |
 	sed 's/^linux-image-//g' |
@@ -77,7 +77,7 @@ EOF
 )
 
 KERNEL_LISTING_UBUNTU=$( cat << EOF
-	apt list --installed |
+	apt-get list --installed |
 	grep linux-image |
 	awk 'BEGIN { FS="/"; } { print \$1; }' |
 	sed 's/^linux-image-//g' |
@@ -445,7 +445,7 @@ handle_version_fetch_error() {
 	case ${error_code} in
 		1)
 			error "jq command not found!"
-			error "Please ensure jq is installed: sudo apt install jq (or equivalent for your distro)"
+			error "Please ensure jq is installed: sudo apt-get install jq (or equivalent for your distro)"
 			error "Failed to fetch ${component} version."
 			;;
 		2)
@@ -562,7 +562,7 @@ install_podman() {
 	# Install Podman using package manager
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
-			sudo apt install -y podman podman-docker
+			sudo apt-get install -y podman podman-docker
 			;;
 		"fedora")
 			sudo dnf install -y podman podman-docker
@@ -783,7 +783,7 @@ log "Installing Kernel-Mode Driver"
 		warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
 		if confirm "Force KMD reinstall?"; then
 			sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
-			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/${TT_KMD_GH_REPO}.git
 			sudo dkms add tt-kmd
 			sudo dkms install "tenstorrent/${KMD_VERSION}"
 			sudo modprobe tenstorrent
@@ -792,7 +792,7 @@ log "Installing Kernel-Mode Driver"
 		fi
 	else
 		# Only install KMD if it's not already installed
-		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
+		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/${TT_KMD_GH_REPO}.git
 		sudo dkms add tt-kmd
 		# Ok so this gets exciting fast, so hang on for a second while I explain
 		# During the offline installer we need to figure out what kernels are actually installed
@@ -914,7 +914,7 @@ manual_install_sfpi() {
 
 	case "${SFPI_FILE_EXT}" in
 		"deb")
-			sudo apt install -y "./${SFPI_FILE}"
+			sudo apt-get install -y "./${SFPI_FILE}"
 			;;
 		"rpm")
 			sudo dnf install -y "./${SFPI_FILE}"
@@ -972,8 +972,8 @@ install_sw_from_repos () {
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
 			# For now, install the big three
-			sudo apt update
-			sudo apt install -y tenstorrent-dkms tenstorrent-tools sfpi
+			sudo apt-get update
+			sudo apt-get install -y tenstorrent-dkms tenstorrent-tools sfpi
 			;;
 		"fedora")
 			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
@@ -1101,19 +1101,19 @@ main() {
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
 		"ubuntu")
-			sudo apt update
+			sudo apt-get update
 			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 				# On Ubuntu 20, install python3-venv and don't install pipx
-				sudo apt install -y git python3-pip python3-venv dkms cargo rustc jq protobuf-compiler
+				sudo apt-get install -y git python3-pip python3-venv dkms cargo rustc jq protobuf-compiler
 			else
-				sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
+				sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
 			fi
 			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
-			sudo apt update
-			sudo apt install -y git python3-pip dkms pipx jq protobuf-compiler
+			sudo apt-get update
+			sudo apt-get install -y git python3-pip dkms pipx jq protobuf-compiler
 			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
 			;;
 		"fedora")
@@ -1237,7 +1237,7 @@ main() {
 	else
 		log "Installing TT-Flash"
 		cd "${WORKDIR}"
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@"${FLASH_VERSION}"
+		${PYTHON_INSTALL_CMD} git+https://github.com/${TT_FLASH_GH_REPO}.git@"${FLASH_VERSION}"
 	fi
 
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
@@ -1286,7 +1286,7 @@ main() {
 
 		log "Topology Version: ${TOPOLOGY_VERSION}"
 
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-topology.git@"${TOPOLOGY_VERSION}"
+		${PYTHON_INSTALL_CMD} git+https://github.com/${TT_TOPOLOGY_GH_REPO}.git@"${TOPOLOGY_VERSION}"
 	fi
 
 	# Setup HugePages
