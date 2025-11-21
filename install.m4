@@ -68,7 +68,7 @@ EOF
 )
 
 KERNEL_LISTING_DEBIAN=$( cat << EOF
-	apt list --installed |
+	apt-get list --installed |
 	grep linux-image |
 	awk 'BEGIN { FS="/"; } { print \$1; }' |
 	sed 's/^linux-image-//g' |
@@ -77,7 +77,7 @@ EOF
 )
 
 KERNEL_LISTING_UBUNTU=$( cat << EOF
-	apt list --installed |
+	apt-get list --installed |
 	grep linux-image |
 	awk 'BEGIN { FS="/"; } { print \$1; }' |
 	sed 's/^linux-image-//g' |
@@ -562,7 +562,7 @@ install_podman() {
 	# Install Podman using package manager
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
-			sudo apt install -y podman podman-docker
+			sudo apt-get install -y podman podman-docker
 			;;
 		"fedora")
 			sudo dnf install -y podman podman-docker
@@ -914,7 +914,7 @@ manual_install_sfpi() {
 
 	case "${SFPI_FILE_EXT}" in
 		"deb")
-			sudo apt install -y "./${SFPI_FILE}"
+			sudo apt-get install -y "./${SFPI_FILE}"
 			;;
 		"rpm")
 			sudo dnf install -y "./${SFPI_FILE}"
@@ -972,8 +972,8 @@ install_sw_from_repos () {
 	case "${DISTRO_ID}" in
 		"ubuntu"|"debian")
 			# For now, install the big three
-			sudo apt update
-			sudo apt install -y tenstorrent-dkms tenstorrent-tools sfpi
+			sudo apt-get update
+			sudo apt-get install -y tenstorrent-dkms tenstorrent-tools sfpi
 			;;
 		"fedora")
 			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
@@ -1101,19 +1101,19 @@ main() {
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
 		"ubuntu")
-			sudo apt update
+			sudo apt-get update
 			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
 				# On Ubuntu 20, install python3-venv and don't install pipx
-				sudo apt install -y git python3-pip python3-venv dkms cargo rustc jq protobuf-compiler
+				sudo apt-get install -y git python3-pip python3-venv dkms cargo rustc jq protobuf-compiler
 			else
-				sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
+				sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
 			fi
 			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
-			sudo apt update
-			sudo apt install -y git python3-pip dkms pipx jq protobuf-compiler
+			sudo apt-get update
+			sudo apt-get install -y git python3-pip dkms pipx jq protobuf-compiler
 			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
 			;;
 		"fedora")
