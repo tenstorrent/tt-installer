@@ -490,6 +490,85 @@ get_inference_server_choice() {
 	fi
 }
 
+# Generic function to fetch latest version from any GitHub repository
+# Usage: fetch_latest_version <repo> <prefix_to_remove>
+# Returns: version string with prefix removed, or exits with error code
+fetch_latest_version() {
+	local repo="$1"
+	local prefix_to_remove="${2:-}"
+
+	if ! command -v jq &> /dev/null; then
+		echo "Error: JQ is not installed!" >&2
+		return 1  # jq not installed
+	fi
+
+	local response
+	local response_headers
+	local response_body
+	local latest_version
+
+	# Curl options
+	# We always suppress connect headers (fixes issues with systems using proxies)
+	# -D - dumps the headers to stdout
+	curl_opts=(--suppress-connect-headers -D -)
+
+	# SC is worried this might not exist, but argbash guarantees it will
+    # shellcheck disable=SC2154
+	if [[ "${_arg_verbose}" = "on" ]]; then
+		curl_opts+=(-v)
+	else
+		curl_opts+=(-s -S)
+	fi
+
+	if [[ -n "${_arg_github_token}" ]]; then
+		curl_opts+=(-H "Authorization: token ${_arg_github_token}")
+	fi
+
+	response=$(curl "${curl_opts[@]}" \
+		https://api.github.com/repos/"${repo}"/releases/latest)
+
+	# Split at the first blank line
+	response_headers=$(echo "${response}" | sed '/^\r*$/,$d')
+	response_body=$(echo "${response}" | sed '1,/^\r*$/d')
+
+	if [[ "${_arg_verbose}" = "on" ]]; then
+		echo "=== GitHub API Response Headers ===" >&2
+		echo "${response_headers}" >&2
+		echo "=== GitHub API Response Body ===" >&2
+		echo "${response_body}" >&2
+		echo "===================================" >&2
+	fi
+
+	# Check for GitHub API rate limit
+	if echo "${response_headers}" | grep -qi "x-ratelimit-remaining: 0"; then
+		echo "Error: GitHub API Rate Limit exceeded" >&2
+		return 2  # GitHub API rate limit exceeded
+	fi
+
+	# Check if response body is valid JSON
+	if ! echo "${response_body}" | jq . >/dev/null 2>&1; then
+		echo "Error: Got invalid JSON from GitHub API" >&2
+		return 3  # Invalid JSON response
+	fi
+
+	latest_version=$(echo "${response_body}" | jq -r '.tag_name' 2>/dev/null)
+
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
+		echo "Error: No tag name found in API response" >&2
+		return 4  # No tag_name found
+	fi
+
+	# Remove prefix if specified
+	if [[ -n "${prefix_to_remove}" ]]; then
+		echo "${latest_version#"${prefix_to_remove}"}"
+	else
+		echo "${latest_version}"
+	fi
+
+	return 0
+}
+
 install_tt_repos () {
 	log "Installing TT repositories to your distribution package manager"
 	case "${DISTRO_ID}" in
@@ -754,15 +833,25 @@ main() {
 		log "Skipping firmware update"
 	else
 		log "Updating firmware"
+
+		if [[ -n "${_arg_fw_version:-}" ]]; then
+			FW_VERSION=${_arg_fw_version}
+		else
+			FW_VERSION=$(fetch_latest_version "tenstorrent/tt-firmware" "v");
+		fi
+
+		cd "${WORKDIR}"
+
 		# Create FW_FILE based on FW_VERSION
-		FW_FILE="fw_pack-${_arg_fw_version}.fwbundle"
+		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
 		FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
 		BACKUP_FW_RELEASE_URL="https://github.com/tenstorrent/tt-zephyr-platforms/releases/download"
 
 		# Download from GitHub releases
-		if ! curl -fsSLO "${FW_RELEASE_URL}/v${_arg_fw_version}/${FW_FILE}"; then
+		if ! curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+			warn "Tried URL ${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"
 			warn "Could not find firmware bundle at main URL- trying backup URL"
-			if ! curl -fsSLO "${BACKUP_FW_RELEASE_URL}/v${_arg_fw_version}/${FW_FILE}"; then
+			if ! curl -fsSLO "${BACKUP_FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
 				error_exit "Could not download firmware bundle. Ensure firmware version is valid."
 			fi
 		fi
@@ -770,9 +859,9 @@ main() {
 		verify_download "${FW_FILE}"
 
 		if [[ "${_arg_update_firmware}" = "force" ]]; then
-			tt-flash --fw-tar "${FW_FILE}" --force
+			tt-flash flash "${FW_FILE}" --force
 		else
-			tt-flash --fw-tar "${FW_FILE}"
+			tt-flash flash "${FW_FILE}"
 		fi
 	fi
 
