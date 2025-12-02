@@ -582,6 +582,8 @@ install_tt_repos () {
 
 			# Download the key
 			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
+
+			sudo apt update
 			;;
 		"fedora")
 			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
