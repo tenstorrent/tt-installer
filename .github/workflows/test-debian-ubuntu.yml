@@ -57,7 +57,7 @@ jobs:
             timeout 600 bash install.sh \
               --mode-non-interactive \
               --install-kmd \
-              --install-hugepages \
+              --no-install-hugepages \
               --update-firmware=on \
               --install-metalium-container \
               --install-sfpi \
