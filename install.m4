@@ -1,5 +1,6 @@
 #!/bin/bash
 # shellcheck disable=SC2317
+# shellcheck disable=SC2154
 
 # SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
 # SPDX-License-Identifier: Apache-2.0
@@ -155,7 +156,6 @@ detect_distro() {
 	if [[ -f /etc/os-release ]]; then
 		. /etc/os-release
 		DISTRO_ID=${ID}
-		DISTRO_VERSION=${VERSION_ID}
 
 		# Set package manager based on distribution
 		case "${DISTRO_ID}" in
@@ -777,17 +777,17 @@ main() {
 	# Format: "package_name|install_flag|version|type"
 	declare -A package_registry=(
 		# System packages
-		["kmd"]="tenstorrent-dkms|$_arg_install_kmd|$_arg_kmd_version|system"
-		["hugepages"]="tenstorrent-tools|$_arg_install_hugepages|$_arg_systools_version|system"
-		["sfpi"]="sfpi|$_arg_install_sfpi|$_arg_sfpi_version|system"
-		["podman"]="podman|$_arg_install_podman||system"
-		["podman-docker"]="podman-docker|$_arg_install_podman_docker||system"
-		["podman-compose"]="podman-compose|$_arg_install_podman_docker||system"
+		["kmd"]="tenstorrent-dkms|${_arg_install_kmd}|${_arg_kmd_version}|system"
+		["hugepages"]="tenstorrent-tools|${_arg_install_hugepages}|${_arg_systools_version}|system"
+		["sfpi"]="sfpi|${_arg_install_sfpi}|${_arg_sfpi_version}|system"
+		["podman"]="podman|${_arg_install_podman}||system"
+		["podman-docker"]="podman-docker|${_arg_install_podman_docker}||system"
+		["podman-compose"]="podman-compose|${_arg_install_podman_docker}||system"
 
 		# Python packages
-		["tt-topology"]="tt-topology|$_arg_install_tt_topology|$_arg_topology_version|python"
-		["tt-flash"]="tt-flash|$_arg_install_tt_flash|$_arg_flash_version|python"
-		["tt-smi"]="tt-smi|$_arg_install_tt_smi|$_arg_smi_version|python"
+		["tt-topology"]="tt-topology|${_arg_install_tt_topology}|${_arg_topology_version}|python"
+		["tt-flash"]="tt-flash|${_arg_install_tt_flash}|${_arg_flash_version}|python"
+		["tt-smi"]="tt-smi|${_arg_install_tt_smi}|${_arg_smi_version}|python"
 	)
 
 	# 2. Parse the registry to obtain lists of packages
@@ -795,30 +795,30 @@ main() {
 	declare -a python_packages=()
 
 	for key in "${!package_registry[@]}"; do
-		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[$key]}"
+		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[${key}]}"
 
 		# Skip if not marked for installation
-		[[ "$install_flag" != "on" ]] && continue
+		[[ "${install_flag}" != "on" ]] && continue
 
 		# Add to appropriate list with version formatting
-		case "$pkg_type" in
+		case "${pkg_type}" in
 			system)
-				if [[ -z "$version" ]]; then
-					system_packages+=("$pkg_name")
+				if [[ -z "${version}" ]]; then
+					system_packages+=("${pkg_name}")
 				else
 					# Format based on package manager
-					if [[ "$PKG_MANAGER" = "apt-get" ]]; then
+					if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
 						system_packages+=("${pkg_name}=${version}")
-					elif [[ "$PKG_MANAGER" = "dnf" ]]; then
+					elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
 						system_packages+=("${pkg_name}-${version}")
 					else
-						system_packages+=("$pkg_name")  # fallback to no version
+						system_packages+=("${pkg_name}")  # fallback to no version
 					fi
 				fi
 				;;
 			python)
-				if [[ -z "$version" ]]; then
-					python_packages+=("$pkg_name")
+				if [[ -z "${version}" ]]; then
+					python_packages+=("${pkg_name}")
 				else
 					python_packages+=("${pkg_name}==${version}")
 				fi
@@ -830,9 +830,9 @@ main() {
 	# Install system packages
 	if [[ ${#system_packages[@]} -gt 0 ]]; then
 		echo "Installing system packages: ${system_packages[*]}"
-		if [[ "$PKG_MANAGER" = "apt-get" ]]; then
+		if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
 			sudo apt-get install -y "${system_packages[@]}"
-		elif [[ "$PKG_MANAGER" = "dnf" ]]; then
+		elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
 			sudo dnf install -y "${system_packages[@]}"
 		fi
 	fi
@@ -840,7 +840,7 @@ main() {
 	# Install Python packages
 	if [[ ${#python_packages[@]} -gt 0 ]]; then
 		echo "Installing Python packages: ${python_packages[*]}"
-		$PYTHON_INSTALL_CMD "${python_packages[@]}"
+		${PYTHON_INSTALL_CMD} "${python_packages[@]}"
 	fi
 
 	# Update firmware using tt-flash
