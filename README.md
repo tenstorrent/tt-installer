@@ -81,4 +81,4 @@ For more information, please see this compatibility matrix:
 | Fedora | 42          | Yes      | May require restart after base package install |
 | Other DEB-based distros  | N/A          | N/A     | Unsupported but may work |
 | Other RPM-based distros  | N/A          | N/A     | Unsupported but may work |
-
+| Alpine Linux | 3.22 | Yes     | Curl is not installed by default|
