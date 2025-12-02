@@ -572,10 +572,23 @@ fetch_latest_version() {
 install_tt_repos () {
 	log "Installing TT repositories to your distribution package manager"
 	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
+		"ubuntu")
 			# Add the apt listing
 			# shellcheck disable=2002
 			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
+
+			# Setup the keyring
+			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
+
+			# Download the key
+			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
+
+			sudo apt update
+			;;
+		"debian")
+			# Add the apt listing
+			# shellcheck disable=2002
+			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/debian/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
 
 			# Setup the keyring
 			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
