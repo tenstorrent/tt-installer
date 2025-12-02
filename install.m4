@@ -160,7 +160,7 @@ detect_distro() {
 		# Set package manager based on distribution
 		case "${DISTRO_ID}" in
 			"ubuntu"|"debian")
-				PKG_MANAGER="apt"
+				PKG_MANAGER="apt-get"
 				;;
 			"fedora"|"rhel"|"centos")
 				PKG_MANAGER="dnf"
@@ -583,7 +583,7 @@ install_tt_repos () {
 			# Download the key
 			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
 
-			sudo apt update
+			sudo apt-get update
 			;;
 		"debian")
 			# Add the apt listing
@@ -596,7 +596,7 @@ install_tt_repos () {
 			# Download the key
 			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
 
-			sudo apt update
+			sudo apt-get update
 			;;
 		"fedora")
 			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
@@ -737,13 +737,13 @@ main() {
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
 		"ubuntu")
-			sudo apt update
-			sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
+			sudo apt-get update
+			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
-			sudo apt update
-			sudo apt install -y git python3-pip dkms pipx jq protobuf-compiler wget
+			sudo apt-get update
+			sudo apt-get install -y git python3-pip dkms pipx jq protobuf-compiler wget
 			;;
 		"fedora")
 			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
@@ -807,7 +807,7 @@ main() {
 					system_packages+=("$pkg_name")
 				else
 					# Format based on package manager
-					if [[ "$PKG_MANAGER" = "apt" ]]; then
+					if [[ "$PKG_MANAGER" = "apt-get" ]]; then
 						system_packages+=("${pkg_name}=${version}")
 					elif [[ "$PKG_MANAGER" = "dnf" ]]; then
 						system_packages+=("${pkg_name}-${version}")
@@ -830,8 +830,8 @@ main() {
 	# Install system packages
 	if [[ ${#system_packages[@]} -gt 0 ]]; then
 		echo "Installing system packages: ${system_packages[*]}"
-		if [[ "$PKG_MANAGER" = "apt" ]]; then
-			sudo apt install -y "${system_packages[@]}"
+		if [[ "$PKG_MANAGER" = "apt-get" ]]; then
+			sudo apt-get install -y "${system_packages[@]}"
 		elif [[ "$PKG_MANAGER" = "dnf" ]]; then
 			sudo dnf install -y "${system_packages[@]}"
 		fi
