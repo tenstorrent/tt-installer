@@ -644,19 +644,19 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu")
 			sudo apt update
-			sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
+			sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt update
-			sudo apt install -y git python3-pip dkms pipx jq protobuf-compiler
+			sudo apt install -y git python3-pip dkms pipx jq protobuf-compiler wget
 			;;
 		"fedora")
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
