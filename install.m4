@@ -68,69 +68,6 @@ LOGO=$(cat << "EOF"
 EOF
 )
 
-# Podman Metalium URLs and Settings
-METALIUM_IMAGE_URL="${TT_METALIUM_IMAGE_URL:-${_arg_metalium_image_url}}"
-METALIUM_IMAGE_TAG="${TT_METALIUM_IMAGE_TAG:-${_arg_metalium_image_tag}}"
-PODMAN_METALIUM_SCRIPT_DIR="${TT_PODMAN_METALIUM_SCRIPT_DIR:-${_arg_podman_metalium_script_dir}}"
-PODMAN_METALIUM_SCRIPT_NAME="${TT_PODMAN_METALIUM_SCRIPT_NAME:-${_arg_podman_metalium_script_name}}"
-
-# String Parameters - use env var if set, otherwise argbash value
-PYTHON_CHOICE="${TT_PYTHON_CHOICE:-${_arg_python_choice}}"
-REBOOT_OPTION="${TT_REBOOT_OPTION:-${_arg_reboot_option}}"
-
-# Path Parameters - use env var if set, otherwise argbash value
-NEW_VENV_LOCATION="${TT_NEW_VENV_LOCATION:-${_arg_new_venv_location}}"
-
-# Boolean Parameters - support legacy env vars for backward compatibility
-# Convert env vars to argbash format if they exist
-if [[ -n "${TT_INSTALL_KMD:-}" ]]; then
-	if [[ "${TT_INSTALL_KMD}" == "true" || "${TT_INSTALL_KMD}" == "0" || "${TT_INSTALL_KMD}" == "on" ]]; then
-		_arg_install_kmd="on"
-	else
-		_arg_install_kmd="off"
-	fi
-fi
-
-if [[ -n "${TT_INSTALL_HUGEPAGES:-}" ]]; then
-	if [[ "${TT_INSTALL_HUGEPAGES}" == "true" || "${TT_INSTALL_HUGEPAGES}" == "0" || "${TT_INSTALL_HUGEPAGES}" == "on" ]]; then
-		_arg_install_hugepages="on"
-	else
-		_arg_install_hugepages="off"
-	fi
-fi
-
-if [[ -n "${TT_INSTALL_PODMAN:-}" ]]; then
-	if [[ "${TT_INSTALL_PODMAN}" == "true" || "${TT_INSTALL_PODMAN}" == "0" || "${TT_INSTALL_PODMAN}" == "on" ]]; then
-		_arg_install_podman="on"
-	else
-		_arg_install_podman="off"
-	fi
-fi
-
-if [[ -n "${TT_INSTALL_METALIUM_CONTAINER:-}" ]]; then
-	if [[ "${TT_INSTALL_METALIUM_CONTAINER}" == "true" || "${TT_INSTALL_METALIUM_CONTAINER}" == "0" || "${TT_INSTALL_METALIUM_CONTAINER}" == "on" ]]; then
-		_arg_install_metalium_container="on"
-	else
-		_arg_install_metalium_container="off"
-	fi
-fi
-
-if [[ -n "${TT_UPDATE_FIRMWARE:-}" ]]; then
-	if [[ "${TT_UPDATE_FIRMWARE}" == "true" || "${TT_UPDATE_FIRMWARE}" == "0" || "${TT_UPDATE_FIRMWARE}" == "on" ]]; then
-		_arg_update_firmware="on"
-	else
-		_arg_update_firmware="off"
-	fi
-fi
-
-if [[ -n "${TT_MODE_NON_INTERACTIVE:-}" ]]; then
-	if [[ "${TT_MODE_NON_INTERACTIVE}" == "true" || "${TT_MODE_NON_INTERACTIVE}" == "0" || "${TT_MODE_NON_INTERACTIVE}" == "on" ]]; then
-		_arg_mode_non_interactive="on"
-	else
-		_arg_mode_non_interactive="off"
-	fi
-fi
-
 # If container mode is enabled, disable KMD, HugePages, and SFPI
 # shellcheck disable=SC2154
 if [[ "${_arg_mode_container}" = "on" ]]; then
@@ -138,15 +75,15 @@ if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
 	_arg_install_podman="off" # No podman in podman
 	_arg_install_sfpi="off"
-	REBOOT_OPTION="never" # Do not reboot
+	_arg_reboot_option="never" # Do not reboot
 fi
 
 # In non-interactive mode, set reboot default if not specified
 if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 	# In non-interactive mode, we can't ask the user for anything
 	# So if they don't provide a reboot choice we will pick a default
-	if [[ "${REBOOT_OPTION}" = "ask" ]]; then
-		REBOOT_OPTION="never" # Do not reboot
+	if [[ "${_arg_reboot_option}" = "ask" ]]; then
+		_arg_reboot_option="never" # Do not reboot
 	fi
 fi
 
@@ -267,15 +204,17 @@ confirm() {
 
 # Get Python installation choice interactively or use default
 get_python_choice() {
+	PYTHON_CHOICE="${_arg_python_choice}"
+
 	# In non-interactive mode, use the provided argument
 	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
-		log "Non-interactive mode, using Python installation method: ${_arg_python_choice}"
+		log "Non-interactive mode, using Python installation method: ${PYTHON_CHOICE}"
 	else
 		log "How would you like to install Python packages?"
 		# Interactive mode - show current choice and allow override
 		while true; do
 			echo "1) active-venv: Use the active virtual environment"
-			echo "2) new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
+			echo "2) new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${_arg_new_venv_location}"
 			echo "3) system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
 			echo "4) pipx: Use pipx for isolated package installation"
 			read -rp "Enter your choice (1-4) or press enter for default (${_arg_python_choice}): " user_choice
@@ -346,9 +285,9 @@ get_python_choice() {
 			;;
 		"new-venv"|*)
 			log "Setting up new Python virtual environment"
-			python3 -m venv "${NEW_VENV_LOCATION}"
+			python3 -m venv "${_arg_new_venv_location}"
 			# shellcheck disable=SC1091 # Must exist after previous command
-			source "${NEW_VENV_LOCATION}/bin/activate"
+			source "${_arg_new_venv_location}/bin/activate"
 			INSTALLED_IN_VENV=0
 			PYTHON_INSTALL_CMD="pip install"
 			;;
@@ -375,16 +314,16 @@ install_podman_metalium() {
 	log "Installing Metalium via Podman"
 
 	# Create wrapper script directory
-	mkdir -p "${PODMAN_METALIUM_SCRIPT_DIR}" || error_exit "Failed to create script directory"
+	mkdir -p "${_arg_podman_metalium_script_dir}" || error_exit "Failed to create script directory"
 
 	# Create wrapper script
 	log "Creating wrapper script..."
-	cat > "${PODMAN_METALIUM_SCRIPT_DIR}/${PODMAN_METALIUM_SCRIPT_NAME}" << EOF
+	cat > "${_arg_podman_metalium_script_dir}/${_arg_podman_metalium_script_name}" << EOF
 #!/bin/bash
 # Wrapper script for tt-metalium using Podman
 
 # Image configuration
-METALIUM_IMAGE="${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}"
+METALIUM_IMAGE="${_arg_metalium_image_url}:${_arg_metalium_image_tag}"
 
 # Run the command using Podman
 
@@ -404,17 +343,17 @@ podman run --rm -it \\
 EOF
 
 	# Make the script executable
-	chmod +x "${PODMAN_METALIUM_SCRIPT_DIR}/${PODMAN_METALIUM_SCRIPT_NAME}" || error_exit "Failed to make script executable"
+	chmod +x "${_arg_podman_metalium_script_dir}/${_arg_podman_metalium_script_name}" || error_exit "Failed to make script executable"
 
 	# Check if the directory is in PATH
-	if [[ ":${PATH}:" != *":${PODMAN_METALIUM_SCRIPT_DIR}:"* ]]; then
-		warn "${PODMAN_METALIUM_SCRIPT_DIR} is not in your PATH."
+	if [[ ":${PATH}:" != *":${_arg_podman_metalium_script_dir}:"* ]]; then
+		warn "${_arg_podman_metalium_script_dir} is not in your PATH."
 		warn "A restart may fix this, or you may need to update your shell RC"
 	fi
 
 	# Pull the image
 	log "Pulling the tt-metalium image (this may take a while)..."
-	podman pull "${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}" || error "Failed to pull image"
+	podman pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
 
 	log "Metalium installation completed"
 	return 0
@@ -890,11 +829,11 @@ main() {
 	log "Installation log saved to: ${LOG_FILE}"
 
 	# Auto-reboot if specified
-	if [[ "${REBOOT_OPTION}" = "always" ]]; then
+	if [[ "${_arg_reboot_option}" = "always" ]]; then
 		log "Auto-reboot enabled. Rebooting now..."
 		sudo reboot
 	# Otherwise, ask if specified
-	elif [[ "${REBOOT_OPTION}" = "ask" ]]; then
+	elif [[ "${_arg_reboot_option}" = "ask" ]]; then
 		if confirm "Would you like to reboot now?"; then
 			log "Rebooting..."
 			sudo reboot
