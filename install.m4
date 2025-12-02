@@ -607,6 +607,7 @@ METALIUM_IMAGE="${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}"
 
 podman run --rm -it \\
   --privileged \\
+  --log-driver none \\
   --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
   --volume=\${HOME}:/home/user \\
   --device=/dev/tenstorrent:/dev/tenstorrent \\
@@ -679,6 +680,7 @@ METALIUM_IMAGE="${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}"
 #  override the entrypoint. Why not just corral users into /bin/bash?
 podman run --rm -it \\
   --privileged \\
+  --log-driver none \\
   --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
   --device=/dev/tenstorrent:/dev/tenstorrent \\
   --env=DISPLAY=\${DISPLAY} \\
