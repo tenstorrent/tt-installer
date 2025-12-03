@@ -53,18 +53,16 @@ jobs:
           su - testuser -c '
             cd /home/testuser/workspace
 
-            # Test configuration (skip hardware-dependent steps)
-            export TT_MODE_NON_INTERACTIVE=0
-            export TT_INSTALL_KMD=1
-            export TT_INSTALL_HUGEPAGES=1
-            export TT_UPDATE_FIRMWARE=1
-            export TT_INSTALL_METALIUM_CONTAINER=1
-            export TT_SFPI_INSTALL=1
-            export TT_PYTHON_CHOICE=new-venv
-            export TT_REBOOT_OPTION=never
-
-            # Run installer
-            timeout 600 bash install.sh || {
+            # Run installer with test configuration (skip hardware-dependent steps)
+            timeout 600 bash install.sh \
+              --mode-non-interactive \
+              --install-kmd \
+              --no-install-hugepages \
+              --update-firmware=on \
+              --install-metalium-container \
+              --install-sfpi \
+              --python-choice=new-venv \
+              --reboot-option=never || {
               echo \"Installer timed out or failed\"
               exit 1
             }

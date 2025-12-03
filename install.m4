@@ -1,5 +1,6 @@
 #!/bin/bash
 # shellcheck disable=SC2317
+# shellcheck disable=SC2154
 
 # SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
 # SPDX-License-Identifier: Apache-2.0
@@ -15,8 +16,10 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-kmd],,[Kernel-Mode-Driver installation],[on])
 # ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
 # ARG_OPTIONAL_BOOLEAN([install-podman],,[Install Podman],[on])
+# ARG_OPTIONAL_BOOLEAN([install-podman-docker],,[Install podman-docker shim (disable to keep docker)],[off])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
+# ARG_OPTIONAL_BOOLEAN([install-tt-smi],,[Install tt-smi for device monitoring],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
 # ARG_OPTIONAL_BOOLEAN([install-sfpi],,[Install SFPI],[on])
 # ARG_OPTIONAL_BOOLEAN([install-inference-server],,[Install tt-inference-server],[on])
@@ -50,7 +53,6 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
 # ARG_OPTIONAL_BOOLEAN([verbose],,[Enable verbose output for debugging])
-# ARG_OPTIONAL_BOOLEAN([mode-repository-beta],,[BETA: Use external repository for package installation.],[off])
 
 # ARGBASH_GO
 
@@ -67,107 +69,6 @@ LOGO=$(cat << "EOF"
 EOF
 )
 
-KERNEL_LISTING_DEBIAN=$( cat << EOF
-	apt list --installed |
-	grep linux-image |
-	awk 'BEGIN { FS="/"; } { print \$1; }' |
-	sed 's/^linux-image-//g' |
-	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$\|virtual"
-EOF
-)
-
-KERNEL_LISTING_UBUNTU=$( cat << EOF
-	apt list --installed |
-	grep linux-image |
-	awk 'BEGIN { FS="/"; } { print \$1; }' |
-	sed 's/^linux-image-//g' |
-	grep -v "^generic$\|^generic-hwe-[0-9]\{2,\}\.[0-9]\{2,\}$\|virtual"
-EOF
-)
-KERNEL_LISTING_FEDORA="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matched\" | sed 's/^kernel-devel-//'"
-KERNEL_LISTING_EL="rpm -qa | grep \"^kernel.*-devel\" | grep -v \"\-devel-matched\" | sed 's/^kernel-devel-//'"
-
-# ========================= GIT URLs =========================
-
-# ========================= Repository Configuration =========================
-
-# GitHub repository URLs
-TT_KMD_GH_REPO="tenstorrent/tt-kmd"
-TT_FW_GH_REPO="tenstorrent/tt-firmware"
-TT_SYSTOOLS_GH_REPO="tenstorrent/tt-system-tools"
-TT_SMI_GH_REPO="tenstorrent/tt-smi"
-TT_FLASH_GH_REPO="tenstorrent/tt-flash"
-TT_TOPOLOGY_GH_REPO="tenstorrent/tt-topology"
-TT_SFPI_GH_REPO="tenstorrent/sfpi"
-
-# ========================= Backward Compatibility Environment Variables =========================
-
-# Support environment variables as fallbacks for backward compatibility
-# If env var is set, use it; otherwise use argbash value with default
-
-# Podman Metalium URLs and Settings
-METALIUM_IMAGE_URL="${TT_METALIUM_IMAGE_URL:-${_arg_metalium_image_url}}"
-METALIUM_IMAGE_TAG="${TT_METALIUM_IMAGE_TAG:-${_arg_metalium_image_tag}}"
-PODMAN_METALIUM_SCRIPT_DIR="${TT_PODMAN_METALIUM_SCRIPT_DIR:-${_arg_podman_metalium_script_dir}}"
-PODMAN_METALIUM_SCRIPT_NAME="${TT_PODMAN_METALIUM_SCRIPT_NAME:-${_arg_podman_metalium_script_name}}"
-
-# String Parameters - use env var if set, otherwise argbash value
-PYTHON_CHOICE="${TT_PYTHON_CHOICE:-${_arg_python_choice}}"
-REBOOT_OPTION="${TT_REBOOT_OPTION:-${_arg_reboot_option}}"
-
-# Path Parameters - use env var if set, otherwise argbash value
-NEW_VENV_LOCATION="${TT_NEW_VENV_LOCATION:-${_arg_new_venv_location}}"
-
-# Boolean Parameters - support legacy env vars for backward compatibility
-# Convert env vars to argbash format if they exist
-if [[ -n "${TT_INSTALL_KMD:-}" ]]; then
-	if [[ "${TT_INSTALL_KMD}" == "true" || "${TT_INSTALL_KMD}" == "0" || "${TT_INSTALL_KMD}" == "on" ]]; then
-		_arg_install_kmd="on"
-	else
-		_arg_install_kmd="off"
-	fi
-fi
-
-if [[ -n "${TT_INSTALL_HUGEPAGES:-}" ]]; then
-	if [[ "${TT_INSTALL_HUGEPAGES}" == "true" || "${TT_INSTALL_HUGEPAGES}" == "0" || "${TT_INSTALL_HUGEPAGES}" == "on" ]]; then
-		_arg_install_hugepages="on"
-	else
-		_arg_install_hugepages="off"
-	fi
-fi
-
-if [[ -n "${TT_INSTALL_PODMAN:-}" ]]; then
-	if [[ "${TT_INSTALL_PODMAN}" == "true" || "${TT_INSTALL_PODMAN}" == "0" || "${TT_INSTALL_PODMAN}" == "on" ]]; then
-		_arg_install_podman="on"
-	else
-		_arg_install_podman="off"
-	fi
-fi
-
-if [[ -n "${TT_INSTALL_METALIUM_CONTAINER:-}" ]]; then
-	if [[ "${TT_INSTALL_METALIUM_CONTAINER}" == "true" || "${TT_INSTALL_METALIUM_CONTAINER}" == "0" || "${TT_INSTALL_METALIUM_CONTAINER}" == "on" ]]; then
-		_arg_install_metalium_container="on"
-	else
-		_arg_install_metalium_container="off"
-	fi
-fi
-
-if [[ -n "${TT_UPDATE_FIRMWARE:-}" ]]; then
-	if [[ "${TT_UPDATE_FIRMWARE}" == "true" || "${TT_UPDATE_FIRMWARE}" == "0" || "${TT_UPDATE_FIRMWARE}" == "on" ]]; then
-		_arg_update_firmware="on"
-	else
-		_arg_update_firmware="off"
-	fi
-fi
-
-if [[ -n "${TT_MODE_NON_INTERACTIVE:-}" ]]; then
-	if [[ "${TT_MODE_NON_INTERACTIVE}" == "true" || "${TT_MODE_NON_INTERACTIVE}" == "0" || "${TT_MODE_NON_INTERACTIVE}" == "on" ]]; then
-		_arg_mode_non_interactive="on"
-	else
-		_arg_mode_non_interactive="off"
-	fi
-fi
-
 # If container mode is enabled, disable KMD, HugePages, and SFPI
 # shellcheck disable=SC2154
 if [[ "${_arg_mode_container}" = "on" ]]; then
@@ -175,31 +76,18 @@ if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
 	_arg_install_podman="off" # No podman in podman
 	_arg_install_sfpi="off"
-	REBOOT_OPTION="never" # Do not reboot
+	_arg_reboot_option="never" # Do not reboot
 fi
 
 # In non-interactive mode, set reboot default if not specified
 if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 	# In non-interactive mode, we can't ask the user for anything
 	# So if they don't provide a reboot choice we will pick a default
-	if [[ "${REBOOT_OPTION}" = "ask" ]]; then
-		REBOOT_OPTION="never" # Do not reboot
+	if [[ "${_arg_reboot_option}" = "ask" ]]; then
+		_arg_reboot_option="never" # Do not reboot
 	fi
 fi
 
-# For the repository mode beta, we will disable the existing install functions
-# and call a new function which installs the dependencies using the APT repo.
-# shellcheck disable=SC2154
-if [[ "${_arg_mode_repository_beta}" = "on" ]]; then
-	_arg_install_hugepages="off"
-	_arg_install_sfpi="off"
-	_arg_install_kmd="off"
-	export INSTALL_TT_REPOS="on"
-	export INSTALL_SW_FROM_REPOS="on"
-fi
-
-SYSTEMD_NOW="${TT_SYSTEMD_NOW:---now}"
-SYSTEMD_NO="${TT_SYSTEMD_NO:-1}"
 PIPX_ENSUREPATH_EXTRAS="${TT_PIPX_ENSUREPATH_EXTRAS:- }"
 PIPX_INSTALL_EXTRAS="${TT_PIPX_INSTALL_EXTRAS:- }"
 
@@ -268,20 +156,23 @@ detect_distro() {
 	if [[ -f /etc/os-release ]]; then
 		. /etc/os-release
 		DISTRO_ID=${ID}
-		DISTRO_VERSION=${VERSION_ID}
-		check_is_ubuntu_20
+
+		# Set package manager based on distribution
+		case "${DISTRO_ID}" in
+			"ubuntu"|"debian")
+				PKG_MANAGER="apt-get"
+				;;
+			"fedora"|"rhel"|"centos")
+				PKG_MANAGER="dnf"
+				;;
+			*)
+				error "Unsupported distribution: ${DISTRO_ID}"
+				exit 1
+				;;
+		esac
 	else
 		error "Cannot detect Linux distribution"
 		exit 1
-	fi
-}
-
-check_is_ubuntu_20() {
-	# Check if it's Ubuntu and version starts with 20
-	if [[ "${DISTRO_ID}" = "ubuntu" ]] && [[ "${DISTRO_VERSION}" == 20* ]]; then
-		IS_UBUNTU_20=0 # Ubuntu 20.xx
-	else
-		IS_UBUNTU_20=1 # Not that
 	fi
 }
 
@@ -313,235 +204,95 @@ confirm() {
 
 # Get Python installation choice interactively or use default
 get_python_choice() {
+	PYTHON_CHOICE="${_arg_python_choice}"
+
 	# In non-interactive mode, use the provided argument
 	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
-		log "Non-interactive mode, using Python installation method: ${_arg_python_choice}"
-		return
-	fi
-
-	log "How would you like to install Python packages?"
-	# Interactive mode - show current choice and allow override
-	while true; do
-		echo "1) active-venv: Use the active virtual environment"
-		echo "2) new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${NEW_VENV_LOCATION}"
-		echo "3) system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
-		if [[ "${IS_UBUNTU_20}" != "0" ]]; then
+		log "Non-interactive mode, using Python installation method: ${PYTHON_CHOICE}"
+	else
+		log "How would you like to install Python packages?"
+		# Interactive mode - show current choice and allow override
+		while true; do
+			echo "1) active-venv: Use the active virtual environment"
+			echo "2) new-venv: [DEFAULT] Create a new Python virtual environment (venv) at ${_arg_new_venv_location}"
+			echo "3) system-python: Use the system pathing, available for multiple users. *** NOT RECOMMENDED UNLESS YOU ARE SURE ***"
 			echo "4) pipx: Use pipx for isolated package installation"
-		fi
-		read -rp "Enter your choice (1-4) or press enter for default (${_arg_python_choice}): " user_choice
-		echo # newline
+			read -rp "Enter your choice (1-4) or press enter for default (${_arg_python_choice}): " user_choice
+			echo # newline
 
-		# If user provided no value, use default and exit
-		if [[ -z "${user_choice}" ]]; then
-			break
-		fi
-
-		# Process user choice
-		case "${user_choice}" in
-			1|active-venv)
-				PYTHON_CHOICE="active-venv"
+			# If user provided no value, use default and exit
+			if [[ -z "${user_choice}" ]]; then
 				break
-				;;
-			2|new-venv)
-				PYTHON_CHOICE="new-venv"
-				break
-				;;
-			3|system-python)
-				PYTHON_CHOICE="system-python"
-				break
-				;;
-			4|pipx)
-				PYTHON_CHOICE="pipx"
-				break
-				;;
-			*)
-				warn "Invalid choice '${user_choice}'. Please try again."
-				;;
-		esac
-	done
-}
+			fi
 
-# Generic function to fetch latest version from any GitHub repository
-# Usage: fetch_latest_version <repo> <prefix_to_remove>
-# Returns: version string with prefix removed, or exits with error code
-fetch_latest_version() {
-	local repo="$1"
-	local prefix_to_remove="${2:-}"
-
-	if ! command -v jq &> /dev/null; then
-		return 1  # jq not installed
+			# Process user choice
+			case "${user_choice}" in
+				1|active-venv)
+					PYTHON_CHOICE="active-venv"
+					break
+					;;
+				2|new-venv)
+					PYTHON_CHOICE="new-venv"
+					break
+					;;
+				3|system-python)
+					PYTHON_CHOICE="system-python"
+					break
+					;;
+				4|pipx)
+					PYTHON_CHOICE="pipx"
+					break
+					;;
+				*)
+					warn "Invalid choice '${user_choice}'. Please try again."
+					;;
+			esac
+		done
 	fi
 
-	local response
-	local response_headers
-	local response_body
-	local latest_version
-
-	# Curl options
-	# We always suppress connect headers (fixes issues with systems using proxies)
-	# -D - dumps the headers to stdout
-	curl_opts=(--suppress-connect-headers -D -)
-
-	# SC is worried this might not exist, but argbash guarantees it will
-    # shellcheck disable=SC2154
-	if [[ "${_arg_verbose}" = "on" ]]; then
-		curl_opts+=(-v)
-	else
-		curl_opts+=(-s -S)
-	fi
-
-	if [[ -n "${_arg_github_token}" ]]; then
-		curl_opts+=(-H "Authorization: token ${_arg_github_token}")
-	fi
-
-	response=$(curl "${curl_opts[@]}" \
-		https://api.github.com/repos/"${repo}"/releases/latest)
-
-	# Split at the first blank line
-	response_headers=$(echo "${response}" | sed '/^\r*$/,$d')
-	response_body=$(echo "${response}" | sed '1,/^\r*$/d')
-
-	if [[ "${_arg_verbose}" = "on" ]]; then
-		echo "=== GitHub API Response Headers ===" >&2
-		echo "${response_headers}" >&2
-		echo "=== GitHub API Response Body ===" >&2
-		echo "${response_body}" >&2
-		echo "===================================" >&2
-	fi
-
-	# Check for GitHub API rate limit
-	if echo "${response_headers}" | grep -qi "x-ratelimit-remaining: 0"; then
-		return 2  # GitHub API rate limit exceeded
-	fi
-
-	# Check if response body is valid JSON
-	if ! echo "${response_body}" | jq . >/dev/null 2>&1; then
-		return 3  # Invalid JSON response
-	fi
-
-	latest_version=$(echo "${response_body}" | jq -r '.tag_name' 2>/dev/null)
-
-	# Check if we got a valid tag_name
-	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
-		return 4  # No tag_name found
-	fi
-
-	# Remove prefix if specified
-	if [[ -n "${prefix_to_remove}" ]]; then
-		echo "${latest_version#"${prefix_to_remove}"}"
-	else
-		echo "${latest_version}"
-	fi
-
-	return 0
-}
-
-# Helper function to handle version fetch errors
-handle_version_fetch_error() {
-	local component="$1"
-	local error_code="$2"
-	local repo="$3"
-
-	case ${error_code} in
-		1)
-			error "jq command not found!"
-			error "Please ensure jq is installed: sudo apt install jq (or equivalent for your distro)"
-			error "Failed to fetch ${component} version."
+	# Set up Python environment based on choice
+	case ${PYTHON_CHOICE} in
+		"active-venv")
+			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
+				error "No active virtual environment detected!"
+				error_exit "Please activate your virtual environment first and try again"
+			fi
+			log "Using active virtual environment: ${VIRTUAL_ENV}"
+			INSTALLED_IN_VENV=0
+			PYTHON_INSTALL_CMD="pip install"
 			;;
-		2)
-			error "GitHub API rate limit exceeded"
-			error "You have exceeded the GitHub API rate limit (60 requests per hour for unauthenticated requests)"
-			error "Repository: ${repo}"
-			error "Failed to fetch ${component} version."
+		"system-python")
+			log "Using system pathing"
+			INSTALLED_IN_VENV=1
+			# Check Python version to determine if --break-system-packages is needed (Python 3.11+)
+			PYTHON_VERSION_MINOR=$(python3 -c "import sys; print(f'{sys.version_info.minor}')")
+			if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then # Is version greater than 3.10?
+				PYTHON_INSTALL_CMD="pip install --break-system-packages"
+			else
+				PYTHON_INSTALL_CMD="pip install"
+			fi
 			;;
-		3)
-			error "GitHub API returned invalid JSON"
-			error "This may be a network issue or other API issue"
-			error "Repository: ${repo}"
-			error "Failed to fetch ${component} version."
+		"pipx")
+			log "Using pipx for isolated package installation"
+			# adding quotes around PIPX_ENSUREPATH_EXTRAS means they won't be
+			# interpreted, which is exactly what we want them to be
+			# shellcheck disable=2086
+			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
+			# Enable the pipx path in this shell session
+			export PATH="${PATH}:${HOME}/.local/bin/"
+			INSTALLED_IN_VENV=1
+			PYTHON_INSTALL_CMD="pipx install ${PIPX_INSTALL_EXTRAS}"
 			;;
-		4)
-			error "No valid tag_name found in API response"
-			error "The repository may not have any releases or the API response is malformed"
-			error "Repository: ${repo}"
-			error "Failed to fetch ${component} version."
-			;;
-		*)
-			error "Unknown error (code ${error_code})"
-			error "Repository: ${repo}"
-			error "Failed to fetch ${component} version."
+		"new-venv"|*)
+			log "Setting up new Python virtual environment"
+			python3 -m venv "${_arg_new_venv_location}"
+			# shellcheck disable=SC1091 # Must exist after previous command
+			source "${_arg_new_venv_location}/bin/activate"
+			INSTALLED_IN_VENV=0
+			PYTHON_INSTALL_CMD="pip install"
 			;;
 	esac
-}
 
-fetch_tt_sw_versions() {
-	local fetch_errors=0
-
-	# Component configuration: env_var:arg_var:version_var:display_name:repo:prefix
-	local components=(
-		"TT_KMD_VERSION:_arg_kmd_version:KMD_VERSION:TT-KMD:${TT_KMD_GH_REPO}:ttkmd-"
-		"TT_FW_VERSION:_arg_fw_version:FW_VERSION:Firmware:${TT_FW_GH_REPO}:v"
-		"TT_SYSTOOLS_VERSION:_arg_systools_version:SYSTOOLS_VERSION:System Tools:${TT_SYSTOOLS_GH_REPO}:v"
-		"TT_SMI_VERSION:_arg_smi_version:SMI_VERSION:tt-smi:${TT_SMI_GH_REPO}:"
-		"TT_FLASH_VERSION:_arg_flash_version:FLASH_VERSION:tt-flash:${TT_FLASH_GH_REPO}:"
-		"TT_SFPI_VERSION:_arg_sfpi_version:SFPI_VERSION:SFPI:${TT_SFPI_GH_REPO}:v"
-	)
-
-	# Process each component
-	for component_config in "${components[@]}"; do
-		IFS=':' read -r env_var arg_var version_var display_name repo prefix <<< "${component_config}"
-
-		# Use environment variable if set, then argbash version if present, otherwise latest
-		if [[ -n "${!env_var:-}" ]]; then
-			declare -g "${version_var}=${!env_var}"
-		elif [[ -n "${!arg_var}" ]]; then
-			declare -g "${version_var}=${!arg_var}"
-		else
-			local version_result
-			if version_result=$(fetch_latest_version "${repo}" "${prefix}"); then
-				declare -g "${version_var}=${version_result}"
-			else
-				local exit_code=$?
-				handle_version_fetch_error "${display_name}" "${exit_code}" "${repo}"
-				fetch_errors=1
-			fi
-		fi
-	done
-
-	# If there were fetch errors, exit early
-	if [[ ${fetch_errors} -eq 1 ]]; then
-		HAVE_SET_TT_SW_VERSIONS=1
-		error "*** Failed to fetch software versions due to the errors above!"
-		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for troubleshooting help."
-	fi
-
-	# Validate all version variables are properly set (not empty or "null")
-	if [[ -n "${KMD_VERSION}" && "${KMD_VERSION}" != "null" && \
-	      -n "${FW_VERSION}" && "${FW_VERSION}" != "null" && \
-	      -n "${SYSTOOLS_VERSION}" && "${SYSTOOLS_VERSION}" != "null" && \
-	      -n "${SMI_VERSION}" && "${SMI_VERSION}" != "null" && \
-	      -n "${FLASH_VERSION}" && "${FLASH_VERSION}" != "null" && \
-	      -n "${SFPI_VERSION}" && "${SFPI_VERSION}" != "null" ]]; then
-		HAVE_SET_TT_SW_VERSIONS=0
-		log "Using software versions:"
-		log "  TT-KMD: ${KMD_VERSION}"
-		log "  Firmware: ${FW_VERSION}"
-		log "  System Tools: ${SYSTOOLS_VERSION}"
-		log "  tt-smi: ${SMI_VERSION#v}"
-		log "  tt-flash: ${FLASH_VERSION#v}"
-		log "  SFPI: ${SFPI_VERSION#v}"
-	else
-		HAVE_SET_TT_SW_VERSIONS=1
-		error "*** Software versions are empty or null after successful fetch!"
-		error "  TT-KMD: '${KMD_VERSION}'"
-		error "  Firmware: '${FW_VERSION}'"
-		error "  System Tools: '${SYSTOOLS_VERSION}'"
-		error "  tt-smi: '${SMI_VERSION}'"
-		error "  tt-flash: '${FLASH_VERSION}'"
-		error "  SFPI: '${SFPI_VERSION}'"
-		error "This may indicate an issue with the GitHub API responses."
-		error_exit "Visit https://github.com/tenstorrent/tt-installer/wiki/Common-Problems#software-versions-are-empty-or-null for a fix."
-	fi
 }
 
 # Function to check if Podman is installed
@@ -549,42 +300,13 @@ check_podman_installed() {
 	command -v podman &> /dev/null
 }
 
-# Function to install Podman
-install_podman() {
-	log "Installing Podman"
-	cd "${WORKDIR}"
-
+# Function to setup rootless Podman
+setup_rootless_podman() {
+	log "Configuring rootless Podman"
 	# Add GUIDs/UIDs for rootless Podman
 	# See https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md
 	sudo usermod --add-subgids 10000-75535 "$(whoami)"
 	sudo usermod --add-subuids 10000-75535 "$(whoami)"
-
-	# Install Podman using package manager
-	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
-			sudo apt install -y podman podman-docker
-			;;
-		"fedora")
-			sudo dnf install -y podman podman-docker
-			;;
-		"rhel"|"centos")
-			sudo dnf install -y podman podman-docker
-			;;
-		*)
-			error "Unsupported distribution for Podman installation: ${DISTRO_ID}"
-			return 1
-			;;
-	esac
-
-	# Verify Podman installation
-	if podman --version; then
-		log "Podman installed successfully"
-	else
-		error "Podman installation failed"
-		return 1
-	fi
-
-	return 0
 }
 
 # Install Podman Metalium container
@@ -592,16 +314,16 @@ install_podman_metalium() {
 	log "Installing Metalium via Podman"
 
 	# Create wrapper script directory
-	mkdir -p "${PODMAN_METALIUM_SCRIPT_DIR}" || error_exit "Failed to create script directory"
+	mkdir -p "${_arg_podman_metalium_script_dir}" || error_exit "Failed to create script directory"
 
 	# Create wrapper script
 	log "Creating wrapper script..."
-	cat > "${PODMAN_METALIUM_SCRIPT_DIR}/${PODMAN_METALIUM_SCRIPT_NAME}" << EOF
+	cat > "${_arg_podman_metalium_script_dir}/${_arg_podman_metalium_script_name}" << EOF
 #!/bin/bash
 # Wrapper script for tt-metalium using Podman
 
 # Image configuration
-METALIUM_IMAGE="${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}"
+METALIUM_IMAGE="${_arg_metalium_image_url}:${_arg_metalium_image_tag}"
 
 # Run the command using Podman
 
@@ -622,17 +344,17 @@ podman run --rm -it \\
 EOF
 
 	# Make the script executable
-	chmod +x "${PODMAN_METALIUM_SCRIPT_DIR}/${PODMAN_METALIUM_SCRIPT_NAME}" || error_exit "Failed to make script executable"
+	chmod +x "${_arg_podman_metalium_script_dir}/${_arg_podman_metalium_script_name}" || error_exit "Failed to make script executable"
 
 	# Check if the directory is in PATH
-	if [[ ":${PATH}:" != *":${PODMAN_METALIUM_SCRIPT_DIR}:"* ]]; then
-		warn "${PODMAN_METALIUM_SCRIPT_DIR} is not in your PATH."
+	if [[ ":${PATH}:" != *":${_arg_podman_metalium_script_dir}:"* ]]; then
+		warn "${_arg_podman_metalium_script_dir} is not in your PATH."
 		warn "A restart may fix this, or you may need to update your shell RC"
 	fi
 
 	# Pull the image
 	log "Pulling the tt-metalium image (this may take a while)..."
-	podman pull "${METALIUM_IMAGE_URL}:${METALIUM_IMAGE_TAG}" || error "Failed to pull image"
+	podman pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
 
 	log "Metalium installation completed"
 	return 0
@@ -710,13 +432,6 @@ EOF
 }
 
 get_podman_metalium_choice() {
-	# If we're on Ubuntu 20, Podman is not available - force disable
-	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
-		_arg_install_metalium_container="off"
-		_arg_install_metalium_models_container="off"
-		_arg_install_podman="off"
-		return
-	fi
 	# In non-interactive mode, use the provided arguments
 	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
 		log "Non-interactive mode, using Podman Metalium installation preference: ${_arg_install_metalium_container}"
@@ -777,161 +492,89 @@ get_inference_server_choice() {
 	fi
 }
 
-manual_install_kmd() {
-log "Installing Kernel-Mode Driver"
-	cd "${WORKDIR}"
-	# Get the KMD version, if installed, while silencing errors
-	if KMD_INSTALLED_VERSION=$(modinfo -F version tenstorrent 2>/dev/null); then
-		warn "Found active KMD module, version ${KMD_INSTALLED_VERSION}."
-		if confirm "Force KMD reinstall?"; then
-			sudo dkms remove "tenstorrent/${KMD_INSTALLED_VERSION}" --all
-			git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-			sudo dkms add tt-kmd
-			sudo dkms install "tenstorrent/${KMD_VERSION}"
-			sudo modprobe tenstorrent
-		else
-			warn "Skipping KMD installation"
-		fi
-	else
-		# Only install KMD if it's not already installed
-		git clone --branch "ttkmd-${KMD_VERSION}" https://github.com/tenstorrent/tt-kmd.git
-		sudo dkms add tt-kmd
-		# Ok so this gets exciting fast, so hang on for a second while I explain
-		# During the offline installer we need to figure out what kernels are actually installed
-		# because the kernel running on the system is not what we just installed and it's going
-		# to complain up a storm if we don't have the headers for the running kernel, which we don't
-		# so lets start by figuring out what kernels we do have (packaging, we can do this by doing a
-		# ls on /lib/modules too but right now I'm doing it this way, deal.
-		# Then we wander through and do dkms for the installed kernels only.  After that instead of
-		# trying to modprobe the module on a system we might not have built for, we check if we match
-		# and only then try modprobe
-		for x in $( eval "${KERNEL_LISTING}" )
-		do
-			sudo dkms install "tenstorrent/${KMD_VERSION}" -k "${x}"
-			if [[ "$( uname -r )" == "${x}" ]]
-			then
-				sudo modprobe tenstorrent
-			fi
-		done
+# Generic function to fetch latest version from any GitHub repository
+# Usage: fetch_latest_version <repo> <prefix_to_remove>
+# Returns: version string with prefix removed, or exits with error code
+fetch_latest_version() {
+	local repo="$1"
+	local prefix_to_remove="${2:-}"
+
+	if ! command -v jq &> /dev/null; then
+		echo "Error: JQ is not installed!" >&2
+		return 1  # jq not installed
 	fi
-}
 
-manual_install_hugepages() {
-	log "Setting up HugePages"
-	BASE_TOOLS_URL="https://github.com/tenstorrent/tt-system-tools/releases/download"
-	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
-			TOOLS_FILENAME="tenstorrent-tools_${SYSTOOLS_VERSION}_all.deb"
-			TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-			curl -fsSLO "${TOOLS_URL}"
-			verify_download "${TOOLS_FILENAME}"
-			sudo dpkg -i "${TOOLS_FILENAME}"
-			if [[ "${SYSTEMD_NO}" != 0 ]]
-			then
-				# adding quotes around SYSTEMD_NOW means they won't be
-				# interpretted, which is exactly what we want them to be
-				# shellcheck disable=2086
-				sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-				# adding quotes around SYSTEMD_NOW means they won't be
-				# interpretted, which is exactly what we want them to be
-				# shellcheck disable=2086
-				sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
-			fi
-			;;
-		"fedora"|"rhel"|"centos")
-			TOOLS_FILENAME="tenstorrent-tools-${SYSTOOLS_VERSION}-1.noarch.rpm"
-			TOOLS_URL="${BASE_TOOLS_URL}/v${SYSTOOLS_VERSION}/${TOOLS_FILENAME}"
-			curl -fsSLO "${TOOLS_URL}"
-			verify_download "${TOOLS_FILENAME}"
-			sudo dnf install -y "${TOOLS_FILENAME}"
-			if [[ "${SYSTEMD_NO}" != 0 ]]
-			then
-				# adding quotes around SYSTEMD_NOW means they won't be
-				# interpretted, which is exactly what we want them to be
-				# shellcheck disable=2086
-				sudo systemctl enable ${SYSTEMD_NOW} tenstorrent-hugepages.service
-				# adding quotes around SYSTEMD_NOW means they won't be
-				# interpretted, which is exactly what we want them to be
-				# shellcheck disable=2086
-				sudo systemctl enable ${SYSTEMD_NOW} 'dev-hugepages\x2d1G.mount'
-			fi
-			;;
-		*)
-			error "This distro is unsupported. Skipping HugePages install!"
-			;;
-	esac
-}
+	local response
+	local response_headers
+	local response_body
+	local latest_version
 
-# Function to install SFPI
-manual_install_sfpi() {
-	log "Installing SFPI"
-	local arch
-	local SFPI_RELEASE_URL="https://github.com/tenstorrent/sfpi/releases/download"
-	local SFPI_FILE_ARCH
-	local SFPI_DISTRO_TYPE
-	local SFPI_FILE_EXT
-	local SFPI_FILE
+	# Curl options
+	# We always suppress connect headers (fixes issues with systems using proxies)
+	# -D - dumps the headers to stdout
+	curl_opts=(--suppress-connect-headers -D -)
 
-	arch=$(uname -m)
-
-	case "${arch}" in
-		"aarch64"|"arm64")
-			SFPI_FILE_ARCH="aarch64"
-			;;
-		"amd64"|"x86_64")
-			SFPI_FILE_ARCH="x86_64"
-			;;
-		*)
-			error "Unsupported architecture for SFPI installation: ${arch}"
-			exit 1
-			;;
-	esac
-
-	case "${DISTRO_ID}" in
-		"debian"|"ubuntu")
-			SFPI_FILE_EXT="deb"
-			SFPI_DISTRO_TYPE="debian"
-			;;
-		"centos"|"fedora"|"rhel")
-			SFPI_FILE_EXT="rpm"
-			SFPI_DISTRO_TYPE="fedora"
-			;;
-		*)
-			error "Unsupported distribution for SFPI installation: ${DISTRO_ID}"
-			exit 1
-			;;
-	esac
-
-	SFPI_FILE="sfpi_${SFPI_VERSION}_${SFPI_FILE_ARCH}_${SFPI_DISTRO_TYPE}.${SFPI_FILE_EXT}"
-	log "Downloading ${SFPI_FILE}"
-
+	# SC is worried this might not exist, but argbash guarantees it will
     # shellcheck disable=SC2154
 	if [[ "${_arg_verbose}" = "on" ]]; then
-		curl -fvSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+		curl_opts+=(-v)
 	else
-		curl -fsSLO "${SFPI_RELEASE_URL}/${SFPI_VERSION}/${SFPI_FILE}"
+		curl_opts+=(-s -S)
 	fi
 
-	verify_download "${SFPI_FILE}"
+	if [[ -n "${_arg_github_token}" ]]; then
+		curl_opts+=(-H "Authorization: token ${_arg_github_token}")
+	fi
 
-	case "${SFPI_FILE_EXT}" in
-		"deb")
-			sudo apt install -y "./${SFPI_FILE}"
-			;;
-		"rpm")
-			sudo dnf install -y "./${SFPI_FILE}"
-			;;
-		*)
-			error "Unexpected SFPI package file extension: '${SFPI_FILE_EXT}'"
-			exit 1
-			;;
-	esac
+	response=$(curl "${curl_opts[@]}" \
+		https://api.github.com/repos/"${repo}"/releases/latest)
+
+	# Split at the first blank line
+	response_headers=$(echo "${response}" | sed '/^\r*$/,$d')
+	response_body=$(echo "${response}" | sed '1,/^\r*$/d')
+
+	if [[ "${_arg_verbose}" = "on" ]]; then
+		echo "=== GitHub API Response Headers ===" >&2
+		echo "${response_headers}" >&2
+		echo "=== GitHub API Response Body ===" >&2
+		echo "${response_body}" >&2
+		echo "===================================" >&2
+	fi
+
+	# Check for GitHub API rate limit
+	if echo "${response_headers}" | grep -qi "x-ratelimit-remaining: 0"; then
+		echo "Error: GitHub API Rate Limit exceeded" >&2
+		return 2  # GitHub API rate limit exceeded
+	fi
+
+	# Check if response body is valid JSON
+	if ! echo "${response_body}" | jq . >/dev/null 2>&1; then
+		echo "Error: Got invalid JSON from GitHub API" >&2
+		return 3  # Invalid JSON response
+	fi
+
+	latest_version=$(echo "${response_body}" | jq -r '.tag_name' 2>/dev/null)
+
+	# Check if we got a valid tag_name
+	if [[ -z "${latest_version}" || "${latest_version}" == "null" ]]; then
+		echo "Error: No tag name found in API response" >&2
+		return 4  # No tag_name found
+	fi
+
+	# Remove prefix if specified
+	if [[ -n "${prefix_to_remove}" ]]; then
+		echo "${latest_version#"${prefix_to_remove}"}"
+	else
+		echo "${latest_version}"
+	fi
+
+	return 0
 }
 
 install_tt_repos () {
 	log "Installing TT repositories to your distribution package manager"
 	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
+		"ubuntu")
 			# Add the apt listing
 			# shellcheck disable=2002
 			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
@@ -940,49 +583,43 @@ install_tt_repos () {
 			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
 
 			# Download the key
-			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
-			;;
-		"fedora")
-			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
-[Tenstorrent]
-name=Tenstorrent
-baseurl=https://ppa.tenstorrent.com/fedora
-enabled=1
-gpgcheck=1
-gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
-EOF'
-			;;
-		"rhel"|"centos")
-			warn "RHEL and CentOS are not officially supported. Using Fedora repos."
-			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
-[Tenstorrent]
-name=Tenstorrent
-baseurl=https://ppa.tenstorrent.com/fedora
-enabled=1
-gpgcheck=1
-gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
-EOF'
-			;;
-		*)
-			error_exit "Unsupported distro: ${DISTRO_ID}"
-			;;
-	esac
-}
+			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
-install_sw_from_repos () {
-	log "Installing software from TT repositories"
-	case "${DISTRO_ID}" in
-		"ubuntu"|"debian")
-			# For now, install the big three
-			sudo apt update
-			sudo apt install -y tenstorrent-dkms tenstorrent-tools sfpi
+			sudo apt-get update
+			;;
+		"debian")
+			# Add the apt listing
+			# shellcheck disable=2002
+			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/debian/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
+
+			# Setup the keyring
+			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
+
+			# Download the key
+			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
+
+			sudo apt-get update
 			;;
 		"fedora")
-			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
+			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
+[Tenstorrent]
+name=Tenstorrent
+baseurl=https://ppa.tenstorrent.com/fedora
+enabled=1
+gpgcheck=1
+gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
+EOF'
 			;;
 		"rhel"|"centos")
 			warn "RHEL and CentOS are not officially supported. Using Fedora repos."
-			sudo dnf install -y tenstorrent-dkms tenstorrent-tools sfpi
+			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
+[Tenstorrent]
+name=Tenstorrent
+baseurl=https://ppa.tenstorrent.com/fedora
+enabled=1
+gpgcheck=1
+gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
+EOF'
 			;;
 		*)
 			error_exit "Unsupported distro: ${DISTRO_ID}"
@@ -1046,8 +683,6 @@ main() {
 	log "This is tt-installer version ${INSTALLER_VERSION}"
 	log "Log is at ${LOG_FILE}"
 
-	fetch_tt_sw_versions
-
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
 
 	if ! confirm "OK to continue?"; then
@@ -1100,32 +735,24 @@ main() {
 
 	# Check distribution and install base packages
 	detect_distro
+
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
 		"ubuntu")
-			sudo apt update
-			if [[ "${IS_UBUNTU_20}" = "0" ]]; then
-				# On Ubuntu 20, install python3-venv and don't install pipx
-				sudo apt install -y git python3-pip python3-venv dkms cargo rustc jq protobuf-compiler
-			else
-				sudo DEBIAN_FRONTEND=noninteractive apt install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
-			fi
-			KERNEL_LISTING="${KERNEL_LISTING_UBUNTU}"
+			sudo apt-get update
+			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
-			sudo apt update
-			sudo apt install -y git python3-pip dkms pipx jq protobuf-compiler
-			KERNEL_LISTING="${KERNEL_LISTING_DEBIAN}"
+			sudo apt-get update
+			sudo apt-get install -y git python3-pip dkms pipx jq protobuf-compiler wget
 			;;
 		"fedora")
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
-			KERNEL_LISTING="${KERNEL_LISTING_FEDORA}"
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
-			KERNEL_LISTING="${KERNEL_LISTING_EL}"
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
@@ -1133,36 +760,9 @@ main() {
 			;;
 	esac
 
-	if [[ "${IS_UBUNTU_20}" = "0" ]]; then
-		warn "Ubuntu 20 is deprecated and support will be removed in a future release!"
-		warn "Metalium installation will be unavailable. To install Metalium, upgrade to Ubuntu 22+"
-		if [[ "${_arg_install_sfpi}" = "on" ]]; then
-			warn "Pre-packaged SFPI is unavailable for Ubuntu 20; disabling"
-			_arg_install_sfpi="off"
-		fi
-	fi
-
 	if [[ "${DISTRO_ID}" = "debian" ]]; then
 		warn "rustc and cargo cannot be automatically installed on Debian. Ensure the latest versions are installed before continuing."
 		warn "If you are unsure how to do this, use rustup: https://rustup.rs/"
-	fi
-
-	# If jq wasn't installed before, we need to fetch these now that we have it installed
-	if [[ "${HAVE_SET_TT_SW_VERSIONS}" = "1" ]]; then
-		fetch_tt_sw_versions
-	fi
-	# If we still haven't successfully retrieved the versions, there is an error, so exit
-	if [[ "${HAVE_SET_TT_SW_VERSIONS}" = "1" ]]; then
-		echo "HAVE_SET_TT_SW_VERSIONS: ${HAVE_SET_TT_SW_VERSIONS}"
-
-		which jq > /dev/null 2>&1
-		res=$?
-		if [[ "${res}" == "0" ]]
-		then
-			error_exit "Cannot fetch versions of TT software, likely a transient error in getting the versions - please try again"
-		else
-			error_exit "Cannot fetch versions of TT software. Is jq installed?"
-		fi
 	fi
 
 	# Get Podman Metalium installation choice
@@ -1173,79 +773,100 @@ main() {
 
 	# Python package installation preference
 	get_python_choice
+	install_tt_repos
 
-	# Enforce restrictions on Ubuntu 20
-	if [[ "${IS_UBUNTU_20}" = "0" ]] && [[ "${PYTHON_CHOICE}" = "pipx" ]]; then
-		warn "pipx installation not supported on Ubuntu 20, defaulting to virtual environment"
-		PYTHON_CHOICE="new-venv"
+	# 1. Define the package registry
+	# Format: "package_name|install_flag|version|type"
+	declare -A package_registry=(
+		# System packages
+		["kmd"]="tenstorrent-dkms|${_arg_install_kmd}|${_arg_kmd_version}|system"
+		["hugepages"]="tenstorrent-tools|${_arg_install_hugepages}|${_arg_systools_version}|system"
+		["sfpi"]="sfpi|${_arg_install_sfpi}|${_arg_sfpi_version}|system"
+		["podman"]="podman|${_arg_install_podman}||system"
+		["podman-docker"]="podman-docker|${_arg_install_podman_docker}||system"
+		["podman-compose"]="podman-compose|${_arg_install_podman_docker}||system"
+
+		# Python packages
+		["tt-topology"]="tt-topology|${_arg_install_tt_topology}|${_arg_topology_version}|python"
+		["tt-flash"]="tt-flash|${_arg_install_tt_flash}|${_arg_flash_version}|python"
+		["tt-smi"]="tt-smi|${_arg_install_tt_smi}|${_arg_smi_version}|python"
+	)
+
+	# 2. Parse the registry to obtain lists of packages
+	declare -a system_packages=()
+	declare -a python_packages=()
+
+	for key in "${!package_registry[@]}"; do
+		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[${key}]}"
+
+		# Skip if not marked for installation
+		[[ "${install_flag}" != "on" ]] && continue
+
+		# Add to appropriate list with version formatting
+		case "${pkg_type}" in
+			system)
+				if [[ -z "${version}" ]]; then
+					system_packages+=("${pkg_name}")
+				else
+					# Format based on package manager
+					if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
+						system_packages+=("${pkg_name}=${version}")
+					elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
+						system_packages+=("${pkg_name}-${version}")
+					else
+						system_packages+=("${pkg_name}")  # fallback to no version
+					fi
+				fi
+				;;
+			python)
+				if [[ -z "${version}" ]]; then
+					python_packages+=("${pkg_name}")
+				else
+					python_packages+=("${pkg_name}==${version}")
+				fi
+				;;
+		esac
+	done
+
+	# 3. Act on the lists
+	# Install system packages
+	if [[ ${#system_packages[@]} -gt 0 ]]; then
+		echo "Installing system packages: ${system_packages[*]}"
+		if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
+			sudo apt-get install -y "${system_packages[@]}"
+		elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
+			sudo dnf install -y "${system_packages[@]}"
+		fi
 	fi
 
-	# Set up Python environment based on choice
-	case ${PYTHON_CHOICE} in
-		"active-venv")
-			if [[ -z "${VIRTUAL_ENV:-}" ]]; then
-				error "No active virtual environment detected!"
-				error "Please activate your virtual environment first and try again"
-				exit 1
-			fi
-			log "Using active virtual environment: ${VIRTUAL_ENV}"
-			INSTALLED_IN_VENV=0
-			PYTHON_INSTALL_CMD="pip install"
-			;;
-		"system-python")
-			log "Using system pathing"
-			INSTALLED_IN_VENV=1
-			# Check Python version to determine if --break-system-packages is needed (Python 3.11+)
-			PYTHON_VERSION_MINOR=$(python3 -c "import sys; print(f'{sys.version_info.minor}')")
-			if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then # Is version greater than 3.10?
-				PYTHON_INSTALL_CMD="pip install --break-system-packages"
-			else
-				PYTHON_INSTALL_CMD="pip install"
-			fi
-			;;
-		"pipx")
-			log "Using pipx for isolated package installation"
-			# adding quotes around PIPX_ENSUREPATH_EXTRAS means they won't be
-			# interpretted, which is exactly what we want them to be
-			# shellcheck disable=2086
-			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
-			# Enable the pipx path in this shell session
-			export PATH="${PATH}:${HOME}/.local/bin/"
-			INSTALLED_IN_VENV=1
-			PYTHON_INSTALL_CMD="pipx install ${PIPX_INSTALL_EXTRAS}"
-			;;
-		"new-venv"|*)
-			log "Setting up new Python virtual environment"
-			python3 -m venv "${NEW_VENV_LOCATION}"
-			# shellcheck disable=SC1091 # Must exist after previous command
-			source "${NEW_VENV_LOCATION}/bin/activate"
-			INSTALLED_IN_VENV=0
-			PYTHON_INSTALL_CMD="pip install"
-			;;
-	esac
-
-	# Install TT-KMD
-	# Skip KMD installation if flag is set
-	if [[ "${_arg_install_kmd}" = "off" ]]; then
-		log "Skipping KMD installation"
-	else
-		manual_install_kmd
+	# Install Python packages
+	if [[ ${#python_packages[@]} -gt 0 ]]; then
+		echo "Installing Python packages: ${python_packages[*]}"
+		if [[ -z "${PYTHON_INSTALL_CMD:-}" ]]; then
+			error_exit "PYTHON_INSTALL_CMD is not set. Python package installation cannot proceed."
+		fi
+		${PYTHON_INSTALL_CMD} "${python_packages[@]}"
 	fi
 
-	# Install TT-Flash and Firmware
-	# Skip tt-flash installation if flag is set
-	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
-		log "Skipping TT-Flash installation"
-	else
-		log "Installing TT-Flash"
-		cd "${WORKDIR}"
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-flash.git@"${FLASH_VERSION}"
-	fi
-
+	# Update firmware using tt-flash
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
 		log "Skipping firmware update"
 	else
 		log "Updating firmware"
+
+		# Check if tt-flash is installed and available
+		if ! command -v tt-flash &> /dev/null; then
+			error_exit "tt-flash is not installed or not in PATH. Please install tt-flash before attempting firmware update."
+		fi
+
+		if [[ -n "${_arg_fw_version:-}" ]]; then
+			FW_VERSION=${_arg_fw_version}
+		else
+			FW_VERSION=$(fetch_latest_version "tenstorrent/tt-firmware" "v");
+		fi
+
+		cd "${WORKDIR}"
+
 		# Create FW_FILE based on FW_VERSION
 		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
 		FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
@@ -1253,6 +874,7 @@ main() {
 
 		# Download from GitHub releases
 		if ! curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+			warn "Tried URL ${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"
 			warn "Could not find firmware bundle at main URL- trying backup URL"
 			if ! curl -fsSLO "${BACKUP_FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
 				error_exit "Could not download firmware bundle. Ensure firmware version is valid."
@@ -1262,53 +884,22 @@ main() {
 		verify_download "${FW_FILE}"
 
 		if [[ "${_arg_update_firmware}" = "force" ]]; then
-			tt-flash --fw-tar "${FW_FILE}" --force
+			tt-flash flash "${FW_FILE}" --force
 		else
-			tt-flash --fw-tar "${FW_FILE}"
+			tt-flash flash "${FW_FILE}"
 		fi
 	fi
 
-	# shellcheck disable=SC2154
-	if [[ "${_arg_install_tt_topology}" = "on" ]]; then
-		log "Installing tt-topology"
+	if [[ "${_arg_install_inference_server}" = "on" ]]; then
+		install_inference_server
+	fi
 
-		if [[ -n "${TT_TOPOLOGY_VERSION:-}" ]]; then
-			TOPOLOGY_VERSION="${TT_TOPOLOGY_VERSION}"
-		elif [[ -n "${_arg_topology_version}" ]]; then
-			TOPOLOGY_VERSION="${_arg_topology_version}"
+	# Setup rootless Podman if it was just installed
+	if [[ "${_arg_install_podman}" = "on" ]]; then
+		if check_podman_installed; then
+			setup_rootless_podman
 		else
-			if TOPOLOGY_VERSION=$(fetch_latest_version "${TT_TOPOLOGY_GH_REPO}"); then
-				: # Success, TOPOLOGY_VERSION is set
-			else
-				local topology_exit_code=$?
-				handle_version_fetch_error "tt-topology" "${topology_exit_code}" "${TT_TOPOLOGY_GH_REPO}"
-				error_exit "Failed to fetch tt-topology version. Installation cannot continue."
-			fi
-		fi
-
-		log "Topology Version: ${TOPOLOGY_VERSION}"
-
-		${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-topology.git@"${TOPOLOGY_VERSION}"
-	fi
-
-	# Setup HugePages
-	# Skip HugePages installation if flag is set
-	if [[ "${_arg_install_hugepages}" = "off" ]]; then
-		warn "Skipping HugePages setup"
-	else
-		manual_install_hugepages
-	fi
-
-	# Install TT-SMI
-	log "Installing System Management Interface"
-	${PYTHON_INSTALL_CMD} git+https://github.com/tenstorrent/tt-smi@"${SMI_VERSION}"
-
-	# Install Podman if requested
-	if [[ "${_arg_install_podman}" = "off" ]]; then
-		warn "Skipping Podman installation"
-	else
-		if ! check_podman_installed; then
-			install_podman
+			warn "Podman was not installed successfully"
 		fi
 	fi
 
@@ -1330,22 +921,6 @@ main() {
 		else
 			install_podman_metalium_models
 		fi
-	fi
-
-	if [[ ${INSTALL_TT_REPOS:-} = "on" ]]; then
-		install_tt_repos
-	fi
-
-	if [[ ${INSTALL_SW_FROM_REPOS:-} = "on" ]]; then
-		install_sw_from_repos
-	fi
-
-	if [[ "${_arg_install_sfpi}" = "on" ]]; then
-		manual_install_sfpi
-	fi
-
-	if [[ "${_arg_install_inference_server}" = "on" ]]; then
-		install_inference_server
 	fi
 
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
@@ -1372,11 +947,11 @@ main() {
 	log "Installation log saved to: ${LOG_FILE}"
 
 	# Auto-reboot if specified
-	if [[ "${REBOOT_OPTION}" = "always" ]]; then
+	if [[ "${_arg_reboot_option}" = "always" ]]; then
 		log "Auto-reboot enabled. Rebooting now..."
 		sudo reboot
 	# Otherwise, ask if specified
-	elif [[ "${REBOOT_OPTION}" = "ask" ]]; then
+	elif [[ "${_arg_reboot_option}" = "ask" ]]; then
 		if confirm "Would you like to reboot now?"; then
 			log "Rebooting..."
 			sudo reboot

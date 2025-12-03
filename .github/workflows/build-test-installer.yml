@@ -107,42 +107,6 @@ jobs:
         shellcheck install.sh
         echo "✓ Script syntax is valid"
 
-  test-environment-variables:
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download install.sh
-      uses: actions/download-artifact@v4
-      with:
-        name: install-script
-
-    - name: Test environment variable parsing
-      run: |
-        # Test that all documented environment variables are recognized
-        export TT_SKIP_INSTALL_KMD=0
-        export TT_SKIP_INSTALL_HUGEPAGES=0
-        export TT_SKIP_UPDATE_FIRMWARE=0
-        export TT_SKIP_INSTALL_PODMAN=0
-        export TT_SKIP_INSTALL_METALIUM_CONTAINER=0
-        export TT_SKIP_INSTALL_SFPI=0
-        export TT_PYTHON_CHOICE=3
-        export TT_REBOOT_OPTION=2
-        export TT_MODE_CONTAINER=0
-        export TT_MODE_NON_INTERACTIVE=0
-        export TT_NEW_VENV_LOCATION=/tmp/test-venv
-        export TT_METALIUM_IMAGE_URL=test.example.com/image
-        export TT_METALIUM_IMAGE_TAG=test-tag
-
-
-        # Dry run to check variable parsing
-        timeout 30 bash install.sh 2>&1 | head -20 || true
-
-        echo "✓ Environment variables are properly recognized"
-
   test-version-fetching:
     needs: build
     runs-on: ubuntu-latest
