@@ -852,6 +852,11 @@ main() {
 	else
 		log "Updating firmware"
 
+		# Check if tt-flash is installed and available
+		if ! command -v tt-flash &> /dev/null; then
+			error_exit "tt-flash is not installed or not in PATH. Please install tt-flash before attempting firmware update."
+		fi
+
 		if [[ -n "${_arg_fw_version:-}" ]]; then
 			FW_VERSION=${_arg_fw_version}
 		else
