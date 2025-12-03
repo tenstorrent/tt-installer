@@ -275,7 +275,7 @@ get_python_choice() {
 		"pipx")
 			log "Using pipx for isolated package installation"
 			# adding quotes around PIPX_ENSUREPATH_EXTRAS means they won't be
-			# interpretted, which is exactly what we want them to be
+			# interpreted, which is exactly what we want them to be
 			# shellcheck disable=2086
 			pipx ensurepath ${PIPX_ENSUREPATH_EXTRAS}
 			# Enable the pipx path in this shell session
