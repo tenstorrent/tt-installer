@@ -581,7 +581,7 @@ install_tt_repos () {
 			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
 
 			# Download the key
-			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
+			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
 			sudo apt-get update
 			;;
@@ -594,7 +594,7 @@ install_tt_repos () {
 			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
 
 			# Download the key
-			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/ubuntu/tt-pkg-key.asc
+			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
 			sudo apt-get update
 			;;
