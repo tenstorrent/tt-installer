@@ -883,6 +883,10 @@ main() {
 		fi
 	fi
 
+	if [[ "${_arg_install_inference_server}" = "on" ]]; then
+		install_inference_server
+	fi
+
 	# Setup rootless Podman if it was just installed
 	if [[ "${_arg_install_podman}" = "on" ]]; then
 		if check_podman_installed; then
