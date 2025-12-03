@@ -840,6 +840,9 @@ main() {
 	# Install Python packages
 	if [[ ${#python_packages[@]} -gt 0 ]]; then
 		echo "Installing Python packages: ${python_packages[*]}"
+		if [[ -z "${PYTHON_INSTALL_CMD:-}" ]]; then
+			error_exit "PYTHON_INSTALL_CMD is not set. Python package installation cannot proceed."
+		fi
 		${PYTHON_INSTALL_CMD} "${python_packages[@]}"
 	fi
 
