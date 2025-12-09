@@ -156,7 +156,24 @@ detect_distro() {
 	if [[ -f /etc/os-release ]]; then
 		. /etc/os-release
 		DISTRO_ID=${ID}
-
+		case ${DISTRO_ID} in
+			ubuntu|debian|fedora|rhel|centos)
+				;; # It's a known distro, do nothing.
+			*)
+				# Could be a derivative distribution, check ID_LIKE
+				if [[ -n "${ID_LIKE:-}" ]]; then
+					# ID_LIKE can be a space-separated list. Check each of them.
+					for id_like_distro in ${ID_LIKE}; do
+						case ${id_like_distro} in
+							ubuntu|debian|fedora|rhel)
+								DISTRO_ID=${id_like_distro}
+								break # Use the first one found.
+								;;
+						esac
+					done
+				fi
+				;;
+		esac
 		# Set package manager based on distribution
 		case "${DISTRO_ID}" in
 			"ubuntu"|"debian")
