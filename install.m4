@@ -33,6 +33,7 @@ exit 11 #)
 
 # ========================= String Arguments =========================
 # ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
+# ARG_OPTIONAL_BOOLEAN([use-uv],,[Use uv instead of pip for Python package installation],[off])
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 # ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[on])
 # ARG_OPTIONAL_SINGLE([github-token],,[Optional GitHub API auth token],[])
@@ -219,6 +220,11 @@ confirm() {
 	done
 }
 
+# Function to check if uv is installed
+check_uv_installed() {
+	command -v uv &> /dev/null
+}
+
 # Get Python installation choice interactively or use default
 get_python_choice() {
 	PYTHON_CHOICE="${_arg_python_choice}"
@@ -267,6 +273,20 @@ get_python_choice() {
 		done
 	fi
 
+	# Validate --use-uv flag
+	if [[ "${_arg_use_uv}" = "on" ]]; then
+		if ! check_uv_installed; then
+			error "uv is not installed!"
+			error_exit "Please install uv first: curl -LsSf https://astral.sh/uv/install.sh | sh"
+		fi
+		if [[ "${PYTHON_CHOICE}" = "pipx" ]]; then
+			warn "--use-uv is not compatible with pipx, ignoring --use-uv flag"
+			_arg_use_uv="off"
+		else
+			log "Using uv instead of pip for package installation"
+		fi
+	fi
+
 	# Set up Python environment based on choice
 	case ${PYTHON_CHOICE} in
 		"active-venv")
@@ -276,17 +296,29 @@ get_python_choice() {
 			fi
 			log "Using active virtual environment: ${VIRTUAL_ENV}"
 			INSTALLED_IN_VENV=0
-			PYTHON_INSTALL_CMD="pip install"
+			if [[ "${_arg_use_uv}" = "on" ]]; then
+				PYTHON_INSTALL_CMD="uv pip install"
+			else
+				PYTHON_INSTALL_CMD="pip install"
+			fi
 			;;
 		"system-python")
 			log "Using system pathing"
 			INSTALLED_IN_VENV=1
 			# Check Python version to determine if --break-system-packages is needed (Python 3.11+)
 			PYTHON_VERSION_MINOR=$(python3 -c "import sys; print(f'{sys.version_info.minor}')")
-			if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then # Is version greater than 3.10?
-				PYTHON_INSTALL_CMD="pip install --break-system-packages"
+			if [[ "${_arg_use_uv}" = "on" ]]; then
+				if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then
+					PYTHON_INSTALL_CMD="uv pip install --system --break-system-packages"
+				else
+					PYTHON_INSTALL_CMD="uv pip install --system"
+				fi
 			else
-				PYTHON_INSTALL_CMD="pip install"
+				if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then
+					PYTHON_INSTALL_CMD="pip install --break-system-packages"
+				else
+					PYTHON_INSTALL_CMD="pip install"
+				fi
 			fi
 			;;
 		"pipx")
@@ -306,7 +338,11 @@ get_python_choice() {
 			# shellcheck disable=SC1091 # Must exist after previous command
 			source "${_arg_new_venv_location}/bin/activate"
 			INSTALLED_IN_VENV=0
-			PYTHON_INSTALL_CMD="pip install"
+			if [[ "${_arg_use_uv}" = "on" ]]; then
+				PYTHON_INSTALL_CMD="uv pip install"
+			else
+				PYTHON_INSTALL_CMD="pip install"
+			fi
 			;;
 	esac
 
@@ -745,6 +781,9 @@ main() {
 	fi
 	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
 		log "Metalium Models container will be installed"
+	fi
+	if [[ "${_arg_use_uv}" = "on" ]]; then
+		log "uv will be used instead of pip for package installation"
 	fi
 
 	log "Checking for sudo permissions... (may request password)"
