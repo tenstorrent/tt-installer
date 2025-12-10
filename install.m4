@@ -493,7 +493,7 @@ EOF
 	log "Pulling the tt-metalium-models image (this may take a while)..."
 	podman pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
 
-	log "Metalium Models installation completed"tudio/pulls
+	log "Metalium Models installation completed"
 	return 0
 }
 
