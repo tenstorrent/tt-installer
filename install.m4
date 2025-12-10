@@ -23,6 +23,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
 # ARG_OPTIONAL_BOOLEAN([install-sfpi],,[Install SFPI],[on])
 # ARG_OPTIONAL_BOOLEAN([install-inference-server],,[Install tt-inference-server],[on])
+# ARG_OPTIONAL_BOOLEAN([install-studio],,[Install tt-studio],[on])
 
 # =========================  Podman Metalium Arguments =========================
 # ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
@@ -77,15 +78,6 @@ if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_podman="off" # No podman in podman
 	_arg_install_sfpi="off"
 	_arg_reboot_option="never" # Do not reboot
-fi
-
-# In non-interactive mode, set reboot default if not specified
-if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
-	# In non-interactive mode, we can't ask the user for anything
-	# So if they don't provide a reboot choice we will pick a default
-	if [[ "${_arg_reboot_option}" = "ask" ]]; then
-		_arg_reboot_option="never" # Do not reboot
-	fi
 fi
 
 PIPX_ENSUREPATH_EXTRAS="${TT_PIPX_ENSUREPATH_EXTRAS:- }"
@@ -200,6 +192,27 @@ confirm() {
 			* ) echo "Please answer yes or no.";;
 		esac
 	done
+}
+
+set_non_interactive_defaults() {
+	if [[ "${_arg_mode_non_interactive}" = "on" ]] && [[ "${_arg_reboot_option}" = "ask" ]]; then
+		_arg_reboot_option="never" # Do not reboot in non-interactive mode
+	fi
+}
+
+maybe_enable_default_mode() {
+	# Respect already-set non-interactive mode
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+		return
+	fi
+
+	log "Would you like to proceed with the default installation?"
+	log "Selecting yes enables non-interactive mode and continues with default options."
+	if confirm "Proceed with default installation (recommended for most users)"; then
+		_arg_mode_non_interactive="on"
+		set_non_interactive_defaults
+		log "Default installation selected. Continuing in non-interactive mode."
+	fi
 }
 
 # Get Python installation choice interactively or use default
@@ -492,6 +505,23 @@ get_inference_server_choice() {
 	fi
 }
 
+get_studio_choice() {
+	# In non-interactive mode, use the provided argument
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+		log "Non-interactive mode, using tt-studio installation preference: ${_arg_install_studio}"
+		return
+	fi
+
+	# Interactive mode - allow override
+	log "Would you like to install tt-studio?"
+	log "This will clone the tt-studio repository to ~/.local/lib and create a wrapper script"
+	if confirm "Install tt-studio"; then
+		_arg_install_studio="on"
+	else
+		_arg_install_studio="off"
+	fi
+}
+
 # Generic function to fetch latest version from any GitHub repository
 # Usage: fetch_latest_version <repo> <prefix_to_remove>
 # Returns: version string with prefix removed, or exits with error code
@@ -642,12 +672,7 @@ install_inference_server () {
 	log "Cloning tt-inference-server repository..."
 	if [[ -d "${INFERENCE_SERVER_LIB_DIR}/tt-inference-server" ]]; then
 		warn "tt-inference-server directory already exists at ${INFERENCE_SERVER_LIB_DIR}/tt-inference-server"
-		if confirm "Remove existing directory and re-clone?"; then
-			rm -rf "${INFERENCE_SERVER_LIB_DIR}/tt-inference-server"
-			git clone "${INFERENCE_SERVER_REPO_URL}" "${INFERENCE_SERVER_LIB_DIR}/tt-inference-server" || error_exit "Failed to clone tt-inference-server"
-		else
-			warn "Skipping clone, will create wrapper script only"
-		fi
+		warn "Skipping clone, will create wrapper script only"
 	else
 		git clone "${INFERENCE_SERVER_REPO_URL}" "${INFERENCE_SERVER_LIB_DIR}/tt-inference-server" || error_exit "Failed to clone tt-inference-server"
 	fi
@@ -674,6 +699,48 @@ EOF
 	return 0
 }
 
+install_studio () {
+	log "Installing tt-studio"
+	local STUDIO_LIB_DIR="${HOME}/.local/lib"
+	local STUDIO_BIN_DIR="${HOME}/.local/bin"
+	local STUDIO_SCRIPT_NAME="tt-studio"
+	local STUDIO_REPO_URL="https://github.com/tenstorrent/tt-studio.git"
+
+	# Create directories
+	mkdir -p "${STUDIO_LIB_DIR}" || error_exit "Failed to create library directory"
+	mkdir -p "${STUDIO_BIN_DIR}" || error_exit "Failed to create bin directory"
+
+	# Clone the repository
+	log "Cloning tt-studio repository..."
+	if [[ -d "${STUDIO_LIB_DIR}/tt-studio" ]]; then
+		warn "tt-studio directory already exists at ${STUDIO_LIB_DIR}/tt-studio"
+		warn "Skipping clone, will create wrapper script only"
+	else
+		git clone "${STUDIO_REPO_URL}" "${STUDIO_LIB_DIR}/tt-studio" || error_exit "Failed to clone tt-studio"
+	fi
+
+	# Create wrapper script
+	log "Creating wrapper script..."
+	cat > "${STUDIO_BIN_DIR}/${STUDIO_SCRIPT_NAME}" << 'EOF'
+#!/bin/bash
+
+cd ${HOME}/.local/lib/tt-studio
+python ${HOME}/.local/lib/tt-studio/run.py "$@"
+EOF
+
+	# Make the script executable
+	chmod +x "${STUDIO_BIN_DIR}/${STUDIO_SCRIPT_NAME}" || error_exit "Failed to make script executable"
+
+	# Check if the directory is in PATH
+	if [[ ":${PATH}:" != *":${STUDIO_BIN_DIR}:"* ]]; then
+		warn "${STUDIO_BIN_DIR} is not in your PATH."
+		warn "A restart may fix this, or you may need to update your shell RC"
+	fi
+
+	log "tt-studio installation completed"
+	return 0
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -685,10 +752,9 @@ main() {
 
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
 
-	if ! confirm "OK to continue?"; then
-		error "Exiting."
-		exit 1
-	fi
+	maybe_enable_default_mode
+	set_non_interactive_defaults
+
 	log "Starting installation"
 
 	# Log special mode settings
@@ -715,6 +781,9 @@ main() {
 	fi
 	if [[ "${_arg_install_inference_server}" = "off" ]]; then
 		warn "tt-inference-server installation will be skipped"
+	fi
+	if [[ "${_arg_install_studio}" = "off" ]]; then
+		warn "tt-studio installation will be skipped"
 	fi
 	# shellcheck disable=SC2154
 	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
@@ -770,6 +839,7 @@ main() {
 
 	# Get tt-inference-server installation choice
 	get_inference_server_choice
+	get_studio_choice
 
 	# Python package installation preference
 	get_python_choice
@@ -894,6 +964,10 @@ main() {
 		install_inference_server
 	fi
 
+	if [[ "${_arg_install_studio}" = "on" ]]; then
+		install_studio
+	fi
+
 	# Setup rootless Podman if it was just installed
 	if [[ "${_arg_install_podman}" = "on" ]]; then
 		if check_podman_installed; then
@@ -940,6 +1014,11 @@ main() {
 		log "Use 'tt-inference-server' to run the inference server"
 		log "The inference server has been installed to ~/.local/lib/tt-inference-server"
 		log "Usage: tt-inference-server [arguments]"
+	fi
+	if [[ "${_arg_install_studio}" = "on" ]]; then
+		log "Use 'tt-studio' to launch tt-studio"
+		log "tt-studio has been installed to ~/.local/lib/tt-studio"
+		log "Usage: tt-studio [arguments]"
 	fi
 
 	# Log successful completion message
