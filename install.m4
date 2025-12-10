@@ -777,8 +777,8 @@ install_studio () {
 	cat > "${STUDIO_BIN_DIR}/${STUDIO_SCRIPT_NAME}" << 'EOF'
 #!/bin/bash
 
-cd ${HOME}/.local/lib/tt-studio
-python ${HOME}/.local/lib/tt-studio/run.py "$@"
+cd "${HOME}/.local/lib/tt-studio"
+python "${HOME}/.local/lib/tt-studio/run.py" "$@"
 EOF
 
 	# Make the script executable
