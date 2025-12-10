@@ -231,6 +231,7 @@ maybe_enable_default_mode() {
 		set_non_interactive_defaults
 		log "Default installation selected. Continuing in non-interactive mode."
 	fi
+}
 
 # Function to check if uv is installed
 check_uv_installed() {
