@@ -806,8 +806,6 @@ main() {
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
 
 	maybe_enable_default_mode
-	set_non_interactive_defaults
-
 	log "Starting installation"
 
 	# Log special mode settings
