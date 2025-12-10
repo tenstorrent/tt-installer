@@ -34,6 +34,7 @@ exit 11 #)
 
 # ========================= String Arguments =========================
 # ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
+# ARG_OPTIONAL_BOOLEAN([use-uv],,[Use uv instead of pip for Python package installation],[off])
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 # ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[on])
 # ARG_OPTIONAL_SINGLE([github-token],,[Optional GitHub API auth token],[])
@@ -148,7 +149,24 @@ detect_distro() {
 	if [[ -f /etc/os-release ]]; then
 		. /etc/os-release
 		DISTRO_ID=${ID}
-
+		case ${DISTRO_ID} in
+			ubuntu|debian|fedora|rhel|centos)
+				;; # It's a known distro, do nothing.
+			*)
+				# Could be a derivative distribution, check ID_LIKE
+				if [[ -n "${ID_LIKE:-}" ]]; then
+					# ID_LIKE can be a space-separated list. Check each of them.
+					for id_like_distro in ${ID_LIKE}; do
+						case ${id_like_distro} in
+							ubuntu|debian|fedora|rhel)
+								DISTRO_ID=${id_like_distro}
+								break # Use the first one found.
+								;;
+						esac
+					done
+				fi
+				;;
+		esac
 		# Set package manager based on distribution
 		case "${DISTRO_ID}" in
 			"ubuntu"|"debian")
@@ -213,6 +231,10 @@ maybe_enable_default_mode() {
 		set_non_interactive_defaults
 		log "Default installation selected. Continuing in non-interactive mode."
 	fi
+
+# Function to check if uv is installed
+check_uv_installed() {
+	command -v uv &> /dev/null
 }
 
 # Get Python installation choice interactively or use default
@@ -263,6 +285,20 @@ get_python_choice() {
 		done
 	fi
 
+	# Validate --use-uv flag
+	if [[ "${_arg_use_uv}" = "on" ]]; then
+		if ! check_uv_installed; then
+			error "uv is not installed!"
+			error_exit "Please install uv first: curl -LsSf https://astral.sh/uv/install.sh | sh"
+		fi
+		if [[ "${PYTHON_CHOICE}" = "pipx" ]]; then
+			warn "--use-uv is not compatible with pipx, ignoring --use-uv flag"
+			_arg_use_uv="off"
+		else
+			log "Using uv instead of pip for package installation"
+		fi
+	fi
+
 	# Set up Python environment based on choice
 	case ${PYTHON_CHOICE} in
 		"active-venv")
@@ -272,17 +308,29 @@ get_python_choice() {
 			fi
 			log "Using active virtual environment: ${VIRTUAL_ENV}"
 			INSTALLED_IN_VENV=0
-			PYTHON_INSTALL_CMD="pip install"
+			if [[ "${_arg_use_uv}" = "on" ]]; then
+				PYTHON_INSTALL_CMD="uv pip install"
+			else
+				PYTHON_INSTALL_CMD="pip install"
+			fi
 			;;
 		"system-python")
 			log "Using system pathing"
 			INSTALLED_IN_VENV=1
 			# Check Python version to determine if --break-system-packages is needed (Python 3.11+)
 			PYTHON_VERSION_MINOR=$(python3 -c "import sys; print(f'{sys.version_info.minor}')")
-			if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then # Is version greater than 3.10?
-				PYTHON_INSTALL_CMD="pip install --break-system-packages"
+			if [[ "${_arg_use_uv}" = "on" ]]; then
+				if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then
+					PYTHON_INSTALL_CMD="uv pip install --system --break-system-packages"
+				else
+					PYTHON_INSTALL_CMD="uv pip install --system"
+				fi
 			else
-				PYTHON_INSTALL_CMD="pip install"
+				if [[ ${PYTHON_VERSION_MINOR} -gt 10 ]]; then
+					PYTHON_INSTALL_CMD="pip install --break-system-packages"
+				else
+					PYTHON_INSTALL_CMD="pip install"
+				fi
 			fi
 			;;
 		"pipx")
@@ -302,7 +350,11 @@ get_python_choice() {
 			# shellcheck disable=SC1091 # Must exist after previous command
 			source "${_arg_new_venv_location}/bin/activate"
 			INSTALLED_IN_VENV=0
-			PYTHON_INSTALL_CMD="pip install"
+			if [[ "${_arg_use_uv}" = "on" ]]; then
+				PYTHON_INSTALL_CMD="uv pip install"
+			else
+				PYTHON_INSTALL_CMD="pip install"
+			fi
 			;;
 	esac
 
@@ -440,7 +492,7 @@ EOF
 	log "Pulling the tt-metalium-models image (this may take a while)..."
 	podman pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
 
-	log "Metalium Models installation completed"
+	log "Metalium Models installation completed"tudio/pulls
 	return 0
 }
 
@@ -610,7 +662,7 @@ install_tt_repos () {
 			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
 
 			# Setup the keyring
-			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
+			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755tudio/pulls /etc/apt/keyrings
 
 			# Download the key
 			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
@@ -798,6 +850,9 @@ main() {
 	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
 		log "Metalium Models container will be installed"
 	fi
+	if [[ "${_arg_use_uv}" = "on" ]]; then
+		log "uv will be used instead of pip for package installation"
+	fi
 
 	log "Checking for sudo permissions... (may request password)"
 	check_has_sudo_perms
@@ -940,7 +995,7 @@ main() {
 		# Create FW_FILE based on FW_VERSION
 		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
 		FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
-		BACKUP_FW_RELEASE_URL="https://github.com/tenstorrent/tt-zephyr-platforms/releases/download"
+		BACKUP_FW_RELEASE_URL="https://github.com/tensttudio/pullsorrent/tt-zephyr-platforms/releases/download"
 
 		# Download from GitHub releases
 		if ! curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
