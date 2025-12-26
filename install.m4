@@ -20,6 +20,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-smi],,[Install tt-smi for device monitoring],[on])
+# ARG_OPTIONAL_BOOLEAN([install-tt-forge],,[Install tt-forge for model compilation workflows],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
 # ARG_OPTIONAL_BOOLEAN([install-sfpi],,[Install SFPI],[on])
 # ARG_OPTIONAL_BOOLEAN([install-inference-server],,[Install tt-inference-server],[on])
@@ -38,6 +39,7 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 # ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[on])
 # ARG_OPTIONAL_SINGLE([github-token],,[Optional GitHub API auth token],[])
+# ARG_OPTIONAL_SINGLE([extra-index-url],,[Tenstorrent Python package index URL],[https://pypi.eng.aws.tenstorrent.com])
 
 # ========================= Version Arguments =========================
 # ARG_OPTIONAL_SINGLE([kmd-version],,[Specific version of TT-KMD to install],[])
@@ -45,11 +47,13 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([systools-version],,[Specific version of system tools to install],[])
 # ARG_OPTIONAL_SINGLE([smi-version],,[Specific version of tt-smi to install],[])
 # ARG_OPTIONAL_SINGLE([flash-version],,[Specific version of tt-flash to install],[])
+# ARG_OPTIONAL_SINGLE([forge-version],,[Specific version of tt-forge to install],[])
 # ARG_OPTIONAL_SINGLE([topology-version],,[Specific version of tt-topology to install],[])
 # ARG_OPTIONAL_SINGLE([sfpi-version],,[Specific version of SFPI to install],[])
 
 # ========================= Path Arguments =========================
 # ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[$HOME/.tenstorrent-venv])
+# ARG_OPTIONAL_SINGLE([forge-venv-location],,[Path for dedicated tt-forge Python 3.11 virtual environment],[$HOME/.tenstorrent-forge-venv])
 
 # ========================= Mode Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
@@ -84,6 +88,8 @@ fi
 PIPX_ENSUREPATH_EXTRAS="${TT_PIPX_ENSUREPATH_EXTRAS:- }"
 PIPX_INSTALL_EXTRAS="${TT_PIPX_INSTALL_EXTRAS:- }"
 
+DISTRO_CODENAME=""
+
 # ========================= Main Script =========================
 
 # Create working directory
@@ -112,6 +118,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # argbash workaround: close square brackets ]]]]]
+
+FORGE_VENV_PATH=""
 
 # log messages to terminal (with color)
 log() {
@@ -149,6 +157,7 @@ detect_distro() {
 	if [[ -f /etc/os-release ]]; then
 		. /etc/os-release
 		DISTRO_ID=${ID}
+		DISTRO_CODENAME=${VERSION_CODENAME:-}
 		case ${DISTRO_ID} in
 			ubuntu|debian|fedora|rhel|centos)
 				;; # It's a known distro, do nothing.
@@ -364,6 +373,63 @@ get_python_choice() {
 # Function to check if Podman is installed
 check_podman_installed() {
 	command -v podman &> /dev/null
+}
+
+ensure_python311_available() {
+	if command -v python3.11 &> /dev/null; then
+		return 0
+	fi
+
+	log "python3.11 not found, attempting installation"
+	case "${PKG_MANAGER}" in
+		"apt-get")
+			sudo apt-get update
+			if ! sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3.11 python3.11-venv python3.11-distutils; then
+				if [[ "${DISTRO_ID}" = "ubuntu" ]]; then
+					warn "Default Ubuntu repositories do not provide python3.11. Adding deadsnakes PPA."
+					sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+					if ! compgen -G "/etc/apt/sources.list.d/*deadsnakes*" > /dev/null; then
+						sudo add-apt-repository -y ppa:deadsnakes/ppa
+					else
+						warn "deadsnakes PPA already configured"
+					fi
+					sudo apt-get update
+					sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3.11 python3.11-venv python3.11-distutils || true
+				elif [[ "${DISTRO_ID}" = "debian" && -n "${DISTRO_CODENAME}" ]]; then
+					warn "Attempting to install python3.11 from Debian backports (${DISTRO_CODENAME}-backports)."
+					BACKPORTS_LIST="/etc/apt/sources.list.d/${DISTRO_CODENAME}-backports.list"
+					if [[ ! -f "${BACKPORTS_LIST}" ]]; then
+						echo "deb http://deb.debian.org/debian ${DISTRO_CODENAME}-backports main" | sudo tee "${BACKPORTS_LIST}" > /dev/null
+					else
+						warn "Backports list ${BACKPORTS_LIST} already exists"
+					fi
+					sudo apt-get update
+					sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -t "${DISTRO_CODENAME}-backports" python3.11 python3.11-venv python3.11-distutils || true
+				else
+					warn "Could not install python3.11 using default repositories"
+				fi
+			fi
+			;;
+		"dnf")
+			if [[ "${DISTRO_ID}" = "rhel" || "${DISTRO_ID}" = "centos" ]]; then
+				sudo dnf module enable -y python:3.11 || warn "Failed to enable python:3.11 module"
+			fi
+			if ! sudo dnf install -y python3.11 python3.11-devel python3.11-pip; then
+				warn "Primary dnf installation of python3.11 failed, attempting fallback packages"
+				sudo dnf install -y python3.11 python3.11-devel || true
+			fi
+			;;
+		*)
+			warn "Cannot install python3.11 automatically on ${DISTRO_ID}";
+			;;
+	esac
+
+	if ! command -v python3.11 &> /dev/null; then
+		warn "python3.11 is still not available after automated attempts"
+		return 1
+	fi
+
+	return 0
 }
 
 # Function to setup rootless Podman
@@ -794,6 +860,69 @@ EOF
 	return 0
 }
 
+install_tt_forge () {
+	FORGE_VENV_PATH="${_arg_forge_venv_location}"
+	if ! ensure_python311_available; then
+		warn "Skipping tt-forge installation because python3.11 is unavailable"
+		return 0
+	fi
+
+	if [[ -d "${FORGE_VENV_PATH}" ]]; then
+		if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+			warn "Existing tt-forge virtual environment at ${FORGE_VENV_PATH} removed to ensure clean install"
+		else
+			log "Existing tt-forge virtual environment found at ${FORGE_VENV_PATH}."
+			if confirm "Recreate tt-forge environment (required for clean install)"; then
+				warn "Removing existing tt-forge environment"
+			else
+				error_exit "Cannot continue without recreating the tt-forge environment."
+			fi
+		fi
+		rm -rf "${FORGE_VENV_PATH}"
+	fi
+
+	log "Creating Python 3.11 virtual environment for tt-forge at ${FORGE_VENV_PATH}"
+	python3.11 -m venv "${FORGE_VENV_PATH}" || error_exit "Failed to create Python 3.11 virtual environment for tt-forge"
+	# shellcheck disable=SC1091
+	source "${FORGE_VENV_PATH}/bin/activate"
+
+	python -m ensurepip --upgrade
+	python -m pip install --upgrade pip
+
+	local forge_package="tt-forge"
+	if [[ -n "${_arg_forge_version:-}" ]]; then
+		forge_package="tt-forge==${_arg_forge_version}"
+	fi
+
+	# Set target device to empty for vllm installation
+	export VLLM_TARGET_DEVICE="empty"
+
+	log "Installing ${forge_package} from ${_arg_extra_index_url}"
+	python -m pip install --pre --extra-index-url "${_arg_extra_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
+
+	local python_version
+	python_version=$(python --version 2>&1)
+	log "tt-forge environment Python version: ${python_version}"
+
+	declare -a forge_packages=("tt-forge" "pjrt-plugin-tt" "vllm_tt")
+	for pkg in "${forge_packages[@]}"; do
+		local pkg_version
+		pkg_version=$(python -m pip show "${pkg}" 2>/dev/null | awk '/^Version:/{print $2}')
+		if [[ -n "${pkg_version}" ]]; then
+			log "${pkg} version: ${pkg_version}"
+		else
+			if [[ "${pkg}" == "tt-forge" ]]; then
+				warn "Unable to determine tt-forge version"
+			else
+				warn "${pkg} package not found in tt-forge environment"
+			fi
+		fi
+	done
+
+	deactivate || true
+	log "tt-forge installation completed"
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -839,6 +968,9 @@ main() {
 	# shellcheck disable=SC2154
 	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
 		warn "TT-Flash installation will be skipped"
+	fi
+	if [[ "${_arg_install_tt_forge}" = "off" ]]; then
+		warn "tt-forge installation will be skipped"
 	fi
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
 		warn "Firmware update will be skipped"
@@ -1022,6 +1154,10 @@ main() {
 		install_studio
 	fi
 
+	if [[ "${_arg_install_tt_forge}" = "on" ]]; then
+		install_tt_forge
+	fi
+
 	# Setup rootless Podman if it was just installed
 	if [[ "${_arg_install_podman}" = "on" ]]; then
 		if check_podman_installed; then
@@ -1073,6 +1209,9 @@ main() {
 		log "Use 'tt-studio' to launch tt-studio"
 		log "tt-studio has been installed to ~/.local/lib/tt-studio"
 		log "Usage: tt-studio [arguments]"
+	fi
+	if [[ "${_arg_install_tt_forge}" = "on" ]]; then
+		log "Activate tt-forge environment with 'source ${FORGE_VENV_PATH}/bin/activate'"
 	fi
 
 	# Log successful completion message

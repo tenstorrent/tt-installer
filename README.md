@@ -20,6 +20,7 @@ For more about Metalium and TTNN, check out the [examples page](https://docs.ten
 tt-installer installs two Python tools on your system:
 1. tt-smi: Tenstorrent's System Management Interface
 2. tt-flash: Utility to update your firmware
+3. tt-forge: Tenstorrent's compiler
 
 Running `tt-smi` launches the interface where you can see your hardware status and confirm the install worked properly.
 
@@ -33,6 +34,7 @@ tt-installer performs the following actions on your system:
 6. Installs tt-smi, our System Management Interface
 7. Using your package manager, installs Podman
 8. Installs tt-metalium as a Podman container and configures the tt-metalium script for convenient access to it
+9. Installs `tt-forge` in separate Python3.11 environment. Activate it with ```source ~/.tenstorrent-forge-venv/bin/activate```
 
 The installer will ask the user to make choices about Python environments and tt-metalium. If you wish to configure the installation more granularly, see [Advanced Usage](#advanced-usage).
 

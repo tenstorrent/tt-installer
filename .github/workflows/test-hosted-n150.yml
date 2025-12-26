@@ -30,9 +30,30 @@ jobs:
         name: ${{ inputs.artifact_name }}
 
     - name: Run installer on hosted N150
+      timeout-minutes: 30
       run: |
         # Run installer with all components enabled except firmware update
         # This tests the full installation process on real hardware
-        timeout 1800 sudo bash install.sh --update-firmware=off --mode-non-interactive --verbose --reboot-option=never
-
+        sudo bash install.sh --update-firmware=off --mode-non-interactive --verbose --reboot-option=never
         echo "✓ Installer completed successfully on hosted N150"
+
+    - name: Verify tt-forge installation
+      run: |
+        SCRIPT_URL="https://raw.githubusercontent.com/tenstorrent/tt-forge/main/basic_tests/tt-xla/demo_test.py"
+        SCRIPT_PATH="/tmp/demo_test.py"
+
+        curl -fsSL "${SCRIPT_URL}" -o "${SCRIPT_PATH}"
+
+        VENV_PATH=$(sudo find /root "${HOME}" -maxdepth 2 -type d -name ".tenstorrent-forge-venv" | head -n 1)
+
+        if [[ -z "${VENV_PATH}" ]]; then
+          echo "tt-forge virtual environment not found"
+          exit 1
+        fi
+
+        echo "Found tt-forge virtual environment at ${VENV_PATH}"
+        set -e
+        source ${VENV_PATH}/bin/activate
+        python "${SCRIPT_PATH}"
+
+        echo "✓ tt-forge environment verified via demo_test.py"

@@ -30,7 +30,17 @@ jobs:
       with:
         name: ${{ inputs.artifact_name }}
 
+    - name: Free disk space on runner
+      uses: jlumbroso/free-disk-space@main
+      with:
+        toolcache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+
     - name: Test in container
+      timeout-minutes: 30
       run: |
         docker run --rm -v "$PWD:/workspace" -w /workspace ${{ matrix.distro }} bash -c "
           set -e
@@ -51,10 +61,11 @@ jobs:
 
           # Switch to test user and run installer
           su - testuser -c '
+            set -euo pipefail
             cd /home/testuser/workspace
 
             # Run installer with test configuration (skip hardware-dependent steps)
-            timeout 600 bash install.sh \
+            bash install.sh \
               --mode-non-interactive \
               --install-kmd \
               --no-install-hugepages \
@@ -62,10 +73,7 @@ jobs:
               --install-metalium-container \
               --install-sfpi \
               --python-choice=new-venv \
-              --reboot-option=never || {
-              echo \"Installer timed out or failed\"
-              exit 1
-            }
+              --reboot-option=never
 
             echo \"✓ Installer completed successfully in container mode\"
           '
