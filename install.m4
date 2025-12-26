@@ -889,7 +889,7 @@ install_tt_forge () {
 	fi
 
 	log "Installing ${forge_package} from ${_arg_forge_index_url}"
-	python -m pip install --pre --index-url "${_arg_forge_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
+	python -m pip install --pre --extra-index-url "${_arg_forge_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
 
 	local python_version
 	python_version=$(python --version 2>&1)
