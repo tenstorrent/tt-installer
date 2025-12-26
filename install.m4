@@ -888,13 +888,8 @@ install_tt_forge () {
 		forge_package="tt-forge==${_arg_forge_version}"
 	fi
 
-	local forge_index_url="${_arg_forge_index_url%/}"
-	if [[ "${forge_index_url}" != */simple ]]; then
-		forge_index_url="${forge_index_url}/simple"
-	fi
-
-	log "Installing ${forge_package} from ${forge_index_url}"
-	python -m pip install --index-url "${forge_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
+	log "Installing ${forge_package} from ${_arg_forge_index_url}"
+	python -m pip install --index-url "${_arg_forge_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
 
 	local python_version
 	python_version=$(python --version 2>&1)
