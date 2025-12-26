@@ -39,7 +39,7 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 # ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[on])
 # ARG_OPTIONAL_SINGLE([github-token],,[Optional GitHub API auth token],[])
-# ARG_OPTIONAL_SINGLE([forge-index-url],,[Python package index URL for tt-forge],[https://pypi.eng.aws.tenstorrent.com])
+# ARG_OPTIONAL_SINGLE([extra-index-url],,[Tenstorrent Python package index URL],[https://pypi.eng.aws.tenstorrent.com])
 
 # ========================= Version Arguments =========================
 # ARG_OPTIONAL_SINGLE([kmd-version],,[Specific version of TT-KMD to install],[])
@@ -47,7 +47,7 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([systools-version],,[Specific version of system tools to install],[])
 # ARG_OPTIONAL_SINGLE([smi-version],,[Specific version of tt-smi to install],[])
 # ARG_OPTIONAL_SINGLE([flash-version],,[Specific version of tt-flash to install],[])
-# ARG_OPTIONAL_SINGLE([forge-version],,[Specific version of tt-forge to install],[0.7.0])
+# ARG_OPTIONAL_SINGLE([forge-version],,[Specific version of tt-forge to install],[])
 # ARG_OPTIONAL_SINGLE([topology-version],,[Specific version of tt-topology to install],[])
 # ARG_OPTIONAL_SINGLE([sfpi-version],,[Specific version of SFPI to install],[])
 
@@ -891,8 +891,8 @@ install_tt_forge () {
 	# Set target device to empty for vllm installation
 	export VLLM_TARGET_DEVICE="empty"
 
-	log "Installing ${forge_package} from ${_arg_forge_index_url}"
-	python -m pip install --pre --extra-index-url "${_arg_forge_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
+	log "Installing ${forge_package} from ${_arg_extra_index_url}"
+	python -m pip install --pre --extra-index-url "${_arg_extra_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
 
 	local python_version
 	python_version=$(python --version 2>&1)
@@ -989,12 +989,12 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu")
 			sudo apt-get update
-			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget software-properties-common
+			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt-get update
-			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms pipx jq protobuf-compiler wget software-properties-common
+			sudo apt-get install -y git python3-pip dkms pipx jq protobuf-compiler wget
 			;;
 		"fedora")
 			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget

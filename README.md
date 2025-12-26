@@ -20,7 +20,7 @@ For more about Metalium and TTNN, check out the [examples page](https://docs.ten
 tt-installer installs two Python tools on your system:
 1. tt-smi: Tenstorrent's System Management Interface
 2. tt-flash: Utility to update your firmware
-3. tt-forge: Tenstorrent's compiler for building deployable models (installed into a fresh Python 3.11 virtual environment at ~/.tenstorrent-forge-venv)
+3. tt-forge: Tenstorrent's compiler
 
 Running `tt-smi` launches the interface where you can see your hardware status and confirm the install worked properly.
 
@@ -34,7 +34,7 @@ tt-installer performs the following actions on your system:
 6. Installs tt-smi, our System Management Interface
 7. Using your package manager, installs Podman
 8. Installs tt-metalium as a Podman container and configures the tt-metalium script for convenient access to it
-9. Installs `tt-forge`. `tt-forge` is provisioned in a clean Python 3.11 virtual environment so runtime dependencies stay isolated from the rest of your system packages.
+9. Installs `tt-forge` in separate Python3.11 environment. Activate it with ```source ~/.tenstorrent-forge-venv/bin/activate```
 
 The installer will ask the user to make choices about Python environments and tt-metalium. If you wish to configure the installation more granularly, see [Advanced Usage](#advanced-usage).
 
@@ -60,17 +60,7 @@ To install without prompting the user:
 
 To skip certain components:
 ```bash
-./install.sh --no-install-kmd --no-install-hugepages --no-install-tt-forge
-```
-
-To customize tt-forge installation:
-```bash
-./install.sh --forge-venv-location=/opt/tt-forge-venv --forge-index-url=https://pypi.eng.aws.tenstorrent.com/simple
-```
-After installation, activate the environment and make sure the runtime boots:
-```bash
-source ~/.tenstorrent-forge-venv/bin/activate
-python -c "import jax"
+./install.sh --no-install-kmd --no-install-hugepages
 ```
 
 To specify versions:
