@@ -888,6 +888,9 @@ install_tt_forge () {
 		forge_package="tt-forge==${_arg_forge_version}"
 	fi
 
+	# Set target device to empty for vllm installation
+	export VLLM_TARGET_DEVICE="empty"
+
 	log "Installing ${forge_package} from ${_arg_forge_index_url}"
 	python -m pip install --pre --extra-index-url "${_arg_forge_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
 
