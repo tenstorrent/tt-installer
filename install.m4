@@ -47,7 +47,7 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([systools-version],,[Specific version of system tools to install],[])
 # ARG_OPTIONAL_SINGLE([smi-version],,[Specific version of tt-smi to install],[])
 # ARG_OPTIONAL_SINGLE([flash-version],,[Specific version of tt-flash to install],[])
-# ARG_OPTIONAL_SINGLE([forge-version],,[Specific version of tt-forge to install],[])
+# ARG_OPTIONAL_SINGLE([forge-version],,[Specific version of tt-forge to install],[0.7.0])
 # ARG_OPTIONAL_SINGLE([topology-version],,[Specific version of tt-topology to install],[])
 # ARG_OPTIONAL_SINGLE([sfpi-version],,[Specific version of SFPI to install],[])
 
@@ -388,7 +388,7 @@ ensure_python311_available() {
 				if [[ "${DISTRO_ID}" = "ubuntu" ]]; then
 					warn "Default Ubuntu repositories do not provide python3.11. Adding deadsnakes PPA."
 					sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
-					if ! ls /etc/apt/sources.list.d 2>/dev/null | grep -qi "deadsnakes"; then
+					if ! compgen -G "/etc/apt/sources.list.d/*deadsnakes*" > /dev/null; then
 						sudo add-apt-repository -y ppa:deadsnakes/ppa
 					else
 						warn "deadsnakes PPA already configured"
@@ -889,7 +889,7 @@ install_tt_forge () {
 	fi
 
 	log "Installing ${forge_package} from ${_arg_forge_index_url}"
-	python -m pip install --index-url "${_arg_forge_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
+	python -m pip install --pre --index-url "${_arg_forge_index_url}" "${forge_package}" || error_exit "Failed to install tt-forge"
 
 	local python_version
 	python_version=$(python --version 2>&1)
