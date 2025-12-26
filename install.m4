@@ -88,6 +88,8 @@ fi
 PIPX_ENSUREPATH_EXTRAS="${TT_PIPX_ENSUREPATH_EXTRAS:- }"
 PIPX_INSTALL_EXTRAS="${TT_PIPX_INSTALL_EXTRAS:- }"
 
+DISTRO_CODENAME=""
+
 # ========================= Main Script =========================
 
 # Create working directory
@@ -155,6 +157,7 @@ detect_distro() {
 	if [[ -f /etc/os-release ]]; then
 		. /etc/os-release
 		DISTRO_ID=${ID}
+		DISTRO_CODENAME=${VERSION_CODENAME:-}
 		case ${DISTRO_ID} in
 			ubuntu|debian|fedora|rhel|centos)
 				;; # It's a known distro, do nothing.
@@ -380,10 +383,41 @@ ensure_python311_available() {
 	log "python3.11 not found, attempting installation"
 	case "${PKG_MANAGER}" in
 		"apt-get")
-			sudo apt-get install -y python3.11 python3.11-venv python3.11-distutils || true
+			sudo apt-get update
+			if ! sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3.11 python3.11-venv python3.11-distutils; then
+				if [[ "${DISTRO_ID}" = "ubuntu" ]]; then
+					warn "Default Ubuntu repositories do not provide python3.11. Adding deadsnakes PPA."
+					sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+					if ! ls /etc/apt/sources.list.d 2>/dev/null | grep -qi "deadsnakes"; then
+						sudo add-apt-repository -y ppa:deadsnakes/ppa
+					else
+						warn "deadsnakes PPA already configured"
+					fi
+					sudo apt-get update
+					sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3.11 python3.11-venv python3.11-distutils || true
+				elif [[ "${DISTRO_ID}" = "debian" && -n "${DISTRO_CODENAME}" ]]; then
+					warn "Attempting to install python3.11 from Debian backports (${DISTRO_CODENAME}-backports)."
+					BACKPORTS_LIST="/etc/apt/sources.list.d/${DISTRO_CODENAME}-backports.list"
+					if [[ ! -f "${BACKPORTS_LIST}" ]]; then
+						echo "deb http://deb.debian.org/debian ${DISTRO_CODENAME}-backports main" | sudo tee "${BACKPORTS_LIST}" > /dev/null
+					else
+						warn "Backports list ${BACKPORTS_LIST} already exists"
+					fi
+					sudo apt-get update
+					sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -t "${DISTRO_CODENAME}-backports" python3.11 python3.11-venv python3.11-distutils || true
+				else
+					warn "Could not install python3.11 using default repositories"
+				fi
+			fi
 			;;
 		"dnf")
-			sudo dnf install -y python3.11 python3.11-pip python3.11-devel || true
+			if [[ "${DISTRO_ID}" = "rhel" || "${DISTRO_ID}" = "centos" ]]; then
+				sudo dnf module enable -y python:3.11 || warn "Failed to enable python:3.11 module"
+			fi
+			if ! sudo dnf install -y python3.11 python3.11-devel python3.11-pip; then
+				warn "Primary dnf installation of python3.11 failed, attempting fallback packages"
+				sudo dnf install -y python3.11 python3.11-devel || true
+			fi
 			;;
 		*)
 			warn "Cannot install python3.11 automatically on ${DISTRO_ID}";
@@ -957,12 +991,12 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu")
 			sudo apt-get update
-			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
+			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget software-properties-common
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			sudo apt-get update
-			sudo apt-get install -y git python3-pip dkms pipx jq protobuf-compiler wget
+			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms pipx jq protobuf-compiler wget software-properties-common
 			;;
 		"fedora")
 			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
