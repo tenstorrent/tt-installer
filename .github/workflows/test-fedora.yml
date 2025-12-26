@@ -28,6 +28,15 @@ jobs:
       with:
         name: ${{ inputs.artifact_name }}
 
+    - name: Free disk space on runner
+      uses: jlumbroso/free-disk-space@main
+      with:
+        toolcache: true
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+
     - name: Test in Fedora container
       timeout-minutes: 30
       run: |
@@ -48,6 +57,7 @@ jobs:
 
           # Switch to test user and run installer
           su - testuser -c '
+            set -euo pipefail
             cd /home/testuser/workspace
 
             # Run installer with test configuration (skip hardware-dependent steps)
