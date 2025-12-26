@@ -377,7 +377,7 @@ check_podman_installed() {
 
 ensure_python311_available() {
 	if command -v python3.11 &> /dev/null; then
-		return
+		return 0
 	fi
 
 	log "python3.11 not found, attempting installation"
@@ -425,8 +425,11 @@ ensure_python311_available() {
 	esac
 
 	if ! command -v python3.11 &> /dev/null; then
-		error_exit "python3.11 is required for tt-forge installation. Install it manually and rerun the installer."
+		warn "python3.11 is still not available after automated attempts"
+		return 1
 	fi
+
+	return 0
 }
 
 # Function to setup rootless Podman
@@ -859,7 +862,10 @@ EOF
 
 install_tt_forge () {
 	FORGE_VENV_PATH="${_arg_forge_venv_location}"
-	ensure_python311_available
+	if ! ensure_python311_available; then
+		warn "Skipping tt-forge installation because python3.11 is unavailable"
+		return 0
+	fi
 
 	if [[ -d "${FORGE_VENV_PATH}" ]]; then
 		if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
