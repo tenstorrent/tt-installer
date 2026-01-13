@@ -15,8 +15,7 @@ exit 11 #)
 # ========================= Boolean Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([install-kmd],,[Kernel-Mode-Driver installation],[on])
 # ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
-# ARG_OPTIONAL_BOOLEAN([install-podman],,[Install Podman],[on])
-# ARG_OPTIONAL_BOOLEAN([install-podman-docker],,[Install podman-docker shim (disable to keep docker)],[off])
+# ARG_OPTIONAL_SINGLE([install-container-runtime],,[Container runtime to install: podman, docker, no],[podman])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-smi],,[Install tt-smi for device monitoring],[on])
@@ -25,11 +24,11 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-inference-server],,[Install tt-inference-server],[on])
 # ARG_OPTIONAL_BOOLEAN([install-studio],,[Install tt-studio],[on])
 
-# =========================  Podman Metalium Arguments =========================
+# =========================  Metalium Container Arguments =========================
 # ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
 # ARG_OPTIONAL_SINGLE([metalium-image-tag],,[Tag (version) of the Metalium image],[latest-rc])
-# ARG_OPTIONAL_SINGLE([podman-metalium-script-dir],,[Directory where the helper wrapper will be written],["$HOME/.local/bin"])
-# ARG_OPTIONAL_SINGLE([podman-metalium-script-name],,[Name of the helper wrapper script],["tt-metalium"])
+# ARG_OPTIONAL_SINGLE([metalium-container-script-dir],,[Directory where the helper wrapper will be written],["$HOME/.local/bin"])
+# ARG_OPTIONAL_SINGLE([metalium-container-script-name],,[Name of the helper wrapper script],["tt-metalium"])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-models-container],,[Install additional TT-Metalium container for running model demos],[off])
 
 # ========================= String Arguments =========================
@@ -76,7 +75,7 @@ EOF
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
-	_arg_install_podman="off" # No podman in podman
+	_arg_install_container_runtime="no" # No container runtime in container
 	_arg_install_sfpi="off"
 	_arg_reboot_option="never" # Do not reboot
 fi
@@ -361,9 +360,9 @@ get_python_choice() {
 
 }
 
-# Function to check if Podman is installed
-check_podman_installed() {
-	command -v podman &> /dev/null
+# Function to check if a container runtime is installed
+check_container_runtime_installed() {
+	command -v docker &> /dev/null
 }
 
 # Function to setup rootless Podman
@@ -375,25 +374,25 @@ setup_rootless_podman() {
 	sudo usermod --add-subuids 10000-75535 "$(whoami)"
 }
 
-# Install Podman Metalium container
-install_podman_metalium() {
-	log "Installing Metalium via Podman"
+# Install Metalium container
+install_metalium_container() {
+	log "Installing Metalium via container"
 
 	# Create wrapper script directory
-	mkdir -p "${_arg_podman_metalium_script_dir}" || error_exit "Failed to create script directory"
+	mkdir -p "${_arg_metalium_container_script_dir}" || error_exit "Failed to create script directory"
 
 	# Create wrapper script
 	log "Creating wrapper script..."
-	cat > "${_arg_podman_metalium_script_dir}/${_arg_podman_metalium_script_name}" << EOF
+	cat > "${_arg_metalium_container_script_dir}/${_arg_metalium_container_script_name}" << EOF
 #!/bin/bash
-# Wrapper script for tt-metalium using Podman
+# Wrapper script for tt-metalium using OCI container runtime
 
 # Image configuration
 METALIUM_IMAGE="${_arg_metalium_image_url}:${_arg_metalium_image_tag}"
 
-# Run the command using Podman
+# Run the command using container runtime
 
-podman run --rm -it \\
+docker run --rm -it \\
   --privileged \\
   --log-driver none \\
   --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
@@ -410,38 +409,38 @@ podman run --rm -it \\
 EOF
 
 	# Make the script executable
-	chmod +x "${_arg_podman_metalium_script_dir}/${_arg_podman_metalium_script_name}" || error_exit "Failed to make script executable"
+	chmod +x "${_arg_metalium_container_script_dir}/${_arg_metalium_container_script_name}" || error_exit "Failed to make script executable"
 
 	# Check if the directory is in PATH
-	if [[ ":${PATH}:" != *":${_arg_podman_metalium_script_dir}:"* ]]; then
-		warn "${_arg_podman_metalium_script_dir} is not in your PATH."
+	if [[ ":${PATH}:" != *":${_arg_metalium_container_script_dir}:"* ]]; then
+		warn "${_arg_metalium_container_script_dir} is not in your PATH."
 		warn "A restart may fix this, or you may need to update your shell RC"
 	fi
 
 	# Pull the image
 	log "Pulling the tt-metalium image (this may take a while)..."
-	podman pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
+	docker pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
 
 	log "Metalium installation completed"
 	return 0
 }
 
-# Install Podman Metalium "models" container
-install_podman_metalium_models() {
-	log "Installing Metalium Models Container via Podman"
-	local PODMAN_METALIUM_MODELS_SCRIPT_DIR="${HOME}/.local/bin"
-	local PODMAN_METALIUM_MODELS_SCRIPT_NAME="tt-metalium-models"
+# Install Metalium "models" container
+install_metalium_models_container() {
+	log "Installing Metalium Models Container via OCI container runtime"
+	local METALIUM_MODELS_SCRIPT_DIR="${HOME}/.local/bin"
+	local METALIUM_MODELS_SCRIPT_NAME="tt-metalium-models"
 	local METALIUM_MODELS_IMAGE_TAG="latest-rc"
 	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-models-amd64"
 
 	# Create wrapper script directory
-	mkdir -p "${PODMAN_METALIUM_MODELS_SCRIPT_DIR}" || error_exit "Failed to create script directory"
+	mkdir -p "${METALIUM_MODELS_SCRIPT_DIR}" || error_exit "Failed to create script directory"
 
 	# Create wrapper script
 	log "Creating wrapper script..."
-	cat > "${PODMAN_METALIUM_MODELS_SCRIPT_DIR}/${PODMAN_METALIUM_MODELS_SCRIPT_NAME}" << EOF
+	cat > "${METALIUM_MODELS_SCRIPT_DIR}/${METALIUM_MODELS_SCRIPT_NAME}" << EOF
 #!/bin/bash
-# Wrapper script for tt-metalium-models using Podman
+# Wrapper script for tt-metalium-models using OCI container runtime
 
 echo "================================================================================"
 echo "NOTE: This container tool for tt-metalium is meant to enable users to try out"
@@ -454,7 +453,7 @@ echo "==========================================================================
 # Image configuration
 METALIUM_IMAGE="${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}"
 
-# Run the command using Podman
+# Run the command using container runtime
 #
 # Explaining some changes:
 #  removal of --volume=\${HOME}:/home/user \\: the user in the upstream monster
@@ -466,7 +465,7 @@ METALIUM_IMAGE="${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}"
 #
 #  addition of --entrypoint /bin/bash: The current upstream container needs to
 #  override the entrypoint. Why not just corral users into /bin/bash?
-podman run --rm -it \\
+docker run --rm -it \\
   --privileged \\
   --log-driver none \\
   --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
@@ -481,31 +480,31 @@ podman run --rm -it \\
 EOF
 
 	# Make the script executable
-	chmod +x "${PODMAN_METALIUM_MODELS_SCRIPT_DIR}/${PODMAN_METALIUM_MODELS_SCRIPT_NAME}" || error_exit "Failed to make script executable"
+	chmod +x "${METALIUM_MODELS_SCRIPT_DIR}/${METALIUM_MODELS_SCRIPT_NAME}" || error_exit "Failed to make script executable"
 
 	# Check if the directory is in PATH
-	if [[ ":${PATH}:" != *":${PODMAN_METALIUM_MODELS_SCRIPT_DIR}:"* ]]; then
-		warn "${PODMAN_METALIUM_MODELS_SCRIPT_DIR} is not in your PATH."
+	if [[ ":${PATH}:" != *":${METALIUM_MODELS_SCRIPT_DIR}:"* ]]; then
+		warn "${METALIUM_MODELS_SCRIPT_DIR} is not in your PATH."
 		warn "A restart may fix this, or you may need to update your shell RC"
 	fi
 
 	# Pull the image
 	log "Pulling the tt-metalium-models image (this may take a while)..."
-	podman pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
+	docker pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
 
 	log "Metalium Models installation completed"
 	return 0
 }
 
-get_podman_metalium_choice() {
+get_metalium_container_choice() {
 	# In non-interactive mode, use the provided arguments
 	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
-		log "Non-interactive mode, using Podman Metalium installation preference: ${_arg_install_metalium_container}"
+		log "Non-interactive mode, using Metalium container installation preference: ${_arg_install_metalium_container}"
 		log "Non-interactive mode, using Metalium Models installation preference: ${_arg_install_metalium_models_container}"
 		return
 	fi
-	# Only ask if Podman is installed or will be installed
-	if [[ "${_arg_install_podman}" = "on" ]] || check_podman_installed; then
+	# Only ask if a container runtime is installed or will be installed
+	if [[ "${_arg_install_container_runtime}" != "no" ]] || check_container_runtime_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Metalium slim container?"
 		log "This container is appropriate if you only need to use TT-NN"
@@ -515,12 +514,12 @@ get_podman_metalium_choice() {
 			_arg_install_metalium_container="off"
 		fi
 	else
-		# Podman won't be installed, so don't install Metalium
+		# Container runtime won't be installed, so don't install Metalium
 		_arg_install_metalium_container="off"
-		warn "Podman is not and will not be installed, skipping Podman Metalium installation"
+		warn "Container runtime is not and will not be installed, skipping Metalium container installation"
 	fi
-	# Only ask if Podman is installed or will be installed
-	if [[ "${_arg_install_podman}" = "on" ]] || check_podman_installed; then
+	# Only ask if a container runtime is installed or will be installed
+	if [[ "${_arg_install_container_runtime}" != "no" ]] || check_container_runtime_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Metalium Model Demos container?"
 		log "This container is best for users who need more TT-Metalium functionality, such as running prebuilt models, but it's large (8GB)"
@@ -530,14 +529,14 @@ get_podman_metalium_choice() {
 			_arg_install_metalium_models_container="off"
 		fi
 	else
-		# Podman won't be installed, so don't install Metalium
+		# Container runtime won't be installed, so don't install Metalium
 		_arg_install_metalium_models_container="off"
-		warn "Podman is not and will not be installed, skipping Podman Metalium Models installation"
+		warn "Container runtime is not and will not be installed, skipping Metalium Models container installation"
 	fi
 
-	# Disable Podman if both Metalium containers are disabled
+	# Disable container runtime install if both Metalium containers are disabled
 	if [[ "${_arg_install_metalium_container}" = "off" ]] && [[ "${_arg_install_metalium_models_container}" = "off" ]]; then
-		_arg_install_podman="off"
+		_arg_install_container_runtime="no"
 	fi
 }
 
@@ -794,6 +793,40 @@ EOF
 	return 0
 }
 
+# Install Podman and podman-docker shim
+install_podman() {
+	log "Installing Podman and podman-docker shim"
+	case "${PKG_MANAGER}" in
+		"apt-get")
+			sudo apt-get install -y podman podman-docker podman-compose
+			;;
+		"dnf")
+			sudo dnf install -y podman podman-docker podman-compose
+			;;
+		*)
+			error_exit "Unsupported package manager: ${PKG_MANAGER}"
+			;;
+	esac
+}
+
+# Install Docker using the official Docker installation script
+install_docker() {
+	log "Installing Docker"
+	cd "${WORKDIR}"
+
+	# Download Docker installation script
+	curl -fsSL https://get.docker.com -o get-docker.sh
+	verify_download "get-docker.sh"
+
+	# Run the Docker installation script
+	sudo sh get-docker.sh
+
+	# Add current user to docker group
+	sudo usermod -aG docker "$(whoami)"
+
+	log "Docker installation completed. You may need to log out and back in for group membership to take effect."
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -821,11 +854,11 @@ main() {
 	if [[ "${_arg_install_hugepages}" = "off" ]]; then
 		warn "HugePages setup will be skipped"
 	fi
-	if [[ "${_arg_install_podman}" = "off" ]]; then
-		warn "Podman installation will be skipped"
+	if [[ "${_arg_install_container_runtime}" = "no" ]]; then
+		warn "Container runtime installation will be skipped"
 	fi
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
-		warn "Metalium installation will be skipped"
+		warn "Metalium container installation will be skipped"
 	fi
 	if [[ "${_arg_install_sfpi}" = "off" ]]; then
 		warn "SFPI installation will be skipped"
@@ -888,8 +921,8 @@ main() {
 		warn "If you are unsure how to do this, use rustup: https://rustup.rs/"
 	fi
 
-	# Get Podman Metalium installation choice
-	get_podman_metalium_choice
+	# Get Metalium container installation choice
+	get_metalium_container_choice
 
 	# Get tt-inference-server installation choice
 	get_inference_server_choice
@@ -899,6 +932,23 @@ main() {
 	get_python_choice
 	install_tt_repos
 
+	# Install container runtime if requested
+	case "${_arg_install_container_runtime}" in
+		"podman")
+			install_podman
+			setup_rootless_podman
+			;;
+		"docker")
+			install_docker
+			;;
+		"no")
+			log "Skipping container runtime installation"
+			;;
+		*)
+			error_exit "Invalid container runtime option: ${_arg_install_container_runtime}. Must be 'podman', 'docker', or 'no'"
+			;;
+	esac
+
 	# 1. Define the package registry
 	# Format: "package_name|install_flag|version|type"
 	declare -A package_registry=(
@@ -906,9 +956,6 @@ main() {
 		["kmd"]="tenstorrent-dkms|${_arg_install_kmd}|${_arg_kmd_version}|system"
 		["hugepages"]="tenstorrent-tools|${_arg_install_hugepages}|${_arg_systools_version}|system"
 		["sfpi"]="sfpi|${_arg_install_sfpi}|${_arg_sfpi_version}|system"
-		["podman"]="podman|${_arg_install_podman}||system"
-		["podman-docker"]="podman-docker|${_arg_install_podman_docker}||system"
-		["podman-compose"]="podman-compose|${_arg_install_podman_docker}||system"
 
 		# Python packages
 		["tt-topology"]="tt-topology|${_arg_install_tt_topology}|${_arg_topology_version}|python"
@@ -1022,32 +1069,23 @@ main() {
 		install_studio
 	fi
 
-	# Setup rootless Podman if it was just installed
-	if [[ "${_arg_install_podman}" = "on" ]]; then
-		if check_podman_installed; then
-			setup_rootless_podman
-		else
-			warn "Podman was not installed successfully"
-		fi
-	fi
-
-	# Install Podman Metalium if requested
+	# Install Metalium container if requested
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
-		warn "Skipping Podman Metalium installation"
+		warn "Skipping Metalium container installation"
 	else
-		if ! check_podman_installed; then
-			warn "Podman is not installed. Cannot install Podman Metalium."
+		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
+			warn "No container runtime is installed. Cannot install Metalium container."
 		else
-			install_podman_metalium
+			install_metalium_container
 		fi
 	fi
 
 	# Install Metalium Models container if requested
 	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
-		if ! check_podman_installed; then
-			warn "Podman is not installed. Cannot install Metalium Models."
+		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
+			warn "No container runtime is installed. Cannot install Metalium Models."
 		else
-			install_podman_metalium_models
+			install_metalium_models_container
 		fi
 	fi
 
