@@ -798,7 +798,7 @@ install_podman() {
 	log "Installing Podman and podman-docker shim"
 	case "${PKG_MANAGER}" in
 		"apt-get")
-			sudo apt-get install -y podman podman-docker podman-compose
+			sudo apt-get install -y podman podman-docker
 			;;
 		"dnf")
 			sudo dnf install -y podman podman-docker podman-compose
