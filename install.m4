@@ -824,6 +824,8 @@ install_docker() {
 	# Add current user to docker group
 	sudo usermod -aG docker "$(whoami)"
 
+	sudo systemctl start docker
+
 	log "Docker installation completed. You may need to log out and back in for group membership to take effect."
 }
 
