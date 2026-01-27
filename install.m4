@@ -17,6 +17,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
 # ARG_OPTIONAL_SINGLE([install-container-runtime],,[Container runtime to install: podman, docker, no],[podman])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
+# ARG_OPTIONAL_BOOLEAN([install-forge-container],,[Download and install Forge container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-smi],,[Install tt-smi for device monitoring],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
@@ -30,6 +31,12 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([metalium-container-script-dir],,[Directory where the helper wrapper will be written],["$HOME/.local/bin"])
 # ARG_OPTIONAL_SINGLE([metalium-container-script-name],,[Name of the helper wrapper script],["tt-metalium"])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-models-container],,[Install additional TT-Metalium container for running model demos],[off])
+
+# =========================  Forge Container Arguments =========================
+# ARG_OPTIONAL_SINGLE([forge-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-xla-slim])
+# ARG_OPTIONAL_SINGLE([forge-image-tag],,[Tag (version) of the Forge image],[latest])
+# ARG_OPTIONAL_SINGLE([forge-container-script-dir],,[Directory where the helper wrapper will be written],["$HOME/.local/bin"])
+# ARG_OPTIONAL_SINGLE([forge-container-script-name],,[Name of the helper wrapper script],["tt-forge"])
 
 # ========================= String Arguments =========================
 # ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
@@ -533,10 +540,80 @@ get_metalium_container_choice() {
 		_arg_install_metalium_models_container="off"
 		warn "Container runtime is not and will not be installed, skipping Metalium Models container installation"
 	fi
+}
 
-	# Disable container runtime install if both Metalium containers are disabled
-	if [[ "${_arg_install_metalium_container}" = "off" ]] && [[ "${_arg_install_metalium_models_container}" = "off" ]]; then
-		_arg_install_container_runtime="no"
+# Install Forge container
+install_forge_container() {
+	log "Installing Forge via container"
+
+	# Create wrapper script directory
+	mkdir -p "${_arg_forge_container_script_dir}" || error_exit "Failed to create script directory"
+
+	# Create wrapper script
+	log "Creating wrapper script..."
+	cat > "${_arg_forge_container_script_dir}/${_arg_forge_container_script_name}" << EOF
+#!/bin/bash
+# Wrapper script for tt-forge using OCI container runtime
+
+# Image configuration
+FORGE_IMAGE="${_arg_forge_image_url}:${_arg_forge_image_tag}"
+
+# Run the command using container runtime
+
+docker run --rm -it \\
+  --privileged \\
+  --log-driver none \\
+  --volume=/dev/hugepages:/dev/hugepages \\
+  --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
+  --volume=/lib/modules:/lib/modules \\
+  --volume=\${HOME}:/home/user \\
+  --device=/dev/tenstorrent:/dev/tenstorrent \\
+  --workdir=/home/user \\
+  --env=DISPLAY=\${DISPLAY} \\
+  --env=HOME=/home/user \\
+  --env=TERM=\${TERM:-xterm-256color} \\
+  --network=host \\
+  --security-opt label=disable \\
+  --entrypoint /bin/bash \\
+  \${FORGE_IMAGE} "\$@"
+EOF
+
+	# Make the script executable
+	chmod +x "${_arg_forge_container_script_dir}/${_arg_forge_container_script_name}" || error_exit "Failed to make script executable"
+
+	# Check if the directory is in PATH
+	if [[ ":${PATH}:" != *":${_arg_forge_container_script_dir}:"* ]]; then
+		warn "${_arg_forge_container_script_dir} is not in your PATH."
+		warn "A restart may fix this, or you may need to update your shell RC"
+	fi
+
+	# Pull the image
+	log "Pulling the tt-forge image (this may take a while)..."
+	docker pull "${_arg_forge_image_url}:${_arg_forge_image_tag}" || error "Failed to pull image"
+
+	log "Forge installation completed"
+	return 0
+}
+
+get_forge_container_choice() {
+	# In non-interactive mode, use the provided arguments
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+		log "Non-interactive mode, using Forge container installation preference: ${_arg_install_forge_container}"
+		return
+	fi
+	# Only ask if a container runtime is installed or will be installed
+	if [[ "${_arg_install_container_runtime}" != "no" ]] || check_container_runtime_installed; then
+		# Interactive mode - allow override
+		log "Would you like to install the TT-Forge slim container?"
+		if confirm "Install Forge"; then
+			_arg_install_forge_container="on"
+		else
+			_arg_install_forge_container="off"
+		fi
+	else
+		# Container runtime won't be installed, so don't install Forge
+		_arg_install_forge_container="off"
+		warn "Container runtime is not and will not be installed, skipping Forge container installation"
 	fi
 }
 
@@ -926,6 +1003,14 @@ main() {
 	# Get Metalium container installation choice
 	get_metalium_container_choice
 
+	# Get Metalium container installation choice
+	get_forge_container_choice
+
+	# Disable container runtime install if both Metalium and Forge containers are disabled
+	if [[ "${_arg_install_metalium_container}" = "off" ]] && [[ "${_arg_install_metalium_models_container}" = "off" ]] && [[ "${_arg_install_forge_container}" = "off" ]]; then
+		_arg_install_container_runtime="no"
+	fi
+
 	# Get tt-inference-server installation choice
 	get_inference_server_choice
 	get_studio_choice
@@ -1095,6 +1180,17 @@ main() {
 		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent's Python tools."
 	fi
 
+	# Install Forge container if requested
+	if [[ "${_arg_install_forge_container}" = "off" ]]; then
+		warn "Skipping Forge container installation"
+	else
+		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
+			warn "No container runtime is installed. Cannot install Metalium container."
+		else
+			install_forge_container
+		fi
+	fi
+
 	log "Please reboot your system to complete the setup."
 	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
 	if [[ "${_arg_install_metalium_container}" = "on" ]]; then
@@ -1103,6 +1199,13 @@ main() {
 		log "  tt-metalium                   # Start an interactive shell"
 		log "  tt-metalium [command]         # Run a specific command"
 		log "  tt-metalium python script.py  # Run a Python script"
+	fi
+	if [[ "${_arg_install_forge_container}" = "on" ]]; then
+		log "Use 'tt-forge' to access the Forge programming environment"
+		log "Usage examples:"
+		log "  tt-forge                   # Start an interactive shell"
+		log "  tt-forge [command]         # Run a specific command"
+		log "  tt-forge python script.py  # Run a Python script"
 	fi
 	if [[ "${_arg_install_inference_server}" = "on" ]]; then
 		log "Use 'tt-inference-server' to run the inference server"
