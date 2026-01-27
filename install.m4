@@ -1185,7 +1185,7 @@ main() {
 		warn "Skipping Forge container installation"
 	else
 		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
-			warn "No container runtime is installed. Cannot install Metalium container."
+			warn "No container runtime is installed. Cannot install Forge container."
 		else
 			install_forge_container
 		fi
