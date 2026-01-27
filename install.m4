@@ -1003,7 +1003,7 @@ main() {
 	# Get Metalium container installation choice
 	get_metalium_container_choice
 
-	# Get Metalium container installation choice
+	# Get Forge container installation choice
 	get_forge_container_choice
 
 	# Disable container runtime install if both Metalium and Forge containers are disabled
