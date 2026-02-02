@@ -5,7 +5,7 @@ Install the tenstorrent software stack with one command.
 ```bash
 /bin/bash -c "$(curl -fsSL https://github.com/tenstorrent/tt-installer/releases/latest/download/install.sh)"
 ```
-**WARNING:** Take care with this command! Always be careful running untrusted code.
+**WARNING:** Take care with this command! Always be careful running unknown code.
 
 ## Using tt-metalium
 In addition to our system-level tools, this script installs tt-metalium, Tenstorrent's framework for building and running AI models. Metalium is installed as a container using Podman. You have two container options, both of which can be installed:
@@ -68,17 +68,18 @@ To specify versions:
 
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages.
 
-## Supported Operating Systems
+## Distro Compatibility
 Our preferred OS is Ubuntu 22.04.5 LTS (Jammy Jellyfish). Other operating systems will not be prioritized for support or features.
 For more information, please see this compatibility matrix:
 | OS     | Version     | Working? | Notes                                     |
 | ------ | ----------- | -------- | ----------------------------------------- |
 | Ubuntu | 24.04.2 LTS | Yes      | None                                      |
 | Ubuntu | 22.04.5 LTS | Yes      | None                                      |
-| Ubuntu | 20.04.6 LTS | Yes      | - Deprecated; support will be removed in a later release<br>- Metalium cannot be installed|
-| Debian | 12.10.0     | Yes      | - Curl is not installed by default<br>- The packaged rustc version is too old to complete installation, we recommend using [rustup](https://rustup.rs/) to install a more modern version|
-| Fedora | 41          | Yes      | May require restart after base package install |
+| Ubuntu | 20.04.6 LTS | No       | Deprecated                                |
+| Debian | 13.3        | Yes      | Curl is not installed by default          |
+| Fedora | 43          | Yes      | May require restart after base package install |
 | Fedora | 42          | Yes      | May require restart after base package install |
 | Other DEB-based distros  | N/A          | N/A     | Unsupported but may work |
 | Other RPM-based distros  | N/A          | N/A     | Unsupported but may work |
-
+| Arch Linux | N/A     | No       | Unsupported  |
+| NixOS      | N/A     | No       | Unsupported, but some TT software is in nixpkgs (unofficial, use at own risk) |
