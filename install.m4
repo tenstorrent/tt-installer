@@ -232,6 +232,63 @@ maybe_enable_default_mode() {
 	fi
 }
 
+# Get the RC file path for the current shell
+get_shell_rc_file() {
+	local shell_name
+	shell_name=$(basename "${SHELL}")
+
+	case "${shell_name}" in
+		bash)
+			echo "${HOME}/.bashrc"
+			;;
+		zsh)
+			echo "${HOME}/.zshrc"
+			;;
+		*)
+			echo ""  # Unsupported shell
+			;;
+	esac
+}
+
+# Add tt-activate alias to shell RC file
+add_venv_alias() {
+	local rc_file
+	local alias_line
+	local venv_path="${_arg_new_venv_location}"
+
+	rc_file=$(get_shell_rc_file)
+	alias_line="alias tt-activate='source ${venv_path}/bin/activate'"
+
+	# If unsupported shell, just print a warning
+	if [[ -z "${rc_file}" ]]; then
+		warn "Unsupported shell. Please add the following alias manually:"
+		warn "  ${alias_line}"
+		return
+	fi
+
+	# If RC file doesn't exist, warn and skip
+	if [[ ! -f "${rc_file}" ]]; then
+		warn "${rc_file} does not exist. Skipping alias configuration."
+		return
+	fi
+
+	# Check for existing alias to avoid duplicates
+	if grep -q "alias tt-activate=" "${rc_file}" 2>/dev/null; then
+		log "tt-activate alias already exists in ${rc_file}"
+		return
+	fi
+
+	# Add the alias
+	{
+		echo ""
+		echo "# Tenstorrent virtual environment alias (added by tt-installer)"
+		echo "${alias_line}"
+	} >> "${rc_file}"
+
+	log "Added tt-activate alias to ${rc_file}"
+	log "Run 'source ${rc_file}' or open a new terminal to use it."
+}
+
 # Function to check if uv is installed
 check_uv_installed() {
 	command -v uv &> /dev/null
@@ -355,6 +412,8 @@ get_python_choice() {
 			else
 				PYTHON_INSTALL_CMD="pip install"
 			fi
+			# Add venv activation alias to shell RC file
+			add_venv_alias
 			;;
 	esac
 
@@ -1092,7 +1151,7 @@ main() {
 	fi
 
 	if [[ "${INSTALLED_IN_VENV}" = "0" ]]; then
-		warn "You'll need to run \"source ${VIRTUAL_ENV}/bin/activate\" to use tenstorrent's Python tools."
+		warn "Run 'tt-activate' in a new terminal to activate the tenstorrent Python environment."
 	fi
 
 	log "Please reboot your system to complete the setup."
