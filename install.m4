@@ -453,6 +453,32 @@ echo "==========================================================================
 # Image configuration
 METALIUM_IMAGE="${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}"
 
+# Parse arguments to extract volume mounts and command
+VOLUME_ARGS=""
+COMMAND_ARGS=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -v|--volume)
+      VOLUME_ARGS="$VOLUME_ARGS --volume=$2"
+      shift 2
+      ;;
+    -v=*|--volume=*)
+      VOLUME_ARGS="$VOLUME_ARGS --volume=${1#*=}"
+      shift
+      ;;
+    -c)
+      # Everything after -c is the command
+      shift
+      COMMAND_ARGS="$*"
+      break
+      ;;
+    *)
+      COMMAND_ARGS="$COMMAND_ARGS $1"
+      shift
+      ;;
+  esac
+done
+
 # Run the command using container runtime
 #
 # Explaining some changes:
@@ -476,7 +502,8 @@ docker run --rm -it \\
   --network=host \\
   --security-opt label=disable \\
   --entrypoint /bin/bash \\
-  \${METALIUM_IMAGE} "\$@"
+  ${VOLUME_ARGS} \\
+  \${METALIUM_IMAGE} "$COMMAND_ARGS"
 EOF
 
 	# Make the script executable
