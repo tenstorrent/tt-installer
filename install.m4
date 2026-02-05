@@ -17,7 +17,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
 # ARG_OPTIONAL_SINGLE([install-container-runtime],,[Container runtime to install: podman, docker, no],[podman])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
-# ARG_OPTIONAL_BOOLEAN([install-forge-container],,[Download and install Forge container],[on])
+# ARG_OPTIONAL_BOOLEAN([install-forge-container],,[Download and install Forge container],[off])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-smi],,[Install tt-smi for device monitoring],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
@@ -938,6 +938,9 @@ main() {
 	fi
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Metalium container installation will be skipped"
+	fi
+	if [[ "${_arg_install_forge_container}" = "off" ]]; then
+		warn "Forge container installation will be skipped"
 	fi
 	if [[ "${_arg_install_sfpi}" = "off" ]]; then
 		warn "SFPI installation will be skipped"
