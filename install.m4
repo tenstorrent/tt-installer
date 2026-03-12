@@ -46,9 +46,13 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([flash-version],,[Specific version of tt-flash to install],[])
 # ARG_OPTIONAL_SINGLE([topology-version],,[Specific version of tt-topology to install],[])
 # ARG_OPTIONAL_SINGLE([sfpi-version],,[Specific version of SFPI to install],[])
-
 # ========================= Path Arguments =========================
 # ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[$HOME/.tenstorrent-venv])
+
+# ========================= State File Arguments =========================
+# ARG_OPTIONAL_SINGLE([import-schema],,[Import installer state from .ttis file (implies non-interactive)],[])
+# ARG_OPTIONAL_SINGLE([export-schema],,[Export installer state to .ttis file after installation],[])
+
 
 # ========================= Mode Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
@@ -109,6 +113,16 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+
+# Source ttis.sh — provides TTIS_PACKAGE_MAP (used to build package_registry)
+# and the ttis_* functions used by --import-schema / --export-schema.
+_TTIS_PATH="$(dirname "${BASH_SOURCE[0]}")/ttis.sh"
+if [[ ! -f "${_TTIS_PATH}" ]]; then
+	echo "[ERROR] ttis.sh not found at ${_TTIS_PATH}" >&2
+	exit 1
+fi
+# shellcheck source=ttis.sh
+source "${_TTIS_PATH}"
 
 # argbash workaround: close square brackets ]]]]]
 
@@ -840,6 +854,22 @@ main() {
 
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
 
+	# Resolve state file paths to absolute now, before any cd changes the working directory.
+	if [[ -n "${_arg_export_schema:-}" && "${_arg_export_schema}" != /* ]]; then
+		_arg_export_schema="$(pwd)/${_arg_export_schema}"
+	fi
+	if [[ -n "${_arg_import_schema:-}" && "${_arg_import_schema}" != /* ]]; then
+		_arg_import_schema="$(pwd)/${_arg_import_schema}"
+	fi
+
+	# Detect distro early so PKG_MANAGER is set before ttis_import needs it.
+	detect_distro
+
+	# Import state file if provided — sets _arg_* variables and forces non-interactive
+	if [[ -n "${_arg_import_schema:-}" ]]; then
+		ttis_import "${_arg_import_schema}"
+	fi
+
 	maybe_enable_default_mode
 	log "Starting installation"
 
@@ -891,8 +921,7 @@ main() {
 	log "Checking for sudo permissions... (may request password)"
 	check_has_sudo_perms
 
-	# Check distribution and install base packages
-	detect_distro
+	# Install base packages (distro already detected above)
 
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
@@ -951,19 +980,21 @@ main() {
 			;;
 	esac
 
-	# 1. Define the package registry
+	# 1. Build package_registry from TTIS_PACKAGE_MAP (defined in ttis.sh).
 	# Format: "package_name|install_flag|version|type"
-	declare -A package_registry=(
-		# System packages
-		["kmd"]="tenstorrent-dkms|${_arg_install_kmd}|${_arg_kmd_version}|system"
-		["hugepages"]="tenstorrent-tools|${_arg_install_hugepages}|${_arg_systools_version}|system"
-		["sfpi"]="sfpi|${_arg_install_sfpi}|${_arg_sfpi_version}|system"
-
-		# Python packages
-		["tt-topology"]="tt-topology|${_arg_install_tt_topology}|${_arg_topology_version}|python"
-		["tt-flash"]="tt-flash|${_arg_install_tt_flash}|${_arg_flash_version}|python"
-		["tt-smi"]="tt-smi|${_arg_install_tt_smi}|${_arg_smi_version}|python"
-	)
+	# To add a package, edit TTIS_PACKAGE_MAP in ttis.sh — no changes needed here.
+	# Build package_registry from TTIS_PACKAGE_MAP + current _arg_* variables.
+	# Any extra packages imported from a .ttis file are appended from TTIS_IMPORTED_PACKAGES.
+	declare -A package_registry=()
+	for _ttis_entry in "${TTIS_PACKAGE_MAP[@]}"; do
+		IFS='|' read -r _ttis_pkg _ttis_type _ttis_ivar _ttis_vvar <<< "${_ttis_entry}"
+		package_registry["${_ttis_pkg}"]="${_ttis_pkg}|${!_ttis_ivar}|${!_ttis_vvar}|${_ttis_type}"
+	done
+	for _ttis_entry in "${TTIS_IMPORTED_PACKAGES[@]+"${TTIS_IMPORTED_PACKAGES[@]}"}"; do
+		IFS='|' read -r _ttis_pkg _ttis_flag _ttis_ver _ttis_type <<< "${_ttis_entry}"
+		package_registry["${_ttis_pkg}"]="${_ttis_pkg}|${_ttis_flag}|${_ttis_ver}|${_ttis_type}"
+	done
+	unset _ttis_entry _ttis_pkg _ttis_flag _ttis_ver _ttis_type _ttis_ivar _ttis_vvar
 
 	# 2. Parse the registry to obtain lists of packages
 	declare -a system_packages=()
@@ -1113,6 +1144,12 @@ main() {
 		log "Use 'tt-studio' to launch tt-studio"
 		log "tt-studio has been installed to ~/.local/lib/tt-studio"
 		log "Usage: tt-studio [arguments]"
+	fi
+
+	# Export state file if requested
+	if [[ -n "${_arg_export_schema:-}" ]]; then
+		ttis_resolve_versions
+		ttis_export "${_arg_export_schema}"
 	fi
 
 	# Log successful completion message
