@@ -42,6 +42,9 @@ jobs:
 
         echo "✓ Installer completed successfully on hosted N150"
 
+        # The installer ran as root; make the schema readable by the runner user
+        sudo chmod 644 /tmp/tt-installer-state.ttis
+
     - name: Schema write/validate/read
       run: |
         echo "── Schema write ──"

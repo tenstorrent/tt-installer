@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "installer_version": "2026.03.12-15.59.02-5b056b7",
+    "created_at": "2026-03-12T20:08:45Z",
+    "distro_id": "fedora",
+    "distro_version": "42",
+    "distro_family": "dnf",
+    "hostname": "june-desktop"
+  },
+  "tt_system": {
+    "sfpi": "7.10.0-1",
+    "tenstorrent-dkms": "2.5.0-1.fc42",
+    "tenstorrent-tools": "1.4.0-1"
+  },
+  "tt_python": {
+    "tt-flash": "3.4.11",
+    "tt-smi": "3.0.38"
+  },
+  "firmware": {
+    "version": "19.6.0"
+  },
+  "container_runtime": {
+    "runtime": "none"
+  }
+}

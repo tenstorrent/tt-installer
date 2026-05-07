@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "installer_version": "dev",
+    "created_at": "1970-01-01T00:00:00Z",
+    "distro_id": "ubuntu",
+    "distro_version": "24.04",
+    "distro_family": "apt",
+    "hostname": "placeholder"
+  },
+  "tt_system": {
+    "tenstorrent-dkms": "",
+    "tenstorrent-tools": "",
+    "sfpi": ""
+  },
+  "tt_python": {
+    "tt-smi": "",
+    "tt-flash": ""
+  },
+  "firmware": {
+    "version": ""
+  },
+  "container_runtime": {
+    "runtime": "podman"
+  }
+}

@@ -84,7 +84,7 @@ jobs:
 
     - name: Test template syntax
       run: |
-        shellcheck install.m4
+        shellcheck -x install.m4
         echo "✓ Template syntax is valid"
 
   test-script-syntax:

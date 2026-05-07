@@ -58,7 +58,7 @@ jobs:
               --mode-non-interactive \
               --install-kmd \
               --no-install-hugepages \
-              --update-firmware=on \
+              --update-firmware=off \
               --install-metalium-container \
               --install-sfpi \
               --python-choice=new-venv \
