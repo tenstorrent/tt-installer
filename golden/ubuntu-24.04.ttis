@@ -21,6 +21,6 @@
     "version": ""
   },
   "container_runtime": {
-    "runtime": "podman"
+    "runtime": "docker"
   }
 }

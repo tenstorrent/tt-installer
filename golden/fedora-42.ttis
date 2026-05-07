@@ -21,6 +21,6 @@
     "version": "19.6.0"
   },
   "container_runtime": {
-    "runtime": "none"
+    "runtime": "docker"
   }
 }
