@@ -429,7 +429,15 @@ ttis_import() {
 	# ── Firmware and container runtime ──
 	local val
 	val=$(_ttis_read "${file}" '.firmware.version')
-	[[ "${val}" != "null" && -n "${val}" ]] && _arg_fw_version="${val}"
+	if [[ "${val}" != "null" ]]; then
+		if [[ -n "${val}" ]]; then
+			_arg_fw_version="${val}"
+		else
+			# empty string = firmware update was explicitly off when this schema was exported;
+			# preserve that intent so importing does not trigger an unexpected firmware flash
+			_arg_update_firmware="off"
+		fi
+	fi
 
 	val=$(_ttis_read "${file}" '.container_runtime.runtime')
 	if [[ "${val}" != "null" && -n "${val}" ]]; then

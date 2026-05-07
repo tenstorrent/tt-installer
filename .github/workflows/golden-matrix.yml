@@ -131,7 +131,8 @@ jobs:
           echo "✓ Schema valid"
 
           echo "── Schema import round-trip ──"
-          PKG_MANAGER=apt-get bash -c '
+          DISTRO_ID="$(. /etc/os-release && printf '%s' "${ID}")"
+          PKG_MANAGER=apt-get DISTRO_ID="${DISTRO_ID}" bash -c '
             source ttis.sh
             ttis_import /tmp/tt-state-replay.ttis
             [[ "${_arg_install_kmd:-}" =~ ^(on|off)$ ]] || { echo "✗ _arg_install_kmd not set"; exit 1; }
@@ -189,7 +190,8 @@ jobs:
           echo "✓ Schema valid"
 
           echo "── Schema import round-trip ──"
-          PKG_MANAGER=apt-get bash -c '
+          DISTRO_ID="$(. /etc/os-release && printf '%s' "${ID}")"
+          PKG_MANAGER=apt-get DISTRO_ID="${DISTRO_ID}" bash -c '
             source ttis.sh
             ttis_import /tmp/tt-state-replay.ttis
             [[ "${_arg_install_kmd:-}" =~ ^(on|off)$ ]] || { echo "✗ _arg_install_kmd not set"; exit 1; }
@@ -247,7 +249,8 @@ jobs:
           echo "✓ Schema valid"
 
           echo "── Schema import round-trip ──"
-          PKG_MANAGER=dnf bash -c '
+          DISTRO_ID="$(. /etc/os-release && printf '%s' "${ID}")"
+          PKG_MANAGER=dnf DISTRO_ID="${DISTRO_ID}" bash -c '
             source ttis.sh
             ttis_import /tmp/tt-state-replay.ttis
             [[ "${_arg_install_kmd:-}" =~ ^(on|off)$ ]] || { echo "✗ _arg_install_kmd not set"; exit 1; }

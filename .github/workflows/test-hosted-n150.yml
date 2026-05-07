@@ -57,13 +57,15 @@ jobs:
         echo "✓ Schema valid"
 
         echo "── Schema import round-trip ──"
-        PKG_MANAGER=apt-get bash -c '
+        DISTRO_ID="$(. /etc/os-release && printf '%s' "${ID}")"
+        PKG_MANAGER=apt-get DISTRO_ID="${DISTRO_ID}" bash -c '
           source ttis.sh
           ttis_import /tmp/tt-installer-state.ttis
           [[ "${_arg_install_kmd:-}" =~ ^(on|off)$ ]] || { echo "✗ _arg_install_kmd not set"; exit 1; }
           echo "✓ _arg_install_kmd=${_arg_install_kmd}"
           [[ "${_arg_install_tt_smi:-}" =~ ^(on|off)$ ]] || { echo "✗ _arg_install_tt_smi not set"; exit 1; }
           echo "✓ _arg_install_tt_smi=${_arg_install_tt_smi}"
+          [[ "${_arg_update_firmware:-}" == "off" ]] && echo "✓ _arg_update_firmware=off (firmware not managed)"
         '
         echo "✓ Schema import round-trip complete"
 
