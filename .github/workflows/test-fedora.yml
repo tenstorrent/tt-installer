@@ -58,6 +58,7 @@ jobs:
               --install-metalium-container \
               --install-sfpi \
               --python-choice=new-venv \
+              --export-schema /home/testuser/workspace/test-export.ttis \
               --reboot-option=never || {
               echo \"Installer timed out or failed\"
               exit 1
@@ -65,4 +66,18 @@ jobs:
 
             echo \"✓ Installer completed successfully in Fedora\"
           '
+
+          echo \"── Schema write ──\"
+          test -f /home/testuser/workspace/test-export.ttis || { echo \"✗ Schema not written\"; exit 1; }
+          echo \"✓ Schema written:\"
+          cat /home/testuser/workspace/test-export.ttis
+
+          echo \"── Schema validate ──\"
+          bash /workspace/ttis.sh validate /home/testuser/workspace/test-export.ttis
+          echo \"✓ Schema valid\"
+
+          echo \"── Schema import round-trip ──\"
+          export PKG_MANAGER=dnf
+          bash -c 'source /workspace/ttis.sh; ttis_import /home/testuser/workspace/test-export.ttis && echo OK'
+          echo \"✓ Schema import round-trip complete\"
         "
