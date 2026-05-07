@@ -4,7 +4,7 @@
 #
 # ttis.sh — Tenstorrent Installer State manager
 #
-# Handles .ttis (YAML) file validation, export, and import.
+# Handles .ttis (JSON) file validation, export, and import.
 # Designed to run standalone or be sourced by install.sh.
 #
 # Standalone usage:
@@ -28,7 +28,7 @@ readonly -a TTIS_VALID_RUNTIMES=(podman docker none)
 # ── Core package map ───────────────────────────────────────────────────────────
 # Single source of truth for all tracked packages.
 # Format per entry: "pkg_name|pkg_type|install_var|version_var"
-#   pkg_name:    actual package name used by apt/dnf/pip (also the YAML key)
+#   pkg_name:    actual package name used by apt/dnf/pip (also the JSON key)
 #   pkg_type:    system (apt/dnf) | python (pip/pipx)
 #   install_var: installer _arg_install_* variable name
 #   version_var: installer _arg_*_version variable name
@@ -57,24 +57,18 @@ _ttis_log()  { echo "[ttis] $*"; }
 _ttis_warn() { echo "[ttis] WARNING: $*" >&2; }
 _ttis_err()  { echo "[ttis] ERROR: $*" >&2; }
 
-_ttis_require_yq() {
-	if ! command -v yq &>/dev/null; then
-		_ttis_err "yq is required but not installed (https://github.com/mikefarah/yq)"
-		return 1
-	fi
-	local major
-	major=$(yq --version 2>&1 | grep -oP '(?<=version v)\d+' | head -1 || echo 0)
-	if [[ "${major:-0}" -lt 4 ]]; then
-		_ttis_err "yq v4+ required (found: $(yq --version 2>&1 | head -1))"
+_ttis_require_jq() {
+	if ! command -v jq &>/dev/null; then
+		_ttis_err "jq is required but not installed"
 		return 1
 	fi
 }
 
-# Read a single raw scalar from a .ttis (YAML) file.
+# Read a single raw scalar from a .ttis (JSON) file.
 # Returns the literal string "null" if the key does not exist.
 _ttis_read() {
-	# _ttis_read <file> <yq-dot-path>
-	yq -r "$2" "$1"
+	# _ttis_read <file> <jq-dot-path>
+	jq -r "$2" "$1"
 }
 
 _ttis_safe_path() {
@@ -117,15 +111,15 @@ ttis_validate() {
 	local file="${1:?ttis_validate: file path required}"
 	local errors=0
 
-	_ttis_require_yq || return 1
+	_ttis_require_jq || return 1
 	_ttis_safe_path "${file}" || return 1
 
 	if [[ ! -e "${file}" ]]; then _ttis_err "file not found: ${file}"; return 1; fi
 	if [[ -L "${file}" ]];    then _ttis_err "symlinks not accepted: ${file}"; return 1; fi
 	if [[ ! -f "${file}" ]];  then _ttis_err "not a regular file: ${file}"; return 1; fi
 
-	if ! yq '.' "${file}" >/dev/null 2>&1; then
-		_ttis_err "not valid YAML: ${file}"; return 1
+	if ! jq '.' "${file}" >/dev/null 2>&1; then
+		_ttis_err "not valid JSON: ${file}"; return 1
 	fi
 
 	# ── schema_version ──
@@ -242,7 +236,7 @@ ttis_export() {
 	local output_path="${1:?ttis_export: output path required}"
 	local force="${2:-}"
 
-	_ttis_require_yq || return 1
+	_ttis_require_jq || return 1
 	_ttis_safe_path "${output_path}" || return 1
 
 	if [[ -e "${output_path}" && "${force}" != "--force" ]]; then
@@ -283,34 +277,45 @@ ttis_export() {
 	# shellcheck disable=SC2064
 	trap "rm -f '${tmpfile}'" RETURN
 
-	# ── Write meta, firmware, and container_runtime (fixed structure) ──
-	TTIS_INSTALLER_VER="${INSTALLER_VERSION:-unknown}"  \
-	TTIS_CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"  \
-	TTIS_DISTRO_ID="${DISTRO_ID:-unknown}"              \
-	TTIS_DISTRO_VER="${VERSION_ID:-unknown}"            \
-	TTIS_DISTRO_FAMILY="${distro_family}"               \
-	TTIS_HOSTNAME="$(hostname)"                         \
-	TTIS_FW="${FW_VERSION:-}"                           \
-	TTIS_RUNTIME="${runtime}"                           \
-	yq -n '
-		.meta.schema_version       = 1                              |
-		.meta.installer_version    = strenv(TTIS_INSTALLER_VER)    |
-		.meta.created_at           = strenv(TTIS_CREATED_AT)        |
-		.meta.distro_id            = strenv(TTIS_DISTRO_ID)         |
-		.meta.distro_version       = strenv(TTIS_DISTRO_VER)        |
-		.meta.distro_family        = strenv(TTIS_DISTRO_FAMILY)     |
-		.meta.hostname             = strenv(TTIS_HOSTNAME)          |
-		.firmware.version          = strenv(TTIS_FW)                |
-		.container_runtime.runtime = strenv(TTIS_RUNTIME)
-	' > "${tmpfile}"
-
-	# ── Write packages by iterating package_registry ──
+	# ── Accumulate package sections ──
+	local sys_json='{}'
+	local py_json='{}'
 	for key in "${!package_registry[@]}"; do
 		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[${key}]}"
-		local section="tt_${pkg_type}"
-		TT_VAL="${version}" \
-		yq -i ".${section}.\"${pkg_name}\" = strenv(TT_VAL)" "${tmpfile}"
+		if [[ "${pkg_type}" == "system" ]]; then
+			sys_json=$(jq --arg k "${pkg_name}" --arg v "${version}" '. + {($k): $v}' <<< "${sys_json}")
+		else
+			py_json=$(jq --arg k "${pkg_name}" --arg v "${version}" '. + {($k): $v}' <<< "${py_json}")
+		fi
 	done
+
+	# ── Write the complete JSON in one pass ──
+	jq -n \
+		--arg iv "${INSTALLER_VERSION:-unknown}" \
+		--arg ca "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+		--arg di "${DISTRO_ID:-unknown}" \
+		--arg dv "${VERSION_ID:-unknown}" \
+		--arg df "${distro_family}" \
+		--arg hn "$(hostname)" \
+		--arg fw "${FW_VERSION:-}" \
+		--arg rt "${runtime}" \
+		--argjson sys "${sys_json}" \
+		--argjson py "${py_json}" \
+		'{
+			meta: {
+				schema_version: 1,
+				installer_version: $iv,
+				created_at: $ca,
+				distro_id: $di,
+				distro_version: $dv,
+				distro_family: $df,
+				hostname: $hn
+			},
+			tt_system: $sys,
+			tt_python: $py,
+			firmware: {version: $fw},
+			container_runtime: {runtime: $rt}
+		}' > "${tmpfile}"
 
 	if ! ttis_validate "${tmpfile}"; then
 		_ttis_err "generated file failed validation — not written to ${output_path}"; return 1
@@ -331,7 +336,7 @@ ttis_export() {
 ttis_import() {
 	local file="${1:?ttis_import: file path required}"
 
-	_ttis_require_yq || return 1
+	_ttis_require_jq || return 1
 	_ttis_safe_path "${file}" || return 1
 
 	if [[ ! -e "${file}" ]]; then _ttis_err "file not found: ${file}"; return 1; fi
@@ -373,7 +378,7 @@ ttis_import() {
 		local section="tt_${section_type}"
 		local -a keys=()
 		mapfile -t keys < <(
-			yq -r ".${section} | select(. != null) | keys | .[]" "${file}" 2>/dev/null || true
+			jq -r ".${section} // {} | keys[]" "${file}" 2>/dev/null || true
 		)
 		local pkg_name
 		for pkg_name in "${keys[@]+"${keys[@]}"}"; do
