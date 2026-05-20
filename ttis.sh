@@ -23,7 +23,9 @@ set -euo pipefail
 
 # ── Schema version ─────────────────────────────────────────────────────────────
 readonly TTIS_SCHEMA_VERSION=1
+readonly TTIS_GOLDEN_VERSIONS_TAG="v2026.05.11"
 readonly -a TTIS_VALID_RUNTIMES=(podman docker none)
+readonly -a TTIS_VALID_PY_METHODS=(venv global pipx)
 
 # ── Core package map ───────────────────────────────────────────────────────────
 # Single source of truth for all tracked packages.
@@ -191,6 +193,20 @@ ttis_validate() {
 		fi
 	fi
 
+	# ── python_env ──
+	local py_method
+	py_method=$(_ttis_read "${file}" '.python_env.method // ""')
+	if [[ -n "${py_method}" ]]; then
+		local valid=0
+		for m in "${TTIS_VALID_PY_METHODS[@]}"; do
+			[[ "${py_method}" == "${m}" ]] && valid=1 && break
+		done
+		if [[ "${valid}" -eq 0 ]]; then
+			_ttis_err "python_env.method must be one of [${TTIS_VALID_PY_METHODS[*]}], got: '${py_method}'"
+			errors=$((errors + 1))
+		fi
+	fi
+
 	if [[ "${errors}" -gt 0 ]]; then
 		_ttis_err "${errors} validation error(s) in ${file}"; return 1
 	fi
@@ -299,6 +315,8 @@ ttis_export() {
 		--arg hn "$(hostname)" \
 		--arg fw "${FW_VERSION:-}" \
 		--arg rt "${runtime}" \
+		--arg pym "${PYTHON_ENV_METHOD:-}" \
+		--arg pyl "${PYTHON_ENV_LOCATION:-}" \
 		--argjson sys "${sys_json}" \
 		--argjson py "${py_json}" \
 		'{
@@ -314,7 +332,8 @@ ttis_export() {
 			tt_system: $sys,
 			tt_python: $py,
 			firmware: {version: $fw},
-			container_runtime: {runtime: $rt}
+			container_runtime: {runtime: $rt},
+			python_env: {method: $pym, location: $pyl}
 		}' > "${tmpfile}"
 
 	if ! ttis_validate "${tmpfile}"; then
@@ -445,6 +464,20 @@ ttis_import() {
 			"podman") _arg_install_container_runtime="podman" ;;
 			"docker") _arg_install_container_runtime="docker" ;;
 			"none")   _arg_install_container_runtime="no"     ;;
+		esac
+	fi
+
+	local py_method py_location
+	py_method=$(_ttis_read "${file}" '.python_env.method // ""')
+	if [[ -n "${py_method}" ]]; then
+		case "${py_method}" in
+			"venv")
+				_arg_python_choice="new-venv"
+				py_location=$(_ttis_read "${file}" '.python_env.location // ""')
+				[[ -n "${py_location}" ]] && _arg_new_venv_location="${py_location}"
+				;;
+			"global") _arg_python_choice="system-python" ;;
+			"pipx")   _arg_python_choice="pipx" ;;
 		esac
 	fi
 

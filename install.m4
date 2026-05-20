@@ -372,6 +372,12 @@ get_python_choice() {
 			;;
 	esac
 
+	case "${PYTHON_CHOICE}" in
+		"new-venv"|"active-venv") PYTHON_ENV_METHOD="venv";   PYTHON_ENV_LOCATION="${VIRTUAL_ENV:-}" ;;
+		"system-python")          PYTHON_ENV_METHOD="global"; PYTHON_ENV_LOCATION="" ;;
+		"pipx")                   PYTHON_ENV_METHOD="pipx";   PYTHON_ENV_LOCATION="" ;;
+	esac
+
 }
 
 # Function to check if a container runtime is installed

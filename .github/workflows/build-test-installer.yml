@@ -218,7 +218,9 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          files: install.sh
+          files: |
+            install.sh
+            ttis.sh
           body: ${{ steps.build_changelog.outputs.changelog }}
           draft: false
           prerelease: false
