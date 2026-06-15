@@ -317,6 +317,7 @@ ttis_export() {
 		--arg rt "${runtime}" \
 		--arg pym "${PYTHON_ENV_METHOD:-}" \
 		--arg pyl "${PYTHON_ENV_LOCATION:-}" \
+		--arg pyv "${PYTHON_ENV_PYTHON_VERSION:-}" \
 		--argjson sys "${sys_json}" \
 		--argjson py "${py_json}" \
 		'{
@@ -333,7 +334,7 @@ ttis_export() {
 			tt_python: $py,
 			firmware: {version: $fw},
 			container_runtime: {runtime: $rt},
-			python_env: {method: $pym, location: $pyl}
+			python_env: {method: $pym, location: $pyl, python_version: $pyv}
 		}' > "${tmpfile}"
 
 	if ! ttis_validate "${tmpfile}"; then
@@ -467,7 +468,7 @@ ttis_import() {
 		esac
 	fi
 
-	local py_method py_location
+	local py_method py_location py_version
 	py_method=$(_ttis_read "${file}" '.python_env.method // ""')
 	if [[ -n "${py_method}" ]]; then
 		case "${py_method}" in
@@ -479,6 +480,15 @@ ttis_import() {
 			"global") _arg_python_choice="system-python" ;;
 			"pipx")   _arg_python_choice="pipx" ;;
 		esac
+	fi
+
+	# A pinned Python version requires uv (it provisions the interpreter and
+	# creates the venv); enabling --use-uv keeps imports reproducible across
+	# hosts whose system Python is incompatible with the recorded packages.
+	py_version=$(_ttis_read "${file}" '.python_env.python_version // ""')
+	if [[ -n "${py_version}" && "${py_version}" != "null" ]]; then
+		_arg_python_version="${py_version}"
+		_arg_use_uv="on"
 	fi
 
 	_arg_mode_non_interactive="on"

@@ -41,6 +41,7 @@ exit 11 #)
 # ========================= String Arguments =========================
 # ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
 # ARG_OPTIONAL_BOOLEAN([use-uv],,[Use uv instead of pip for Python package installation],[off])
+# ARG_OPTIONAL_SINGLE([python-version],,[Python version for a new venv (e.g. 3.12); requires --use-uv, which provisions it via uv],[])
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 # ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[on])
 # ARG_OPTIONAL_SINGLE([github-token],,[Optional GitHub API auth token],[])
@@ -258,6 +259,15 @@ check_uv_installed() {
 	command -v uv &> /dev/null
 }
 
+# Install uv (used when --use-uv is set but uv is not already present)
+install_uv() {
+	log "Installing uv"
+	curl -LsSf https://astral.sh/uv/install.sh | sh
+	# uv installs to ~/.local/bin by default; make it visible this session
+	export PATH="${HOME}/.local/bin:${PATH}"
+	check_uv_installed || error_exit "uv installation failed"
+}
+
 # Get Python installation choice interactively or use default
 get_python_choice() {
 	PYTHON_CHOICE="${_arg_python_choice}"
@@ -308,16 +318,20 @@ get_python_choice() {
 
 	# Validate --use-uv flag
 	if [[ "${_arg_use_uv}" = "on" ]]; then
-		if ! check_uv_installed; then
-			error "uv is not installed!"
-			error_exit "Please install uv first: curl -LsSf https://astral.sh/uv/install.sh | sh"
-		fi
 		if [[ "${PYTHON_CHOICE}" = "pipx" ]]; then
 			warn "--use-uv is not compatible with pipx, ignoring --use-uv flag"
 			_arg_use_uv="off"
 		else
+			if ! check_uv_installed; then
+				install_uv
+			fi
 			log "Using uv instead of pip for package installation"
 		fi
+	fi
+
+	if [[ -n "${_arg_python_version}" && "${_arg_use_uv}" != "on" ]]; then
+		warn "--python-version is only honored with --use-uv; ignoring"
+		_arg_python_version=""
 	fi
 
 	# Set up Python environment based on choice
@@ -367,7 +381,17 @@ get_python_choice() {
 			;;
 		"new-venv"|*)
 			log "Setting up new Python virtual environment"
-			python3 -m venv "${_arg_new_venv_location}"
+			if [[ "${_arg_use_uv}" = "on" ]]; then
+				# uv creates the venv (and provisions the interpreter when a
+				# version is pinned), avoiding ensurepip and the system Python.
+				if [[ -n "${_arg_python_version}" ]]; then
+					uv venv --python "${_arg_python_version}" "${_arg_new_venv_location}"
+				else
+					uv venv "${_arg_new_venv_location}"
+				fi
+			else
+				python3 -m venv "${_arg_new_venv_location}"
+			fi
 			# shellcheck disable=SC1091 # Must exist after previous command
 			source "${_arg_new_venv_location}/bin/activate"
 			INSTALLED_IN_VENV=0
@@ -384,6 +408,14 @@ get_python_choice() {
 		"system-python")          PYTHON_ENV_METHOD="global"; PYTHON_ENV_LOCATION="" ;;
 		"pipx")                   PYTHON_ENV_METHOD="pipx";   PYTHON_ENV_LOCATION="" ;;
 	esac
+
+	# Record the venv interpreter version (python3 is the venv after activation)
+	# so it round-trips through ttis_export/import.
+	if [[ "${PYTHON_ENV_METHOD}" == "venv" ]]; then
+		PYTHON_ENV_PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "")"
+	else
+		PYTHON_ENV_PYTHON_VERSION=""
+	fi
 
 }
 
