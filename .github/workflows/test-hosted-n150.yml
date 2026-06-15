@@ -31,8 +31,73 @@ jobs:
 
     - name: Run installer on hosted N150
       run: |
-        # Run installer with all components enabled except firmware update
-        # This tests the full installation process on real hardware
-        timeout 1800 sudo bash install.sh --update-firmware=off --mode-non-interactive --verbose --reboot-option=never
+        # Run installer with all components enabled.
+        # Firmware update is explicitly disabled — never flash on the hosted N150.
+        timeout 1800 sudo bash install.sh \
+          --update-firmware=off \
+          --mode-non-interactive \
+          --verbose \
+          --export-schema /tmp/tt-installer-state.ttis \
+          --reboot-option=never
 
         echo "✓ Installer completed successfully on hosted N150"
+
+        # The installer ran as root; make the schema readable by the runner user
+        sudo chmod 644 /tmp/tt-installer-state.ttis
+
+    - name: Schema write/validate/read
+      run: |
+        echo "── Schema write ──"
+        test -f /tmp/tt-installer-state.ttis || { echo "✗ Schema not written"; exit 1; }
+        echo "✓ Schema written:"
+        cat /tmp/tt-installer-state.ttis
+
+        echo "── Schema validate ──"
+        bash ttis.sh validate /tmp/tt-installer-state.ttis
+        echo "✓ Schema valid"
+
+        echo "── Schema import round-trip ──"
+        DISTRO_ID="$(. /etc/os-release && printf '%s' "${ID}")"
+        PKG_MANAGER=apt-get DISTRO_ID="${DISTRO_ID}" bash -c '
+          source ttis.sh
+          ttis_import /tmp/tt-installer-state.ttis
+          [[ "${_arg_install_kmd:-}" =~ ^(on|off)$ ]] || { echo "✗ _arg_install_kmd not set"; exit 1; }
+          echo "✓ _arg_install_kmd=${_arg_install_kmd}"
+          [[ "${_arg_install_tt_smi:-}" =~ ^(on|off)$ ]] || { echo "✗ _arg_install_tt_smi not set"; exit 1; }
+          echo "✓ _arg_install_tt_smi=${_arg_install_tt_smi}"
+          [[ "${_arg_update_firmware:-}" == "off" ]] && echo "✓ _arg_update_firmware=off (firmware not managed)"
+        '
+        echo "✓ Schema import round-trip complete"
+
+    - name: Core smoke tests
+      run: |
+        set -euo pipefail
+        echo "── tt-smi ──"
+        tt-smi --version
+        echo "── KMD loaded ──"
+        lsmod | grep tenstorrent
+        echo "── tt-flash ──"
+        tt-flash --version
+        echo "✓ Core smoke tests passed"
+
+    - name: Run tt-metalium workload
+      run: |
+        METALIUM_IMAGE="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64:latest-rc"
+
+        # Pull image (installer may have already cached it; a pull failure is non-fatal —
+        # the run below will surface a more actionable error if the image is absent)
+        sudo docker pull "${METALIUM_IMAGE}" || true
+
+        sudo docker run --rm \
+          --privileged \
+          --log-driver none \
+          --volume=/dev/hugepages-1G:/dev/hugepages-1G \
+          --volume="${PWD}/tests/metalium-workload.py:/metalium-workload.py:ro" \
+          --device=/dev/tenstorrent:/dev/tenstorrent \
+          --network=host \
+          --security-opt label=disable \
+          --entrypoint python3 \
+          "${METALIUM_IMAGE}" \
+          /metalium-workload.py
+
+        echo "✓ tt-metalium container workload complete"
