@@ -212,34 +212,23 @@ detect_distro() {
 }
 
 # Fetch the golden .ttis schema for this distro from the pinned
-# installer-golden-versions release. On success, sets GOLDEN_SCHEMA_FILE to the
-# path of the matching .ttis file and returns 0. Returns non-zero (with a
-# warning) if the release, the archive, or a matching distro file is missing —
+# ttis-golden-versions release. The release publishes one asset per
+# distro/version named "<distro_id>-<version_id>.ttis", so we download that file
+# directly. On success, sets GOLDEN_SCHEMA_FILE to its path and returns 0.
+# Returns non-zero (with a warning) if no matching asset exists (HTTP error) —
 # callers fall back to rolling versions. Requires detect_distro to have run.
 fetch_golden_schema() {
-	local tarball="${WORKDIR}/golden.tar.gz"
-	local extract_dir="${WORKDIR}/golden"
-	local url="https://github.com/tenstorrent/ttis-golden-versions/releases/download/${TTIS_GOLDEN_VERSIONS_TAG}/golden.tar.gz"
+	local asset="${DISTRO_ID}-${VERSION_ID}.ttis"
+	local dest="${WORKDIR}/${asset}"
+	local url="https://github.com/tenstorrent/ttis-golden-versions/releases/download/${TTIS_GOLDEN_VERSIONS_TAG}/${asset}"
 
 	log "Fetching golden versions from ${url}"
-	if ! curl -fsSL "${url}" -o "${tarball}"; then
-		warn "Could not download golden versions archive (${TTIS_GOLDEN_VERSIONS_TAG})"
-		return 1
-	fi
-
-	mkdir -p "${extract_dir}"
-	if ! tar -xzf "${tarball}" --strip-components=1 -C "${extract_dir}"; then
-		warn "Could not extract golden versions archive"
-		return 1
-	fi
-
-	local candidate="${extract_dir}/${DISTRO_ID}-${VERSION_ID}.ttis"
-	if [[ ! -f "${candidate}" ]]; then
+	if ! curl -fsSL "${url}" -o "${dest}"; then
 		warn "No golden versions file for ${DISTRO_ID} ${VERSION_ID} in release ${TTIS_GOLDEN_VERSIONS_TAG}"
 		return 1
 	fi
 
-	GOLDEN_SCHEMA_FILE="${candidate}"
+	GOLDEN_SCHEMA_FILE="${dest}"
 	return 0
 }
 
