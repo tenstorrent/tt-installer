@@ -23,7 +23,6 @@ set -euo pipefail
 
 # ── Schema version ─────────────────────────────────────────────────────────────
 readonly TTIS_SCHEMA_VERSION=1
-readonly TTIS_GOLDEN_VERSIONS_TAG="v2026.05.11"
 readonly -a TTIS_VALID_RUNTIMES=(podman docker none)
 readonly -a TTIS_VALID_PY_METHODS=(venv global pipx)
 

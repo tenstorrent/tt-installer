@@ -3,7 +3,7 @@ name: Golden Matrix
 # Validates golden .ttis state files by fetching the pinned release from
 # installer-golden-versions and running ttis.sh validate on each file.
 #
-# The pinned release tag lives in ttis.sh as TTIS_GOLDEN_VERSIONS_TAG.
+# The pinned release tag lives in install.m4 as TTIS_GOLDEN_VERSIONS_TAG.
 # To adopt new golden versions, bump that constant and open a PR.
 #
 # Replay tests (hardware) live in installer-golden-versions/replay.yml.
@@ -33,7 +33,7 @@ jobs:
       - name: Fetch golden files
         run: |
           set -euo pipefail
-          PIN=$(grep -oP '(?<=TTIS_GOLDEN_VERSIONS_TAG=")[^"]+' ttis.sh)
+          PIN=$(grep -oP '(?<=TTIS_GOLDEN_VERSIONS_TAG=")[^"]+' install.m4)
           echo "Fetching installer-golden-versions @ ${PIN}"
           mkdir -p installer-golden-versions/golden
           curl -fsSL \
