@@ -37,7 +37,7 @@ jobs:
           echo "Fetching installer-golden-versions @ ${PIN}"
           mkdir -p installer-golden-versions/golden
           curl -fsSL \
-            "https://github.com/tenstorrent/installer-golden-versions/releases/download/${PIN}/golden.tar.gz" \
+            "https://github.com/tenstorrent/ttis-golden-versions/releases/download/${PIN}/golden.tar.gz" \
             | tar -xz --strip-components=1 -C installer-golden-versions/golden/
 
       - name: Validate all golden files
