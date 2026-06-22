@@ -58,8 +58,8 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[$HOME/.tenstorrent-venv])
 
 # ========================= State File Arguments =========================
-# ARG_OPTIONAL_SINGLE([import-schema],,[Import installer state from .ttis file (implies non-interactive)],[])
-# ARG_OPTIONAL_SINGLE([export-schema],,[Export installer state to .ttis file after installation],[])
+# ARG_OPTIONAL_SINGLE([versions],,[Version channel: 'release' (pin to golden versions baked into this release), 'rolling' (latest of everything), or a path to a .ttis file (full non-interactive import)],[release])
+# ARG_OPTIONAL_SINGLE([export-schema],,[(Developer/CI) Export installer state to .ttis file after installation],[])
 
 
 # ========================= Mode Arguments =========================
@@ -127,7 +127,7 @@ NC='\033[0m' # No Color
 readonly TTIS_GOLDEN_VERSIONS_TAG="v2026.06.15-1"
 
 # Source ttis.sh — provides TTIS_PACKAGE_MAP (used to build package_registry)
-# and the ttis_* functions used by --import-schema / --export-schema.
+# and the ttis_* functions used by --versions / --export-schema.
 _TTIS_PATH="$(dirname "${BASH_SOURCE[0]}")/ttis.sh"
 if [[ ! -f "${_TTIS_PATH}" ]]; then
 	echo "[ERROR] ttis.sh not found at ${_TTIS_PATH}" >&2
@@ -209,6 +209,38 @@ detect_distro() {
 		error "Cannot detect Linux distribution"
 		exit 1
 	fi
+}
+
+# Fetch the golden .ttis schema for this distro from the pinned
+# installer-golden-versions release. On success, sets GOLDEN_SCHEMA_FILE to the
+# path of the matching .ttis file and returns 0. Returns non-zero (with a
+# warning) if the release, the archive, or a matching distro file is missing —
+# callers fall back to rolling versions. Requires detect_distro to have run.
+fetch_golden_schema() {
+	local tarball="${WORKDIR}/golden.tar.gz"
+	local extract_dir="${WORKDIR}/golden"
+	local url="https://github.com/tenstorrent/ttis-golden-versions/releases/download/${TTIS_GOLDEN_VERSIONS_TAG}/golden.tar.gz"
+
+	log "Fetching golden versions from ${url}"
+	if ! curl -fsSL "${url}" -o "${tarball}"; then
+		warn "Could not download golden versions archive (${TTIS_GOLDEN_VERSIONS_TAG})"
+		return 1
+	fi
+
+	mkdir -p "${extract_dir}"
+	if ! tar -xzf "${tarball}" --strip-components=1 -C "${extract_dir}"; then
+		warn "Could not extract golden versions archive"
+		return 1
+	fi
+
+	local candidate="${extract_dir}/${DISTRO_ID}-${VERSION_ID}.ttis"
+	if [[ ! -f "${candidate}" ]]; then
+		warn "No golden versions file for ${DISTRO_ID} ${VERSION_ID} in release ${TTIS_GOLDEN_VERSIONS_TAG}"
+		return 1
+	fi
+
+	GOLDEN_SCHEMA_FILE="${candidate}"
+	return 0
 }
 
 # Function to verify download
@@ -973,21 +1005,41 @@ main() {
 
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
 
+	if [[ -n "${_arg_export_schema:-}" ]]; then
+		warn "--export-schema is a developer/CI feature for capturing installer state; it is not needed for a normal install."
+	fi
+
 	# Resolve state file paths to absolute now, before any cd changes the working directory.
 	if [[ -n "${_arg_export_schema:-}" && "${_arg_export_schema}" != /* ]]; then
 		_arg_export_schema="$(pwd)/${_arg_export_schema}"
 	fi
-	if [[ -n "${_arg_import_schema:-}" && "${_arg_import_schema}" != /* ]]; then
-		_arg_import_schema="$(pwd)/${_arg_import_schema}"
+	# --versions may be a literal channel ('release'/'rolling') or a path to a .ttis file.
+	if [[ "${_arg_versions}" != "release" && "${_arg_versions}" != "rolling" && "${_arg_versions}" != /* ]]; then
+		_arg_versions="$(pwd)/${_arg_versions}"
 	fi
 
 	# Detect distro early so PKG_MANAGER is set before ttis_import needs it.
 	detect_distro
 
-	# Import state file if provided — sets _arg_* variables and forces non-interactive
-	if [[ -n "${_arg_import_schema:-}" ]]; then
-		ttis_import "${_arg_import_schema}"
-	fi
+	# Select the version channel.
+	case "${_arg_versions}" in
+		rolling)
+			log "Version channel: rolling — installing the latest available version of each component"
+			;;
+		release)
+			log "Version channel: release — pinning component versions to this installer's golden baseline (${TTIS_GOLDEN_VERSIONS_TAG})"
+			if fetch_golden_schema; then
+				ttis_import_versions "${GOLDEN_SCHEMA_FILE}"
+			else
+				warn "Falling back to rolling versions (latest of everything)"
+			fi
+			;;
+		*)
+			# A path to a .ttis file: full non-interactive import (used by CI/automation).
+			log "Version channel: importing state from ${_arg_versions}"
+			ttis_import "${_arg_versions}"
+			;;
+	esac
 
 	maybe_enable_default_mode
 	log "Starting installation"

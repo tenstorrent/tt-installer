@@ -8,6 +8,11 @@ on:
         required: true
         type: string
         default: 'install-script'
+      channel:
+        description: "Version channel to test: 'release', 'rolling', or a .ttis path"
+        required: false
+        type: string
+        default: 'release'
 
 jobs:
   test-hosted-n150:
@@ -34,6 +39,7 @@ jobs:
         # Run installer with all components enabled.
         # Firmware update is explicitly disabled — never flash on the hosted N150.
         timeout 1800 sudo bash install.sh \
+          --versions=${{ inputs.channel }} \
           --update-firmware=off \
           --mode-non-interactive \
           --verbose \

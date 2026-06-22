@@ -352,8 +352,11 @@ ttis_export() {
 #
 # Usage: ttis_import <file>
 #
-ttis_import() {
-	local file="${1:?ttis_import: file path required}"
+# Shared front-half of the import functions: jq presence, path safety, schema
+# validation, and distro compatibility checks. Returns non-zero if the file is
+# unusable on this system. Requires PKG_MANAGER / DISTRO_ID to be set by caller.
+_ttis_import_preamble() {
+	local file="${1:?_ttis_import_preamble: file path required}"
 
 	_ttis_require_jq || return 1
 	_ttis_safe_path "${file}" || return 1
@@ -387,6 +390,12 @@ ttis_import() {
 	if [[ "${file_distro}" != "${DISTRO_ID:-}" ]]; then
 		_ttis_warn "distro mismatch: file='${file_distro}', system='${DISTRO_ID:-unknown}' — proceeding"
 	fi
+}
+
+ttis_import() {
+	local file="${1:?ttis_import: file path required}"
+
+	_ttis_import_preamble "${file}" || return $?
 
 	# ── Step 1: read every package from the file into a local array ──
 	# Format per entry: "pkg_name|install_flag|version|pkg_type"
@@ -492,10 +501,52 @@ ttis_import() {
 
 	_arg_mode_non_interactive="on"
 
-	local file_distro_ver schema_ver
+	local file_distro file_distro_ver schema_ver
+	file_distro=$(_ttis_read "${file}" '.meta.distro_id')
 	file_distro_ver=$(_ttis_read "${file}" '.meta.distro_version')
 	schema_ver=$(_ttis_read "${file}" '.meta.schema_version')
 	_ttis_log "loaded: ${file_distro} ${file_distro_ver}, schema v${schema_ver} — non-interactive mode enabled"
+}
+
+# Apply ONLY the recorded version numbers from a .ttis file (the 'release'
+# channel). Pins core package versions and the firmware version, but leaves
+# install toggles, container runtime, and the Python environment to the user's
+# flags / interactive prompts. Does NOT force non-interactive mode.
+# Iterates TTIS_PACKAGE_MAP (package_registry does not exist yet at call time).
+#
+# Usage: ttis_import_versions <file>
+ttis_import_versions() {
+	local file="${1:?ttis_import_versions: file path required}"
+
+	_ttis_import_preamble "${file}" || return $?
+
+	# Pin core package versions. Read the version straight from the file by key;
+	# leave the corresponding _arg_install_* toggle untouched.
+	local core_entry core_pkg core_type _install_var version_var section val
+	for core_entry in "${TTIS_PACKAGE_MAP[@]}"; do
+		IFS='|' read -r core_pkg core_type _install_var version_var <<< "${core_entry}"
+		section="tt_${core_type}"
+		val=$(_ttis_read "${file}" ".${section}.\"${core_pkg}\"")
+		# Only pin when the file records a concrete version; empty/null means the
+		# package was not installed in the golden baseline — don't force a version.
+		if [[ -n "${val}" && "${val}" != "null" ]]; then
+			printf -v "${version_var}" '%s' "${val}"
+		fi
+	done
+
+	# Pin firmware version if recorded (non-empty). Unlike a full import, an empty
+	# firmware value here does NOT disable firmware updates — toggles stay the
+	# caller's choice in the release channel.
+	val=$(_ttis_read "${file}" '.firmware.version')
+	if [[ "${val}" != "null" && -n "${val}" ]]; then
+		_arg_fw_version="${val}"
+	fi
+
+	local file_distro file_distro_ver schema_ver
+	file_distro=$(_ttis_read "${file}" '.meta.distro_id')
+	file_distro_ver=$(_ttis_read "${file}" '.meta.distro_version')
+	schema_ver=$(_ttis_read "${file}" '.meta.schema_version')
+	_ttis_log "pinned versions from golden baseline: ${file_distro} ${file_distro_ver}, schema v${schema_ver}"
 }
 
 # ── CLI entry point ────────────────────────────────────────────────────────────

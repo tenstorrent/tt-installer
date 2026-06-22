@@ -8,6 +8,11 @@ on:
         required: true
         type: string
         default: 'install-script'
+      channel:
+        description: "Version channel to test: 'release', 'rolling', or a .ttis path"
+        required: false
+        type: string
+        default: 'release'
 
 jobs:
   test-installer:
@@ -56,6 +61,7 @@ jobs:
             # Run installer with test configuration (skip hardware-dependent steps)
             timeout 600 bash install.sh \
               --mode-non-interactive \
+              --versions=${{ inputs.channel }} \
               --install-kmd \
               --no-install-hugepages \
               --update-firmware=off \
