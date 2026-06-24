@@ -124,7 +124,7 @@ NC='\033[0m' # No Color
 
 # Pinned installer-golden-versions release tag. Bump here to adopt a new golden
 # matrix; the Golden Matrix CI workflow reads this value out of install.m4.
-readonly TTIS_GOLDEN_VERSIONS_TAG="v2026.06.15-1"
+readonly TTIS_GOLDEN_VERSIONS_TAG="v2026.06.24"
 
 # Source ttis.sh — provides TTIS_PACKAGE_MAP (used to build package_registry)
 # and the ttis_* functions used by --versions / --export-schema.
