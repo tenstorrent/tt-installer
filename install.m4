@@ -426,6 +426,10 @@ get_python_choice() {
 			;;
 	esac
 
+	# PYTHON_ENV_LOCATION / PYTHON_ENV_PYTHON_VERSION are consumed by ttis_export,
+	# which is inlined into install.sh at build time, so shellcheck -x on install.m4
+	# can't see the use here.
+	# shellcheck disable=SC2034
 	case "${PYTHON_CHOICE}" in
 		"new-venv"|"active-venv") PYTHON_ENV_METHOD="venv";   PYTHON_ENV_LOCATION="${VIRTUAL_ENV:-}" ;;
 		"system-python")          PYTHON_ENV_METHOD="global"; PYTHON_ENV_LOCATION="" ;;
@@ -434,6 +438,7 @@ get_python_choice() {
 
 	# Record the venv interpreter version (python3 is the venv after activation)
 	# so it round-trips through ttis_export/import.
+	# shellcheck disable=SC2034
 	if [[ "${PYTHON_ENV_METHOD}" == "venv" ]]; then
 		PYTHON_ENV_PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "")"
 	else
