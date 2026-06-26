@@ -47,6 +47,12 @@ jobs:
             matejak/argbash \
             install.m4 -o install.sh
 
+      - name: Inline ttis.sh into install.sh
+        run: |
+          # The released install.sh must be self-contained so it runs via
+          # `bash -c "$(curl ... install.sh)"` with no second file to fetch.
+          scripts/inline-ttis.sh install.sh ttis.sh
+
       - name: Upload install.sh as artifact
         uses: actions/upload-artifact@v4
         with:
