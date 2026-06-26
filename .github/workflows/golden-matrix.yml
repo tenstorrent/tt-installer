@@ -1,0 +1,62 @@
+name: Golden Matrix
+
+# Validates golden .ttis state files by fetching the pinned release from
+# installer-golden-versions and running ttis.sh validate on each file.
+#
+# The pinned release tag lives in install.m4 as TTIS_GOLDEN_VERSIONS_TAG.
+# To adopt new golden versions, bump that constant and open a PR.
+#
+# Replay tests (hardware) live in installer-golden-versions/replay.yml.
+#
+# Trigger this workflow:
+#   - Manually via workflow_dispatch
+#   - Automatically on PRs that touch ttis.sh or install.m4
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ttis.sh'
+      - 'install.m4'
+
+jobs:
+  validate-golden-files:
+    name: Validate golden files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Fetch golden files
+        run: |
+          set -euo pipefail
+          PIN=$(grep -oP '(?<=TTIS_GOLDEN_VERSIONS_TAG=")[^"]+' install.m4)
+          echo "Fetching tt-sw-manifest @ ${PIN}"
+          mkdir -p installer-golden-versions/golden
+          curl -fsSL "https://api.github.com/repos/tenstorrent/tt-sw-manifest/releases/tags/${PIN}" \
+            | jq -r '.assets[] | select(.name | endswith(".ttis")) | [.name, .browser_download_url] | @tsv' \
+            | while IFS=$'\t' read -r name url; do
+                curl -fsSL -o "installer-golden-versions/golden/${name}" "${url}"
+              done
+
+      - name: Validate all golden files
+        run: |
+          set -euo pipefail
+          failed=0
+          for f in installer-golden-versions/golden/*.ttis; do
+            echo "── Validating $f ──"
+            if bash ttis.sh validate "$f"; then
+              echo "✓ $f"
+            else
+              echo "✗ $f"
+              failed=$((failed + 1))
+            fi
+          done
+          if [[ "$failed" -gt 0 ]]; then
+            echo "::error::$failed golden file(s) failed validation"
+            exit 1
+          fi
+          echo "All golden files are valid."

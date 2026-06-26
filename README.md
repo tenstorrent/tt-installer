@@ -79,6 +79,27 @@ To specify versions:
 ./install.sh --kmd-version=1.34 --fw-version=18.3.0
 ```
 
+### Version channels
+
+By default the installer pins component versions to a tested **golden baseline**
+that ships with each release. Control this with `--versions`:
+
+```bash
+# Default: install the golden baseline pinned to this release
+./install.sh --versions=release
+
+# Install the latest available version of every component
+./install.sh --versions=rolling
+
+# Reproduce an exact configuration from an exported state file
+# (this is a full, non-interactive import — used for CI/automation)
+./install.sh --versions=/path/to/state.ttis
+```
+
+`--export-schema /path/to/state.ttis` writes the resolved state of an install to
+a `.ttis` file. It is a developer/CI feature for capturing a configuration to
+replay later and is not needed for a normal install.
+
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages.
 
 ## Distro Compatibility

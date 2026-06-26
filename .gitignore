@@ -2,3 +2,5 @@ installer.sh
 install.sh
 install.sh.temp
 argbash
+*.ttis
+installer-golden-versions
