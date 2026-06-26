@@ -21,6 +21,13 @@ readonly _TTIS_LOADED=1
 
 set -euo pipefail
 
+# >>> TTIS_INLINE_BEGIN <<<
+# Everything between the TTIS_INLINE markers is concatenated into the generated
+# install.sh at build time (see scripts/inline-ttis.sh) so the released installer
+# is a single self-contained file. Keep the re-source guard, `set`, and the CLI
+# entry point OUTSIDE the markers — install.sh provides its own and must not pick
+# up ttis.sh's standalone argument handling.
+
 # ── Schema version ─────────────────────────────────────────────────────────────
 readonly TTIS_SCHEMA_VERSION=1
 readonly -a TTIS_VALID_RUNTIMES=(podman docker none)
@@ -549,8 +556,10 @@ ttis_import_versions() {
 	_ttis_log "pinned versions from golden baseline: ${file_distro} ${file_distro_ver}, schema v${schema_ver}"
 }
 
+# >>> TTIS_INLINE_END <<<
+
 # ── CLI entry point ────────────────────────────────────────────────────────────
-if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+if [[ "${BASH_SOURCE[0]:-}" == "${0}" ]]; then
 	case "${1:-}" in
 		validate) ttis_validate "${2:?Usage: ttis.sh validate <file>}" ;;
 		*) echo "Usage: ttis.sh validate <file>" >&2; exit 1 ;;

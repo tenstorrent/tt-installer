@@ -126,15 +126,13 @@ NC='\033[0m' # No Color
 # matrix; the Golden Matrix CI workflow reads this value out of install.m4.
 readonly TTIS_GOLDEN_VERSIONS_TAG="v2026.06.26"
 
-# Source ttis.sh — provides TTIS_PACKAGE_MAP (used to build package_registry)
-# and the ttis_* functions used by --versions / --export-schema.
-_TTIS_PATH="$(dirname "${BASH_SOURCE[0]}")/ttis.sh"
-if [[ ! -f "${_TTIS_PATH}" ]]; then
-	echo "[ERROR] ttis.sh not found at ${_TTIS_PATH}" >&2
-	exit 1
-fi
-# shellcheck source=ttis.sh
-source "${_TTIS_PATH}"
+# ttis.sh is inlined here at build time (see scripts/inline-ttis.sh), replacing
+# the placeholder line below with the body of ttis.sh between its TTIS_INLINE
+# markers. This keeps the released install.sh a single self-contained file so it
+# runs via `bash -c "$(curl ... install.sh)"` with no second file to fetch.
+# ttis.sh provides TTIS_PACKAGE_MAP (used to build package_registry) and the
+# ttis_* functions used by --versions / --export-schema.
+# __TTIS_INLINE__
 
 # argbash workaround: close square brackets ]]]]]
 
@@ -428,6 +426,10 @@ get_python_choice() {
 			;;
 	esac
 
+	# PYTHON_ENV_LOCATION / PYTHON_ENV_PYTHON_VERSION are consumed by ttis_export,
+	# which is inlined into install.sh at build time, so shellcheck -x on install.m4
+	# can't see the use here.
+	# shellcheck disable=SC2034
 	case "${PYTHON_CHOICE}" in
 		"new-venv"|"active-venv") PYTHON_ENV_METHOD="venv";   PYTHON_ENV_LOCATION="${VIRTUAL_ENV:-}" ;;
 		"system-python")          PYTHON_ENV_METHOD="global"; PYTHON_ENV_LOCATION="" ;;
@@ -436,6 +438,7 @@ get_python_choice() {
 
 	# Record the venv interpreter version (python3 is the venv after activation)
 	# so it round-trips through ttis_export/import.
+	# shellcheck disable=SC2034
 	if [[ "${PYTHON_ENV_METHOD}" == "venv" ]]; then
 		PYTHON_ENV_PYTHON_VERSION="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || echo "")"
 	else
