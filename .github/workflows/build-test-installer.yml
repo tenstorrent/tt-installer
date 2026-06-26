@@ -70,10 +70,10 @@ jobs:
         run: |
           set -euo pipefail
           PIN=$(grep -oP '(?<=TTIS_GOLDEN_VERSIONS_TAG=")[^"]+' install.m4)
-          echo "Fetching ttis-golden-versions @ ${PIN}"
+          echo "Fetching tt-sw-manifest @ ${PIN}"
           mkdir -p golden
           curl -fsSL \
-            "https://github.com/tenstorrent/ttis-golden-versions/releases/download/${PIN}/golden.tar.gz" \
+            "https://github.com/tenstorrent/tt-sw-manifest/releases/download/${PIN}/golden.tar.gz" \
             | tar -xz --strip-components=1 -C golden/
 
       - name: Validate all golden files

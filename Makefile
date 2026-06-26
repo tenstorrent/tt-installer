@@ -4,7 +4,7 @@ install.sh: install.m4
 	argbash install.sh.temp -o install.sh
 
 GOLDEN_TAG := $(shell grep -oP '(?<=TTIS_GOLDEN_VERSIONS_TAG=")[^"]+' install.m4)
-GOLDEN_URL := https://github.com/tenstorrent/ttis-golden-versions/releases/download/$(GOLDEN_TAG)/golden.tar.gz
+GOLDEN_URL := https://github.com/tenstorrent/tt-sw-manifest/releases/download/$(GOLDEN_TAG)/golden.tar.gz
 
 fetch-golden:
 	mkdir -p installer-golden-versions/golden

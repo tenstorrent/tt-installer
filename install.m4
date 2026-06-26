@@ -58,7 +58,7 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[$HOME/.tenstorrent-venv])
 
 # ========================= State File Arguments =========================
-# ARG_OPTIONAL_SINGLE([versions],,[Version channel: 'release' (pin to golden versions baked into this release), 'rolling' (latest of everything), or a path to a .ttis file (full non-interactive import)],[release])
+# ARG_OPTIONAL_SINGLE([versions],,[Version channel: 'release' (pin to golden versions baked into this release), 'rolling' (latest of everything), or a path to a .ttis file (full non-interactive import)],[rolling])
 # ARG_OPTIONAL_SINGLE([export-schema],,[(Developer/CI) Export installer state to .ttis file after installation],[])
 
 
@@ -212,7 +212,7 @@ detect_distro() {
 }
 
 # Fetch the golden .ttis schema for this distro from the pinned
-# ttis-golden-versions release. The release publishes one asset per
+# tt-sw-manifest release. The release publishes one asset per
 # distro/version named "<distro_id>-<version_id>.ttis", so we download that file
 # directly. On success, sets GOLDEN_SCHEMA_FILE to its path and returns 0.
 # Returns non-zero (with a warning) if no matching asset exists (HTTP error) —
@@ -220,7 +220,7 @@ detect_distro() {
 fetch_golden_schema() {
 	local asset="${DISTRO_ID}-${VERSION_ID}.ttis"
 	local dest="${WORKDIR}/${asset}"
-	local url="https://github.com/tenstorrent/ttis-golden-versions/releases/download/${TTIS_GOLDEN_VERSIONS_TAG}/${asset}"
+	local url="https://github.com/tenstorrent/tt-sw-manifest/releases/download/${TTIS_GOLDEN_VERSIONS_TAG}/${asset}"
 
 	log "Fetching golden versions from ${url}"
 	if ! curl -fsSL "${url}" -o "${dest}"; then
