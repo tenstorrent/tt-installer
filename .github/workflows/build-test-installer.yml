@@ -72,9 +72,11 @@ jobs:
           PIN=$(grep -oP '(?<=TTIS_GOLDEN_VERSIONS_TAG=")[^"]+' install.m4)
           echo "Fetching tt-sw-manifest @ ${PIN}"
           mkdir -p golden
-          curl -fsSL \
-            "https://github.com/tenstorrent/tt-sw-manifest/releases/download/${PIN}/golden.tar.gz" \
-            | tar -xz --strip-components=1 -C golden/
+          curl -fsSL "https://api.github.com/repos/tenstorrent/tt-sw-manifest/releases/tags/${PIN}" \
+            | jq -r '.assets[] | select(.name | endswith(".ttis")) | [.name, .browser_download_url] | @tsv' \
+            | while IFS=$'\t' read -r name url; do
+                curl -fsSL -o "golden/${name}" "${url}"
+              done
 
       - name: Validate all golden files
         run: |
