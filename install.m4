@@ -1247,18 +1247,21 @@ main() {
 			error_exit "tt-flash is not installed or not in PATH. Please install tt-flash before attempting firmware update."
 		fi
 
+		FW_REPO="tenstorrent/tt-system-firmware"
+		BACKUP_FW_REPO="tenstorrent/tt-firmware"
+		FW_RELEASE_URL="https://github.com/${FW_REPO}/releases/download"
+		BACKUP_FW_RELEASE_URL="https://github.com/${BACKUP_FW_REPO}/releases/download"
+
 		if [[ -n "${_arg_fw_version:-}" ]]; then
 			FW_VERSION=${_arg_fw_version}
 		else
-			FW_VERSION=$(fetch_latest_version "tenstorrent/tt-firmware" "v");
+			FW_VERSION=$(fetch_latest_version "${FW_REPO}" "v");
 		fi
 
 		cd "${WORKDIR}"
 
 		# Create FW_FILE based on FW_VERSION
 		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
-		FW_RELEASE_URL="https://github.com/tenstorrent/tt-system-firmware/releases/download"
-		BACKUP_FW_RELEASE_URL="https://github.com/tenstorrent/tt-firmware/releases/download"
 
 		# Download from GitHub releases
 		if ! curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
