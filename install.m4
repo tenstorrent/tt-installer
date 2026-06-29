@@ -15,7 +15,7 @@ exit 11 #)
 # ========================= Boolean Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([install-kmd],,[Kernel-Mode-Driver installation],[on])
 # ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
-# ARG_OPTIONAL_SINGLE([install-container-runtime],,[Container runtime to install: podman, docker, no],[podman])
+# ARG_OPTIONAL_SINGLE([install-container-runtime],,[Container runtime to install: podman, docker, no],[docker])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-forge-container],,[Download and install Forge container],[off])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
@@ -506,7 +506,8 @@ EOF
 
 	# Pull the image
 	log "Pulling the tt-metalium image (this may take a while)..."
-	docker pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
+	# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
+	${CONTAINER_PULL_PREFIX} docker pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
 
 	log "Metalium installation completed"
 	return 0
@@ -577,7 +578,8 @@ EOF
 
 	# Pull the image
 	log "Pulling the tt-metalium-models image (this may take a while)..."
-	docker pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
+	# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
+	${CONTAINER_PULL_PREFIX} docker pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
 
 	log "Metalium Models installation completed"
 	return 0
@@ -669,7 +671,8 @@ EOF
 
 	# Pull the image
 	log "Pulling the tt-forge image (this may take a while)..."
-	docker pull "${_arg_forge_image_url}:${_arg_forge_image_tag}" || error "Failed to pull image"
+	# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
+	${CONTAINER_PULL_PREFIX} docker pull "${_arg_forge_image_url}:${_arg_forge_image_tag}" || error "Failed to pull image"
 
 	log "Forge installation completed"
 	return 0
@@ -1137,7 +1140,13 @@ main() {
 	get_python_choice
 	install_tt_repos
 
-	# Install container runtime if requested
+	# Install container runtime if requested.
+	# CONTAINER_PULL_PREFIX prefixes image pulls done during this run. Docker is
+	# rootful and, when freshly installed, the user's new "docker" group membership
+	# is not active in the current session, so same-session pulls must use sudo.
+	# Podman is rootless, so sudo would push images into root's storage where the
+	# user's wrapper scripts could not see them; leave the prefix empty there.
+	CONTAINER_PULL_PREFIX=""
 	case "${_arg_install_container_runtime}" in
 		"podman")
 			install_podman
@@ -1145,6 +1154,7 @@ main() {
 			;;
 		"docker")
 			install_docker
+			CONTAINER_PULL_PREFIX="sudo"
 			;;
 		"no")
 			log "Skipping container runtime installation"
