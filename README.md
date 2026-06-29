@@ -8,7 +8,7 @@ Install the tenstorrent software stack with one command.
 **WARNING:** Take care with this command! Always be careful running unknown code.
 
 ## Using tt-metalium
-In addition to our system-level tools, this script installs tt-metalium, Tenstorrent's framework for building and running AI models. Metalium is installed as a container using Podman (default) or Docker. You have two container options, both of which can be installed:
+In addition to our system-level tools, this script installs tt-metalium, Tenstorrent's framework for building and running AI models. Metalium is installed as a container using Docker (default) or Podman. You have two container options, both of which can be installed:
 - tt-metalium container: 1GB, appropriate for using TT-NN
 - tt-metalium Model Demos Container: 10GB, includes a full build of tt-metalium
 
@@ -32,7 +32,7 @@ tt-installer performs the following actions on your system:
    - System tools and HugePages configuration
    - Python packages (tt-flash, tt-smi, etc.)
 4. Updates your card's firmware using tt-flash
-5. Installs a container runtime (Podman by default, Docker optional)
+5. Installs a container runtime (Docker by default, Podman optional)
 6. Installs tt-metalium as a container and configures the wrapper script for convenient access
 7. Installs tt-studio and tt-inference-server, our user-friendly model runtime systems
 
@@ -63,9 +63,9 @@ To skip certain components:
 ./install.sh --no-install-kmd --no-install-hugepages
 ```
 
-To use Docker instead of Podman:
+To use Podman instead of Docker:
 ```bash
-./install.sh --install-container-runtime=docker
+./install.sh --install-container-runtime=podman
 ```
 
 To skip container runtime installation:

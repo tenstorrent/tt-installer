@@ -23,7 +23,8 @@ jobs:
     - name: Prepare system
       run: |
         # The runners come with docker preinstalled but we want to
-        # simulate a completely blank system for our Podman install
+        # simulate a completely blank system so the installer performs a fresh
+        # container-runtime install (docker, the default) from scratch.
         sudo apt-get purge -y docker-ce docker-ce-cli containerd.io
 
     - name: Checkout code

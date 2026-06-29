@@ -58,13 +58,18 @@ jobs:
           su - testuser -c '
             cd /home/testuser/workspace
 
-            # Run installer with test configuration (skip hardware-dependent steps)
+            # Run installer with test configuration (skip hardware-dependent steps).
+            # Force podman: the default runtime is docker, but these bare
+            # containers have no systemd/daemon, so a docker daemon cannot start.
+            # Rootless podman is daemonless and works here. The docker default is
+            # validated on the systemd-backed N150 hardware runner instead.
             timeout 600 bash install.sh \
               --mode-non-interactive \
               --versions=${{ inputs.channel }} \
               --install-kmd \
               --no-install-hugepages \
               --update-firmware=off \
+              --install-container-runtime=podman \
               --install-metalium-container \
               --install-sfpi \
               --python-choice=new-venv \
