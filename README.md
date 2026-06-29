@@ -79,6 +79,13 @@ To specify versions:
 ./install.sh --kmd-version=1.34 --fw-version=18.3.0
 ```
 
+### Python versioning
+
+By default, we install your distro's python3. If you want to specify a different Python version (e.g. 3.10 on Fedora 43), you can use [uv](https://github.com/astral-sh/uv) and specify a version like so:
+```bash
+./install.sh --use-uv --python-version 3.10
+```
+
 ### Version channels
 
 By default the installer pins component versions to a tested **golden baseline**
