@@ -121,9 +121,14 @@ things:
 - **Dev bisection** — install the verified baseline, upgrade *one* package, run
   your tests. If they break, the upgrade is the cause.
 
+Pin the action to a released installer version (the action runs the `install.sh`
+from that same release, so the action and installer stay in lockstep). Pick a
+version from the [releases page](https://github.com/tenstorrent/tt-installer/releases)
+or the Marketplace listing — the examples below use `v3.2.0`.
+
 ```yaml
 # Dev bisection: known-good baseline, then test your change
-- uses: tenstorrent/tt-installer@v1
+- uses: tenstorrent/tt-installer@v3.2.0
   with:
     channel: release          # verified-working version set
 - run: pip install --upgrade my-tt-package==1.2.3   # the change under test
@@ -135,7 +140,7 @@ or on a hardware-less runner via `mode: container`, which skips the parts that
 need a device (KMD, HugePages, SFPI, container runtime):
 
 ```yaml
-- uses: tenstorrent/tt-installer@v1
+- uses: tenstorrent/tt-installer@v3.2.0
   with:
     channel: release
     mode: container           # runs on a plain ubuntu runner, no TT card
