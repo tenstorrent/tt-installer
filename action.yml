@@ -1,0 +1,191 @@
+# SPDX-FileCopyrightText: © 2026 Tenstorrent AI ULC
+# SPDX-License-Identifier: Apache-2.0
+
+name: "Install Tenstorrent Stack"
+description: >-
+  Install the Tenstorrent software stack in CI at a verified-working version set
+  (system packages, pip packages, firmware) via tt-installer. Pin to the 'release'
+  channel for a known-good baseline, then run your own upgrade/test steps.
+author: "Tenstorrent"
+
+branding:
+  icon: "cpu"
+  color: "gray-dark"
+
+inputs:
+  channel:
+    description: >-
+      Version channel passed to --versions: 'release' (pin to the golden,
+      verified-working version set), 'rolling' (latest of everything), or a path
+      to a .ttis state file.
+    required: false
+    default: "release"
+  mode:
+    description: >-
+      'hardware' for a runner with a Tenstorrent card (full install incl. KMD),
+      or 'container' for a hardware-less runner (adds --mode-container, which
+      skips KMD, HugePages, SFPI, and the container runtime).
+    required: false
+    default: "hardware"
+  update-firmware:
+    description: >-
+      Firmware update policy (--update-firmware): 'on', 'off', or 'force'.
+      Defaults to 'off' so CI never flashes a device.
+    required: false
+    default: "off"
+  container-runtime:
+    description: >-
+      Container runtime to install (--install-container-runtime): 'docker',
+      'podman', or 'no'. Ignored when mode=container (the installer forces 'no').
+    required: false
+    default: "docker"
+  installer-version:
+    description: >-
+      Which tt-installer release to fetch install.sh from. Leave empty to use the
+      ref this action was called with (e.g. a 'vX' release tag), falling back to
+      'latest' for branches/SHAs. Ignored when install-sh-path is set.
+    required: false
+    default: ""
+  install-sh-path:
+    description: >-
+      Escape hatch: path to a local install.sh to run instead of downloading one.
+      Used to dogfood the action against a freshly built, pre-release script.
+    required: false
+    default: ""
+  export-schema-path:
+    description: "Path the resulting .ttis state file is written to (--export-schema)."
+    required: false
+    default: "${{ runner.temp }}/tt-installer-state.ttis"
+  extra-args:
+    description: >-
+      Extra arguments appended verbatim to the install.sh invocation, e.g.
+      '--no-install-tt-topology --python-choice=system-python'.
+    required: false
+    default: ""
+  github-token:
+    description: "GitHub token passed to --github-token to avoid API rate limits."
+    required: false
+    default: ${{ github.token }}
+  upload-artifact:
+    description: "Upload the exported .ttis as a workflow artifact ('true'/'false')."
+    required: false
+    default: "true"
+
+outputs:
+  schema-path:
+    description: "Absolute path to the exported .ttis state file."
+    value: ${{ steps.install.outputs.schema-path }}
+  installer-version:
+    description: "The tt-installer release the install.sh was sourced from."
+    value: ${{ steps.fetch.outputs.installer-version }}
+  channel:
+    description: "The version channel that was used."
+    value: ${{ inputs.channel }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve version and fetch install.sh
+      id: fetch
+      shell: bash
+      env:
+        INPUT_INSTALL_SH_PATH: ${{ inputs.install-sh-path }}
+        INPUT_INSTALLER_VERSION: ${{ inputs.installer-version }}
+        ACTION_REF: ${{ github.action_ref }}
+      run: |
+        set -euo pipefail
+
+        if [[ -n "${INPUT_INSTALL_SH_PATH}" ]]; then
+          if [[ ! -f "${INPUT_INSTALL_SH_PATH}" ]]; then
+            echo "::error::install-sh-path '${INPUT_INSTALL_SH_PATH}' does not exist"
+            exit 1
+          fi
+          echo "Using provided install.sh: ${INPUT_INSTALL_SH_PATH}"
+          echo "install-sh=${INPUT_INSTALL_SH_PATH}" >> "${GITHUB_OUTPUT}"
+          echo "installer-version=local:${INPUT_INSTALL_SH_PATH}" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        ref="${INPUT_INSTALLER_VERSION}"
+        if [[ -z "${ref}" ]]; then
+          # Default to the ref this action was invoked at, so the installer and the
+          # action stay version-aligned. Branches/SHAs fall back to 'latest'.
+          case "${ACTION_REF}" in
+            v*) ref="${ACTION_REF}" ;;
+            *)  ref="latest" ;;
+          esac
+        fi
+
+        if [[ "${ref}" == "latest" ]]; then
+          url="https://github.com/tenstorrent/tt-installer/releases/latest/download/install.sh"
+        else
+          url="https://github.com/tenstorrent/tt-installer/releases/download/${ref}/install.sh"
+        fi
+
+        dest="${RUNNER_TEMP}/install.sh"
+        echo "Fetching install.sh (${ref}) from ${url}"
+        curl -fsSL "${url}" -o "${dest}"
+
+        echo "install-sh=${dest}" >> "${GITHUB_OUTPUT}"
+        echo "installer-version=${ref}" >> "${GITHUB_OUTPUT}"
+
+    - name: Run installer
+      id: install
+      shell: bash
+      env:
+        INSTALL_SH: ${{ steps.fetch.outputs.install-sh }}
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_UPDATE_FIRMWARE: ${{ inputs.update-firmware }}
+        INPUT_CONTAINER_RUNTIME: ${{ inputs.container-runtime }}
+        INPUT_EXPORT_SCHEMA_PATH: ${{ inputs.export-schema-path }}
+        INPUT_EXTRA_ARGS: ${{ inputs.extra-args }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set -euo pipefail
+
+        case "${INPUT_MODE}" in
+          hardware) mode_flag="" ;;
+          container) mode_flag="--mode-container" ;;
+          *) echo "::error::mode must be 'hardware' or 'container', got '${INPUT_MODE}'"; exit 1 ;;
+        esac
+
+        args=(
+          "--versions=${INPUT_CHANNEL}"
+          --mode-non-interactive
+          --reboot-option=never
+          "--update-firmware=${INPUT_UPDATE_FIRMWARE}"
+          "--install-container-runtime=${INPUT_CONTAINER_RUNTIME}"
+          "--github-token=${INPUT_GITHUB_TOKEN}"
+          --export-schema "${INPUT_EXPORT_SCHEMA_PATH}"
+          --verbose
+        )
+        if [[ -n "${mode_flag}" ]]; then
+          args+=("${mode_flag}")
+        fi
+        # shellcheck disable=SC2206
+        if [[ -n "${INPUT_EXTRA_ARGS}" ]]; then
+          extra=(${INPUT_EXTRA_ARGS})
+          args+=("${extra[@]}")
+        fi
+
+        echo "Running: sudo bash ${INSTALL_SH} ${args[*]}"
+        sudo bash "${INSTALL_SH}" "${args[@]}"
+
+        # The installer runs as root; make the schema readable by the runner user.
+        if [[ -f "${INPUT_EXPORT_SCHEMA_PATH}" ]]; then
+          sudo chmod 644 "${INPUT_EXPORT_SCHEMA_PATH}"
+        else
+          echo "::error::expected schema at '${INPUT_EXPORT_SCHEMA_PATH}' but it was not written"
+          exit 1
+        fi
+
+        echo "schema-path=${INPUT_EXPORT_SCHEMA_PATH}" >> "${GITHUB_OUTPUT}"
+
+    - name: Upload state file artifact
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: tt-installer-state
+        path: ${{ steps.install.outputs.schema-path }}
+        if-no-files-found: error
