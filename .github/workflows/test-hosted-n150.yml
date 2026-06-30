@@ -35,22 +35,18 @@ jobs:
       with:
         name: ${{ inputs.artifact_name }}
 
-    - name: Run installer on hosted N150
-      run: |
-        # Run installer with all components enabled.
-        # Firmware update is explicitly disabled — never flash on the hosted N150.
-        timeout 1800 sudo bash install.sh \
-          --versions=${{ inputs.channel }} \
-          --update-firmware=off \
-          --mode-non-interactive \
-          --verbose \
-          --export-schema /tmp/tt-installer-state.ttis \
-          --reboot-option=never
-
-        echo "✓ Installer completed successfully on hosted N150"
-
-        # The installer ran as root; make the schema readable by the runner user
-        sudo chmod 644 /tmp/tt-installer-state.ttis
+    # Dogfood the composite action so the hosted-N150 path exercises the same
+    # code customers use. Firmware update stays off — never flash on this runner.
+    - name: Install Tenstorrent stack
+      id: tt
+      timeout-minutes: 30
+      uses: ./
+      with:
+        channel: ${{ inputs.channel }}
+        install-sh-path: ${{ github.workspace }}/install.sh
+        update-firmware: "off"
+        export-schema-path: /tmp/tt-installer-state.ttis
+        upload-artifact: "false"
 
     - name: Schema write/validate/read
       run: |
