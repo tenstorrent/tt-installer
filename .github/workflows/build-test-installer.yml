@@ -139,6 +139,46 @@ jobs:
       artifact_name: install-script
       channel: rolling
 
+  # Dogfood the composite CI action against the freshly built install.sh, with no
+  # hardware: container mode skips KMD/HugePages/SFPI and firmware stays off.
+  test-action-container:
+    name: Test CI action (container mode)
+    needs: [build, validate-golden]
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: install-script
+
+    - name: Install jq
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+
+    - name: Run tt-installer action (container mode)
+      id: tt
+      uses: ./
+      with:
+        channel: release
+        mode: container
+        install-sh-path: ${{ github.workspace }}/install.sh
+        export-schema-path: ${{ runner.temp }}/state.ttis
+        upload-artifact: "false"
+
+    - name: Validate exported schema
+      run: |
+        set -euo pipefail
+        schema="${{ steps.tt.outputs.schema-path }}"
+        test -f "${schema}" || { echo "::error::schema not written"; exit 1; }
+        echo "✓ schema written to ${schema}"
+        cat "${schema}"
+        bash ttis.sh validate "${schema}"
+        echo "✓ schema valid"
+
   test-template-syntax:
     needs: build
     runs-on: ubuntu-latest
@@ -243,7 +283,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only run if the build workflow completed successfully AND it was triggered by a version tag
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling]
+    needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling, test-action-container]
 
     permissions:
       contents: write

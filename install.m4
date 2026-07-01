@@ -24,6 +24,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-sfpi],,[Install SFPI],[on])
 # ARG_OPTIONAL_BOOLEAN([install-inference-server],,[Install tt-inference-server],[on])
 # ARG_OPTIONAL_BOOLEAN([install-studio],,[Install tt-studio],[on])
+# ARG_OPTIONAL_BOOLEAN([pull-container-images],,[Pre-pull container images (Metalium/Forge) during install; if off (default), the wrapper scripts pull on first run instead],[off])
 
 # =========================  Metalium Container Arguments =========================
 # ARG_OPTIONAL_SINGLE([metalium-image-url],,[Container image URL to pull/run],[ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-amd64])
@@ -505,9 +506,13 @@ EOF
 	fi
 
 	# Pull the image
-	log "Pulling the tt-metalium image (this may take a while)..."
-	# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
-	${CONTAINER_PULL_PREFIX} docker pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
+	if [[ "${_arg_pull_container_images}" == "on" ]]; then
+		log "Pulling the tt-metalium image (this may take a while)..."
+		# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
+		${CONTAINER_PULL_PREFIX} docker pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
+	else
+		log "Skipping tt-metalium image pull (--no-pull-container-images); the ${_arg_metalium_container_script_name} wrapper will pull it on first run"
+	fi
 
 	log "Metalium installation completed"
 	return 0
@@ -577,9 +582,13 @@ EOF
 	fi
 
 	# Pull the image
-	log "Pulling the tt-metalium-models image (this may take a while)..."
-	# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
-	${CONTAINER_PULL_PREFIX} docker pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
+	if [[ "${_arg_pull_container_images}" == "on" ]]; then
+		log "Pulling the tt-metalium-models image (this may take a while)..."
+		# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
+		${CONTAINER_PULL_PREFIX} docker pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
+	else
+		log "Skipping tt-metalium-models image pull (--no-pull-container-images); the ${METALIUM_MODELS_SCRIPT_NAME} wrapper will pull it on first run"
+	fi
 
 	log "Metalium Models installation completed"
 	return 0
@@ -670,9 +679,13 @@ EOF
 	fi
 
 	# Pull the image
-	log "Pulling the tt-forge image (this may take a while)..."
-	# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
-	${CONTAINER_PULL_PREFIX} docker pull "${_arg_forge_image_url}:${_arg_forge_image_tag}" || error "Failed to pull image"
+	if [[ "${_arg_pull_container_images}" == "on" ]]; then
+		log "Pulling the tt-forge image (this may take a while)..."
+		# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
+		${CONTAINER_PULL_PREFIX} docker pull "${_arg_forge_image_url}:${_arg_forge_image_tag}" || error "Failed to pull image"
+	else
+		log "Skipping tt-forge image pull (--no-pull-container-images); the ${_arg_forge_container_script_name} wrapper will pull it on first run"
+	fi
 
 	log "Forge installation completed"
 	return 0

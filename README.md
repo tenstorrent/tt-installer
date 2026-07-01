@@ -109,6 +109,69 @@ replay later and is not needed for a normal install.
 
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages.
 
+## Using in CI
+
+tt-installer ships a composite GitHub Action that installs the stack at a
+verified-working version set in one step. Pin the `release` channel to get a
+known-good baseline, then run your own steps against it. This is handy for two
+things:
+
+- **Release gating** — install the verified baseline and run smoke tests to
+  confirm a single-package bump didn't break the customer experience.
+- **Dev bisection** — install the verified baseline, upgrade *one* package, run
+  your tests. If they break, the upgrade is the cause.
+
+Pin the action to a released installer version (the action runs the `install.sh`
+from that same release, so the action and installer stay in lockstep). Pick a
+version from the [releases page](https://github.com/tenstorrent/tt-installer/releases)
+or the Marketplace listing — the examples below use `v3.2.0`.
+
+```yaml
+# Dev bisection: known-good baseline, then test your change
+- uses: tenstorrent/tt-installer@v3.2.0
+  with:
+    channel: release          # verified-working version set
+- run: pip install --upgrade my-tt-package==1.2.3   # the change under test
+- run: pytest tests/          # if this breaks, it's your package
+```
+
+The action works on a runner with a Tenstorrent card (full install, the default)
+or on a hardware-less runner via `mode: container`, which skips the parts that
+need a device (KMD, HugePages, SFPI, container runtime):
+
+```yaml
+- uses: tenstorrent/tt-installer@v3.2.0
+  with:
+    channel: release
+    mode: container           # runs on a plain ubuntu runner, no TT card
+```
+
+The runner must allow passwordless `sudo` (the installer adds DKMS modules and
+configures HugePages). Firmware updates are **off by default** so CI never
+flashes a device.
+
+### Action inputs
+
+| Input | Default | Description |
+| ----- | ------- | ----------- |
+| `channel` | `release` | `--versions`: `release` (golden baseline), `rolling` (latest of everything), or a path to a `.ttis` file. |
+| `mode` | `hardware` | `hardware` (full install) or `container` (adds `--mode-container`). |
+| `update-firmware` | `off` | `--update-firmware`: `on`, `off`, or `force`. |
+| `container-runtime` | `docker` | `--install-container-runtime`: `docker`, `podman`, or `no`. Ignored when `mode: container`. |
+| `installer-version` | _(auto)_ | tt-installer release to fetch `install.sh` from. Defaults to the ref the action was called at (e.g. a `vX` tag), falling back to `latest`. |
+| `export-schema-path` | `${{ runner.temp }}/tt-installer-state.ttis` | Where the resulting `.ttis` state file is written. |
+| `extra-args` | _(empty)_ | Extra arguments appended verbatim, e.g. `--no-install-tt-topology`. |
+| `github-token` | `${{ github.token }}` | Passed to `--github-token` to avoid API rate limits. |
+| `upload-artifact` | `true` | Upload the exported `.ttis` as a workflow artifact. |
+
+### Action outputs
+
+| Output | Description |
+| ------ | ----------- |
+| `schema-path` | Absolute path to the exported `.ttis` state file. |
+| `installer-version` | The tt-installer release `install.sh` was sourced from. |
+| `channel` | The version channel that was used. |
+
 ## Distro Compatibility
 Our preferred OS is Ubuntu 22.04.5 LTS (Jammy Jellyfish). Other operating systems will not be prioritized for support or features.
 For more information, please see this compatibility matrix:
