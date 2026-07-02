@@ -3,9 +3,7 @@
 
 name: "Install Tenstorrent Stack"
 description: >-
-  Install the Tenstorrent software stack in CI at a verified-working version set
-  (system packages, pip packages, firmware) via tt-installer. Pin to the 'release'
-  channel for a known-good baseline, then run your own upgrade/test steps.
+  Install the Tenstorrent software stack in CI at a verified-working version set.
 author: "Tenstorrent"
 
 branding:
