@@ -59,7 +59,7 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([new-venv-location],,[Path for new Python virtual environment],[$HOME/.tenstorrent-venv])
 
 # ========================= State File Arguments =========================
-# ARG_OPTIONAL_SINGLE([versions],,[Version channel: 'release' (pin to golden versions baked into this release), 'rolling' (latest of everything), or a path to a .ttis file (full non-interactive import)],[rolling])
+# ARG_OPTIONAL_SINGLE([versions],,[Version channel: 'release' (pin to golden versions baked into this release), 'rolling' (latest of everything), or a path to a .ttis file (full non-interactive import)],[release])
 # ARG_OPTIONAL_SINGLE([export-schema],,[(Developer/CI) Export installer state to .ttis file after installation],[])
 
 
