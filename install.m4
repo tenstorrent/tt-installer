@@ -831,8 +831,13 @@ install_tt_repos () {
 	case "${DISTRO_ID}" in
 		"ubuntu")
 			# Add the apt listing
-			# shellcheck disable=2002
-			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ $( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//' ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
+			# Prefer UBUNTU_CODENAME (set to the upstream codename on Ubuntu
+			# derivatives such as Linux Mint) and fall back to VERSION_CODENAME.
+			codename=$( . /etc/os-release && printf '%s' "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}" )
+			if [[ -z "${codename}" ]]; then
+				error_exit "Could not determine apt repository codename from /etc/os-release (need UBUNTU_CODENAME or VERSION_CODENAME)"
+			fi
+			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ ${codename} main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
 
 			# Setup the keyring
 			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
