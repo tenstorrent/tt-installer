@@ -168,6 +168,28 @@ check_has_sudo_perms() {
 	fi
 }
 
+# Seconds apt-get waits for the dpkg lock before giving up. Ubuntu's
+# unattended-upgrades or the apt daily timer can hold the lock when we run.
+APT_LOCK_TIMEOUT=120
+
+# Wrapper for all apt-get invocations:
+# - Waits up to APT_LOCK_TIMEOUT seconds for the dpkg lock instead of aborting
+#   immediately, and explains what to do if the wait still times out.
+apt_get() {
+	local apt_status=0
+	local apt_log="${WORKDIR}/apt-last-run.log"
+	local apt_opts=("-o" "DPkg::Lock::Timeout=${APT_LOCK_TIMEOUT}")
+	# 2>&1 keeps apt's errors in the tee'd log so we can detect a lock timeout
+	sudo DEBIAN_FRONTEND=noninteractive apt-get "${apt_opts[@]}" "$@" 2>&1 | tee "${apt_log}" || apt_status=$?
+	if [[ "${apt_status}" -ne 0 ]] && grep -Eq "Could not get lock|Unable to acquire the dpkg" "${apt_log}"; then
+		error "apt-get could not acquire the dpkg lock after waiting ${APT_LOCK_TIMEOUT} seconds."
+		error "Another package manager process is holding it — usually Ubuntu's unattended-upgrades or the apt daily timer."
+		error "See what holds the lock with: sudo fuser -v /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock"
+		error "Wait for it to finish (or stop it with 'sudo systemctl stop unattended-upgrades'), then re-run this installer."
+	fi
+	return "${apt_status}"
+}
+
 detect_distro() {
 	# shellcheck disable=SC1091 # Always present
 	if [[ -f /etc/os-release ]]; then
@@ -840,7 +862,7 @@ install_tt_repos () {
 			# Download the key
 			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
-			sudo apt-get update
+			apt_get update
 			;;
 		"debian")
 			# Add the apt listing
@@ -853,7 +875,7 @@ install_tt_repos () {
 			# Download the key
 			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
-			sudo apt-get update
+			apt_get update
 			;;
 		"fedora")
 			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
@@ -971,7 +993,7 @@ install_podman() {
 	log "Installing Podman and podman-docker shim"
 	case "${PKG_MANAGER}" in
 		"apt-get")
-			sudo apt-get install -y podman podman-docker
+			apt_get install -y podman podman-docker
 			;;
 		"dnf")
 			sudo dnf install -y podman podman-docker podman-compose
@@ -1108,13 +1130,13 @@ main() {
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
 		"ubuntu")
-			sudo apt-get update
-			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
+			apt_get update
+			apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
-			sudo apt-get update
-			sudo apt-get install -y git python3-pip dkms pipx jq protobuf-compiler wget
+			apt_get update
+			apt_get install -y git python3-pip dkms pipx jq protobuf-compiler wget
 			;;
 		"fedora")
 			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
@@ -1234,7 +1256,7 @@ main() {
 	if [[ ${#system_packages[@]} -gt 0 ]]; then
 		echo "Installing system packages: ${system_packages[*]}"
 		if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
-			sudo apt-get install -y "${system_packages[@]}"
+			apt_get install -y "${system_packages[@]}"
 		elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
 			sudo dnf install -y "${system_packages[@]}"
 		fi
