@@ -175,10 +175,15 @@ APT_LOCK_TIMEOUT=120
 # Wrapper for all apt-get invocations:
 # - Waits up to APT_LOCK_TIMEOUT seconds for the dpkg lock instead of aborting
 #   immediately, and explains what to do if the wait still times out.
+# - Allows downgrades on install, needed when pinned versions (the 'release'
+#   channel or an imported .ttis file) are older than what is installed.
 apt_get() {
 	local apt_status=0
 	local apt_log="${WORKDIR}/apt-last-run.log"
 	local apt_opts=("-o" "DPkg::Lock::Timeout=${APT_LOCK_TIMEOUT}")
+	if [[ "${1:-}" == "install" ]]; then
+		apt_opts+=("--allow-downgrades")
+	fi
 	# 2>&1 keeps apt's errors in the tee'd log so we can detect a lock timeout
 	sudo DEBIAN_FRONTEND=noninteractive apt-get "${apt_opts[@]}" "$@" 2>&1 | tee "${apt_log}" || apt_status=$?
 	if [[ "${apt_status}" -ne 0 ]] && grep -Eq "Could not get lock|Unable to acquire the dpkg" "${apt_log}"; then
@@ -1217,6 +1222,7 @@ main() {
 
 	# 2. Parse the registry to obtain lists of packages
 	declare -a system_packages=()
+	declare -a system_downgrade_packages=()
 	declare -a python_packages=()
 
 	for key in "${!package_registry[@]}"; do
@@ -1235,7 +1241,19 @@ main() {
 					if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
 						system_packages+=("${pkg_name}=${version}")
 					elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
-						system_packages+=("${pkg_name}-${version}")
+						# dnf "install" refuses to downgrade a package. If the
+						# pinned version (e.g. the 'release' channel after using
+						# 'rolling', or an imported .ttis file) is older than the
+						# installed one, route it through "dnf downgrade" instead.
+						installed_version=""
+						if rpm -q "${pkg_name}" &> /dev/null; then
+							installed_version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg_name}")"
+						fi
+						if [[ -n "${installed_version}" && "${version}" != "${installed_version}" && "$(printf '%s\n%s\n' "${version}" "${installed_version}" | sort -V | head -n 1)" == "${version}" ]]; then
+							system_downgrade_packages+=("${pkg_name}-${version}")
+						else
+							system_packages+=("${pkg_name}-${version}")
+						fi
 					else
 						system_packages+=("${pkg_name}")  # fallback to no version
 					fi
@@ -1260,6 +1278,13 @@ main() {
 		elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
 			sudo dnf install -y "${system_packages[@]}"
 		fi
+	fi
+
+	# Downgrade system packages pinned below the installed version. Only used
+	# with dnf; apt handles downgrades in the install above via --allow-downgrades.
+	if [[ ${#system_downgrade_packages[@]} -gt 0 ]]; then
+		echo "Downgrading system packages: ${system_downgrade_packages[*]}"
+		sudo dnf downgrade -y "${system_downgrade_packages[@]}"
 	fi
 
 	# Install Python packages

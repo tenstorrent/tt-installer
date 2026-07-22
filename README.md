@@ -107,6 +107,14 @@ that ships with each release. Control this with `--versions`:
 a `.ttis` file. It is a developer/CI feature for capturing a configuration to
 replay later and is not needed for a normal install.
 
+Pinned channels can move you *backwards*: if you previously installed with
+`--versions=rolling` (or manually installed newer packages) and later re-run
+with `--versions=release` or a `.ttis` file, the pinned versions may be older
+than what is on your system. The installer handles this by passing
+`--allow-downgrades` to apt, and on dnf-based distros by routing packages whose
+pinned version is below the installed one through `dnf downgrade` (dnf's
+`install` command cannot downgrade a package).
+
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages.
 
 ## Using in CI
