@@ -33,10 +33,11 @@ inputs:
     default: "off"
   container-runtime:
     description: >-
-      Container runtime to install (--install-container-runtime): 'docker',
-      'podman', or 'no'. Ignored when mode=container (the installer forces 'no').
+      Container runtime to install (--install-container-runtime): 'auto'
+      (install Docker unless a runtime is already present), 'docker', 'podman',
+      or 'none'. Ignored when mode=container (the installer forces 'none').
     required: false
-    default: "docker"
+    default: "auto"
   installer-version:
     description: >-
       Which tt-installer release to fetch install.sh from. Leave empty to use the

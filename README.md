@@ -32,7 +32,7 @@ tt-installer performs the following actions on your system:
    - System tools and HugePages configuration
    - Python packages (tt-flash, tt-smi, etc.)
 4. Updates your card's firmware using tt-flash
-5. Installs a container runtime (Docker by default, Podman optional)
+5. Installs a container runtime if one is not already present (Docker by default, Podman optional)
 6. Installs tt-metalium as a container and configures the wrapper script for convenient access
 7. Installs tt-studio and tt-inference-server, our user-friendly model runtime systems
 
@@ -63,16 +63,23 @@ To skip certain components:
 ./install.sh --no-install-kmd --no-install-hugepages
 ```
 
-To use Podman instead of Docker:
+### Container runtime selection
+
+By default (`--install-container-runtime=auto`) the installer checks whether
+Docker or Podman is already installed. If one is found, it is left untouched (a
+warning is printed and installation is skipped, avoiding a pointless reinstall
+and possible package conflicts). If neither is found, Docker is installed.
+
+To force a specific runtime regardless of what is installed:
 ```bash
-./install.sh --install-container-runtime=podman
+./install.sh --install-container-runtime=docker   # or podman
 ```
 
-To skip container runtime installation:
+To skip container runtime installation entirely:
 ```bash
-./install.sh --install-container-runtime=no
+./install.sh --install-container-runtime=none
 ```
-If you have already installed Docker or Podman, this option will leave them untouched.
+(`no` is still accepted as a deprecated alias for `none`.)
 
 To specify versions:
 ```bash
@@ -165,7 +172,7 @@ flashes a device.
 | `channel` | `release` | `--versions`: `release` (golden baseline), `rolling` (latest of everything), or a path to a `.ttis` file. |
 | `mode` | `hardware` | `hardware` (full install) or `container` (adds `--mode-container`). |
 | `update-firmware` | `off` | `--update-firmware`: `on`, `off`, or `force`. |
-| `container-runtime` | `docker` | `--install-container-runtime`: `docker`, `podman`, or `no`. Ignored when `mode: container`. |
+| `container-runtime` | `auto` | `--install-container-runtime`: `auto` (install Docker unless a runtime is already present), `docker`, `podman`, or `none`. Ignored when `mode: container`. |
 | `installer-version` | _(auto)_ | tt-installer release to fetch `install.sh` from. Defaults to the ref the action was called at (e.g. a `vX` tag), falling back to `latest`. |
 | `export-schema-path` | `${{ runner.temp }}/tt-installer-state.ttis` | Where the resulting `.ttis` state file is written. |
 | `extra-args` | _(empty)_ | Extra arguments appended verbatim, e.g. `--no-install-tt-topology`. |

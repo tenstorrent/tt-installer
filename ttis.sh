@@ -288,7 +288,7 @@ ttis_export() {
 	esac
 
 	local runtime
-	case "${_arg_install_container_runtime:-no}" in
+	case "${_arg_install_container_runtime:-none}" in
 		"podman") runtime="podman" ;;
 		"docker") runtime="docker" ;;
 		*)        runtime="none"   ;;
@@ -479,7 +479,7 @@ ttis_import() {
 		case "${val}" in
 			"podman") _arg_install_container_runtime="podman" ;;
 			"docker") _arg_install_container_runtime="docker" ;;
-			"none")   _arg_install_container_runtime="no"     ;;
+			"none")   _arg_install_container_runtime="none"   ;;
 		esac
 	fi
 

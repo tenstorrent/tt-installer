@@ -15,7 +15,7 @@ exit 11 #)
 # ========================= Boolean Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([install-kmd],,[Kernel-Mode-Driver installation],[on])
 # ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
-# ARG_OPTIONAL_SINGLE([install-container-runtime],,[Container runtime to install: podman, docker, no],[docker])
+# ARG_OPTIONAL_SINGLE([install-container-runtime],,[Container runtime to install: auto (install Docker unless a runtime is already present), podman, docker, none],[auto])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-forge-container],,[Download and install Forge container],[off])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
@@ -83,12 +83,18 @@ LOGO=$(cat << "EOF"
 EOF
 )
 
+# Backward compatibility: --install-container-runtime once used "no"; it is
+# now "none" to match the syntax of other arguments.
+if [[ "${_arg_install_container_runtime}" = "no" ]]; then
+	_arg_install_container_runtime="none"
+fi
+
 # If container mode is enabled, disable KMD, HugePages, and SFPI
 # shellcheck disable=SC2154
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
-	_arg_install_container_runtime="no" # No container runtime in container
+	_arg_install_container_runtime="none" # No container runtime in container
 	_arg_install_sfpi="off"
 	_arg_reboot_option="never" # Do not reboot
 fi
@@ -629,7 +635,7 @@ get_metalium_container_choice() {
 		return
 	fi
 	# Only ask if a container runtime is installed or will be installed
-	if [[ "${_arg_install_container_runtime}" != "no" ]] || check_container_runtime_installed; then
+	if [[ "${_arg_install_container_runtime}" != "none" ]] || check_container_runtime_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Metalium slim container?"
 		log "This container is appropriate if you only need to use TT-NN"
@@ -644,7 +650,7 @@ get_metalium_container_choice() {
 		warn "Container runtime is not and will not be installed, skipping Metalium container installation"
 	fi
 	# Only ask if a container runtime is installed or will be installed
-	if [[ "${_arg_install_container_runtime}" != "no" ]] || check_container_runtime_installed; then
+	if [[ "${_arg_install_container_runtime}" != "none" ]] || check_container_runtime_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Metalium Model Demos container?"
 		log "This container is best for users who need more TT-Metalium functionality, such as running prebuilt models, but it's large (8GB)"
@@ -725,7 +731,7 @@ get_forge_container_choice() {
 		return
 	fi
 	# Only ask if a container runtime is installed or will be installed
-	if [[ "${_arg_install_container_runtime}" != "no" ]] || check_container_runtime_installed; then
+	if [[ "${_arg_install_container_runtime}" != "none" ]] || check_container_runtime_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Forge slim container?"
 		if confirm "Install Forge"; then
@@ -1092,7 +1098,7 @@ main() {
 	if [[ "${_arg_install_hugepages}" = "off" ]]; then
 		warn "HugePages setup will be skipped"
 	fi
-	if [[ "${_arg_install_container_runtime}" = "no" ]]; then
+	if [[ "${_arg_install_container_runtime}" = "none" ]]; then
 		warn "Container runtime installation will be skipped"
 	fi
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
@@ -1169,7 +1175,7 @@ main() {
 
 	# Disable container runtime install if both Metalium and Forge containers are disabled
 	if [[ "${_arg_install_metalium_container}" = "off" ]] && [[ "${_arg_install_metalium_models_container}" = "off" ]] && [[ "${_arg_install_forge_container}" = "off" ]]; then
-		_arg_install_container_runtime="no"
+		_arg_install_container_runtime="none"
 	fi
 
 	# Get tt-inference-server installation choice
@@ -1188,6 +1194,31 @@ main() {
 	# user's wrapper scripts could not see them; leave the prefix empty there.
 	CONTAINER_PULL_PREFIX=""
 	case "${_arg_install_container_runtime}" in
+		"auto")
+			if command -v docker &> /dev/null || command -v podman &> /dev/null; then
+				warn "A container runtime is already installed; skipping container runtime installation to avoid reinstalling it or creating package conflicts."
+				# Record which runtime we found so it round-trips through
+				# --export-schema (podman may provide the docker CLI via the
+				# podman-docker shim), and use sudo for same-session pulls only
+				# if the docker CLI needs it.
+				if command -v docker &> /dev/null && ! docker --version 2> /dev/null | grep -qi podman; then
+					_arg_install_container_runtime="docker"
+					if ! docker info &> /dev/null; then
+						CONTAINER_PULL_PREFIX="sudo"
+					fi
+				else
+					_arg_install_container_runtime="podman"
+					if ! command -v docker &> /dev/null; then
+						warn "Podman is installed but the 'docker' CLI shim is not. The tt-metalium/tt-forge wrapper scripts invoke 'docker'; install the podman-docker package if they fail."
+					fi
+				fi
+			else
+				log "No container runtime found, installing Docker"
+				install_docker
+				_arg_install_container_runtime="docker"
+				CONTAINER_PULL_PREFIX="sudo"
+			fi
+			;;
 		"podman")
 			install_podman
 			setup_rootless_podman
@@ -1196,11 +1227,11 @@ main() {
 			install_docker
 			CONTAINER_PULL_PREFIX="sudo"
 			;;
-		"no")
+		"none")
 			log "Skipping container runtime installation"
 			;;
 		*)
-			error_exit "Invalid container runtime option: ${_arg_install_container_runtime}. Must be 'podman', 'docker', or 'no'"
+			error_exit "Invalid container runtime option: ${_arg_install_container_runtime}. Must be 'auto', 'podman', 'docker', or 'none'"
 			;;
 	esac
 
@@ -1353,7 +1384,7 @@ main() {
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Skipping Metalium container installation"
 	else
-		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
+		if [[ "${_arg_install_container_runtime}" = "none" ]] && ! check_container_runtime_installed; then
 			warn "No container runtime is installed. Cannot install Metalium container."
 		else
 			install_metalium_container
@@ -1362,7 +1393,7 @@ main() {
 
 	# Install Metalium Models container if requested
 	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
-		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
+		if [[ "${_arg_install_container_runtime}" = "none" ]] && ! check_container_runtime_installed; then
 			warn "No container runtime is installed. Cannot install Metalium Models."
 		else
 			install_metalium_models_container
@@ -1377,7 +1408,7 @@ main() {
 	if [[ "${_arg_install_forge_container}" = "off" ]]; then
 		warn "Skipping Forge container installation"
 	else
-		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
+		if [[ "${_arg_install_container_runtime}" = "none" ]] && ! check_container_runtime_installed; then
 			warn "No container runtime is installed. Cannot install Forge container."
 		else
 			install_forge_container
