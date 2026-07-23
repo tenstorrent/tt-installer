@@ -15,7 +15,7 @@ exit 11 #)
 # ========================= Boolean Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([install-kmd],,[Kernel-Mode-Driver installation],[on])
 # ARG_OPTIONAL_BOOLEAN([install-hugepages],,[Configure HugePages],[on])
-# ARG_OPTIONAL_SINGLE([install-container-runtime],,[Container runtime to install: podman, docker, no],[docker])
+# ARG_OPTIONAL_SINGLE([install-container-runtime],,[Container runtime to install: auto (install Docker unless a runtime is already present), podman, docker, none],[auto])
 # ARG_OPTIONAL_BOOLEAN([install-metalium-container],,[Download and install Metalium container],[on])
 # ARG_OPTIONAL_BOOLEAN([install-forge-container],,[Download and install Forge container],[off])
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
@@ -83,12 +83,18 @@ LOGO=$(cat << "EOF"
 EOF
 )
 
+# Backward compatibility: --install-container-runtime once used "no"; it is
+# now "none" to match the syntax of other arguments.
+if [[ "${_arg_install_container_runtime}" = "no" ]]; then
+	_arg_install_container_runtime="none"
+fi
+
 # If container mode is enabled, disable KMD, HugePages, and SFPI
 # shellcheck disable=SC2154
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
 	_arg_install_hugepages="off" # Both KMD and HugePages must live on the host kernel
-	_arg_install_container_runtime="no" # No container runtime in container
+	_arg_install_container_runtime="none" # No container runtime in container
 	_arg_install_sfpi="off"
 	_arg_reboot_option="never" # Do not reboot
 fi
@@ -166,6 +172,33 @@ check_has_sudo_perms() {
 		error "Cannot use sudo, exiting..."
 		exit 1
 	fi
+}
+
+# Seconds apt-get waits for the dpkg lock before giving up. Ubuntu's
+# unattended-upgrades or the apt daily timer can hold the lock when we run.
+APT_LOCK_TIMEOUT=120
+
+# Wrapper for all apt-get invocations:
+# - Waits up to APT_LOCK_TIMEOUT seconds for the dpkg lock instead of aborting
+#   immediately, and explains what to do if the wait still times out.
+# - Allows downgrades on install, needed when pinned versions (the 'release'
+#   channel or an imported .ttis file) are older than what is installed.
+apt_get() {
+	local apt_status=0
+	local apt_log="${WORKDIR}/apt-last-run.log"
+	local apt_opts=("-o" "DPkg::Lock::Timeout=${APT_LOCK_TIMEOUT}")
+	if [[ "${1:-}" == "install" ]]; then
+		apt_opts+=("--allow-downgrades")
+	fi
+	# 2>&1 keeps apt's errors in the tee'd log so we can detect a lock timeout
+	sudo DEBIAN_FRONTEND=noninteractive apt-get "${apt_opts[@]}" "$@" 2>&1 | tee "${apt_log}" || apt_status=$?
+	if [[ "${apt_status}" -ne 0 ]] && grep -Eq "Could not get lock|Unable to acquire the dpkg" "${apt_log}"; then
+		error "apt-get could not acquire the dpkg lock after waiting ${APT_LOCK_TIMEOUT} seconds."
+		error "Another package manager process is holding it — usually Ubuntu's unattended-upgrades or the apt daily timer."
+		error "See what holds the lock with: sudo fuser -v /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock"
+		error "Wait for it to finish (or stop it with 'sudo systemctl stop unattended-upgrades'), then re-run this installer."
+	fi
+	return "${apt_status}"
 }
 
 detect_distro() {
@@ -602,7 +635,7 @@ get_metalium_container_choice() {
 		return
 	fi
 	# Only ask if a container runtime is installed or will be installed
-	if [[ "${_arg_install_container_runtime}" != "no" ]] || check_container_runtime_installed; then
+	if [[ "${_arg_install_container_runtime}" != "none" ]] || check_container_runtime_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Metalium slim container?"
 		log "This container is appropriate if you only need to use TT-NN"
@@ -617,7 +650,7 @@ get_metalium_container_choice() {
 		warn "Container runtime is not and will not be installed, skipping Metalium container installation"
 	fi
 	# Only ask if a container runtime is installed or will be installed
-	if [[ "${_arg_install_container_runtime}" != "no" ]] || check_container_runtime_installed; then
+	if [[ "${_arg_install_container_runtime}" != "none" ]] || check_container_runtime_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Metalium Model Demos container?"
 		log "This container is best for users who need more TT-Metalium functionality, such as running prebuilt models, but it's large (8GB)"
@@ -698,7 +731,7 @@ get_forge_container_choice() {
 		return
 	fi
 	# Only ask if a container runtime is installed or will be installed
-	if [[ "${_arg_install_container_runtime}" != "no" ]] || check_container_runtime_installed; then
+	if [[ "${_arg_install_container_runtime}" != "none" ]] || check_container_runtime_installed; then
 		# Interactive mode - allow override
 		log "Would you like to install the TT-Forge slim container?"
 		if confirm "Install Forge"; then
@@ -840,7 +873,7 @@ install_tt_repos () {
 			# Download the key
 			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
-			sudo apt-get update
+			apt_get update
 			;;
 		"debian")
 			# Add the apt listing
@@ -853,7 +886,7 @@ install_tt_repos () {
 			# Download the key
 			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
-			sudo apt-get update
+			apt_get update
 			;;
 		"fedora")
 			sudo bash -c 'cat > /etc/yum.repos.d/tenstorrent.repo << EOF
@@ -971,7 +1004,7 @@ install_podman() {
 	log "Installing Podman and podman-docker shim"
 	case "${PKG_MANAGER}" in
 		"apt-get")
-			sudo apt-get install -y podman podman-docker
+			apt_get install -y podman podman-docker
 			;;
 		"dnf")
 			sudo dnf install -y podman podman-docker podman-compose
@@ -1065,7 +1098,7 @@ main() {
 	if [[ "${_arg_install_hugepages}" = "off" ]]; then
 		warn "HugePages setup will be skipped"
 	fi
-	if [[ "${_arg_install_container_runtime}" = "no" ]]; then
+	if [[ "${_arg_install_container_runtime}" = "none" ]]; then
 		warn "Container runtime installation will be skipped"
 	fi
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
@@ -1108,13 +1141,13 @@ main() {
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
 		"ubuntu")
-			sudo apt-get update
-			sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
+			apt_get update
+			apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
-			sudo apt-get update
-			sudo apt-get install -y git python3-pip dkms pipx jq protobuf-compiler wget
+			apt_get update
+			apt_get install -y git python3-pip dkms pipx jq protobuf-compiler wget
 			;;
 		"fedora")
 			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
@@ -1142,7 +1175,7 @@ main() {
 
 	# Disable container runtime install if both Metalium and Forge containers are disabled
 	if [[ "${_arg_install_metalium_container}" = "off" ]] && [[ "${_arg_install_metalium_models_container}" = "off" ]] && [[ "${_arg_install_forge_container}" = "off" ]]; then
-		_arg_install_container_runtime="no"
+		_arg_install_container_runtime="none"
 	fi
 
 	# Get tt-inference-server installation choice
@@ -1161,6 +1194,31 @@ main() {
 	# user's wrapper scripts could not see them; leave the prefix empty there.
 	CONTAINER_PULL_PREFIX=""
 	case "${_arg_install_container_runtime}" in
+		"auto")
+			if command -v docker &> /dev/null || command -v podman &> /dev/null; then
+				warn "A container runtime is already installed; skipping container runtime installation to avoid reinstalling it or creating package conflicts."
+				# Record which runtime we found so it round-trips through
+				# --export-schema (podman may provide the docker CLI via the
+				# podman-docker shim), and use sudo for same-session pulls only
+				# if the docker CLI needs it.
+				if command -v docker &> /dev/null && ! docker --version 2> /dev/null | grep -qi podman; then
+					_arg_install_container_runtime="docker"
+					if ! docker info &> /dev/null; then
+						CONTAINER_PULL_PREFIX="sudo"
+					fi
+				else
+					_arg_install_container_runtime="podman"
+					if ! command -v docker &> /dev/null; then
+						warn "Podman is installed but the 'docker' CLI shim is not. The tt-metalium/tt-forge wrapper scripts invoke 'docker'; install the podman-docker package if they fail."
+					fi
+				fi
+			else
+				log "No container runtime found, installing Docker"
+				install_docker
+				_arg_install_container_runtime="docker"
+				CONTAINER_PULL_PREFIX="sudo"
+			fi
+			;;
 		"podman")
 			install_podman
 			setup_rootless_podman
@@ -1169,11 +1227,11 @@ main() {
 			install_docker
 			CONTAINER_PULL_PREFIX="sudo"
 			;;
-		"no")
+		"none")
 			log "Skipping container runtime installation"
 			;;
 		*)
-			error_exit "Invalid container runtime option: ${_arg_install_container_runtime}. Must be 'podman', 'docker', or 'no'"
+			error_exit "Invalid container runtime option: ${_arg_install_container_runtime}. Must be 'auto', 'podman', 'docker', or 'none'"
 			;;
 	esac
 
@@ -1195,6 +1253,7 @@ main() {
 
 	# 2. Parse the registry to obtain lists of packages
 	declare -a system_packages=()
+	declare -a system_downgrade_packages=()
 	declare -a python_packages=()
 
 	for key in "${!package_registry[@]}"; do
@@ -1213,7 +1272,19 @@ main() {
 					if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
 						system_packages+=("${pkg_name}=${version}")
 					elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
-						system_packages+=("${pkg_name}-${version}")
+						# dnf "install" refuses to downgrade a package. If the
+						# pinned version (e.g. the 'release' channel after using
+						# 'rolling', or an imported .ttis file) is older than the
+						# installed one, route it through "dnf downgrade" instead.
+						installed_version=""
+						if rpm -q "${pkg_name}" &> /dev/null; then
+							installed_version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg_name}")"
+						fi
+						if [[ -n "${installed_version}" && "${version}" != "${installed_version}" && "$(printf '%s\n%s\n' "${version}" "${installed_version}" | sort -V | head -n 1)" == "${version}" ]]; then
+							system_downgrade_packages+=("${pkg_name}-${version}")
+						else
+							system_packages+=("${pkg_name}-${version}")
+						fi
 					else
 						system_packages+=("${pkg_name}")  # fallback to no version
 					fi
@@ -1234,10 +1305,17 @@ main() {
 	if [[ ${#system_packages[@]} -gt 0 ]]; then
 		echo "Installing system packages: ${system_packages[*]}"
 		if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
-			sudo apt-get install -y "${system_packages[@]}"
+			apt_get install -y "${system_packages[@]}"
 		elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
 			sudo dnf install -y "${system_packages[@]}"
 		fi
+	fi
+
+	# Downgrade system packages pinned below the installed version. Only used
+	# with dnf; apt handles downgrades in the install above via --allow-downgrades.
+	if [[ ${#system_downgrade_packages[@]} -gt 0 ]]; then
+		echo "Downgrading system packages: ${system_downgrade_packages[*]}"
+		sudo dnf downgrade -y "${system_downgrade_packages[@]}"
 	fi
 
 	# Install Python packages
@@ -1306,7 +1384,7 @@ main() {
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Skipping Metalium container installation"
 	else
-		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
+		if [[ "${_arg_install_container_runtime}" = "none" ]] && ! check_container_runtime_installed; then
 			warn "No container runtime is installed. Cannot install Metalium container."
 		else
 			install_metalium_container
@@ -1315,7 +1393,7 @@ main() {
 
 	# Install Metalium Models container if requested
 	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
-		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
+		if [[ "${_arg_install_container_runtime}" = "none" ]] && ! check_container_runtime_installed; then
 			warn "No container runtime is installed. Cannot install Metalium Models."
 		else
 			install_metalium_models_container
@@ -1330,7 +1408,7 @@ main() {
 	if [[ "${_arg_install_forge_container}" = "off" ]]; then
 		warn "Skipping Forge container installation"
 	else
-		if [[ "${_arg_install_container_runtime}" = "no" ]] && ! check_container_runtime_installed; then
+		if [[ "${_arg_install_container_runtime}" = "none" ]] && ! check_container_runtime_installed; then
 			warn "No container runtime is installed. Cannot install Forge container."
 		else
 			install_forge_container
