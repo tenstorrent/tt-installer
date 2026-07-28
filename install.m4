@@ -1062,6 +1062,17 @@ main() {
 	# Detect distro early so PKG_MANAGER is set before ttis_import needs it.
 	detect_distro
 
+	# Version arguments given on the command line take precedence over versions
+	# pinned by the 'release' channel or imported from a .ttis file: capture
+	# them before the import and re-apply them afterwards.
+	declare -A user_versions=()
+	for _ver_var in _arg_kmd_version _arg_fw_version _arg_systools_version \
+			_arg_smi_version _arg_flash_version _arg_topology_version _arg_sfpi_version; do
+		if [[ -n "${!_ver_var}" ]]; then
+			user_versions["${_ver_var}"]="${!_ver_var}"
+		fi
+	done
+
 	# Select the version channel.
 	case "${_arg_versions}" in
 		rolling)
@@ -1081,6 +1092,14 @@ main() {
 			ttis_import "${_arg_versions}"
 			;;
 	esac
+
+	if [[ ${#user_versions[@]} -gt 0 ]]; then
+		for _ver_var in "${!user_versions[@]}"; do
+			printf -v "${_ver_var}" '%s' "${user_versions[${_ver_var}]}"
+		done
+		log "Component versions given on the command line take precedence over channel pins"
+	fi
+	unset _ver_var user_versions
 
 	maybe_enable_default_mode
 	log "Starting installation"

@@ -85,6 +85,9 @@ To specify versions:
 ```bash
 ./install.sh --kmd-version=1.34 --fw-version=18.3.0
 ```
+Version arguments given on the command line always take precedence over versions
+pinned by a [version channel](#version-channels); components without an explicit
+argument keep the channel's behavior.
 
 ### Python versioning
 
@@ -109,6 +112,9 @@ that ships with each release. Control this with `--versions`:
 # (this is a full, non-interactive import — used for CI/automation)
 ./install.sh --versions=/path/to/state.ttis
 ```
+
+Whichever channel is selected, explicit version arguments (e.g.
+`--fw-version=18.3.0`) override the pinned version of that component.
 
 `--export-schema /path/to/state.ttis` writes the resolved state of an install to
 a `.ttis` file. It is a developer/CI feature for capturing a configuration to
