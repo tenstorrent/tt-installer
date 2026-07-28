@@ -179,6 +179,106 @@ jobs:
         bash ttis.sh validate "${schema}"
         echo "✓ schema valid"
 
+  # Version-argument precedence: an explicit --*-version argument must override
+  # the version pinned by the release channel, while components without an
+  # explicit argument keep the channel's pin. Installs (container mode, no
+  # hardware) with a tt-smi version that differs from the golden pin, then
+  # asserts both the exported schema and the installed package respect it.
+  test-version-precedence:
+    name: Test version argument precedence
+    needs: [build, validate-golden]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: install-script
+
+    - name: Install jq
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq
+
+    - name: Pick a tt-smi version that differs from the golden pin
+      id: pick
+      run: |
+        set -euo pipefail
+        PIN_TAG=$(grep -oP '(?<=TTIS_GOLDEN_VERSIONS_TAG=")[^"]+' install.m4)
+        curl -fsSL -o golden.ttis \
+          "https://github.com/tenstorrent/tt-sw-manifest/releases/download/${PIN_TAG}/ubuntu-24.04.ttis"
+        golden_smi=$(jq -r '.tt_python["tt-smi"] // ""' golden.ttis)
+        golden_flash=$(jq -r '.tt_python["tt-flash"] // ""' golden.ttis)
+        echo "Golden pins: tt-smi='${golden_smi}', tt-flash='${golden_flash}'"
+
+        # Newest tt-smi release on PyPI that is not the golden pin, so the
+        # test never goes stale as the golden baseline moves.
+        override=$(curl -fsSL https://pypi.org/pypi/tt-smi/json \
+          | jq -r --arg g "${golden_smi}" '.releases | keys[] | select(. != $g)' \
+          | sort -V | tail -1)
+        test -n "${override}" || { echo "::error::could not pick an override version"; exit 1; }
+        echo "Overriding tt-smi to ${override}"
+
+        echo "golden_flash=${golden_flash}" >> "$GITHUB_OUTPUT"
+        echo "override=${override}" >> "$GITHUB_OUTPUT"
+
+    - name: Run installer with --versions=release and an explicit --smi-version
+      run: |
+        set -euo pipefail
+        timeout 900 bash install.sh \
+          --mode-container \
+          --mode-non-interactive \
+          --versions=release \
+          --smi-version=${{ steps.pick.outputs.override }} \
+          --update-firmware=off \
+          --no-install-metalium-container \
+          --no-install-inference-server \
+          --no-install-studio \
+          --python-choice=new-venv \
+          --github-token=${{ github.token }} \
+          --export-schema "${RUNNER_TEMP}/state.ttis" \
+          --reboot-option=never
+
+    - name: Assert version precedence
+      run: |
+        set -euo pipefail
+        schema="${RUNNER_TEMP}/state.ttis"
+        override="${{ steps.pick.outputs.override }}"
+        golden_flash="${{ steps.pick.outputs.golden_flash }}"
+
+        test -f "${schema}" || { echo "::error::schema not written"; exit 1; }
+        cat "${schema}"
+        bash ttis.sh validate "${schema}"
+
+        exported_smi=$(jq -r '.tt_python["tt-smi"]' "${schema}")
+        if [[ "${exported_smi}" != "${override}" ]]; then
+          echo "::error::tt-smi: expected override '${override}', schema records '${exported_smi}'"
+          exit 1
+        fi
+        echo "✓ --smi-version override took precedence over the release pin (${exported_smi})"
+
+        installed_smi=$("${HOME}/.tenstorrent-venv/bin/pip" show tt-smi | awk '/^Version:/{print $2}')
+        if [[ "${installed_smi}" != "${override}" ]]; then
+          echo "::error::tt-smi: expected installed version '${override}', got '${installed_smi}'"
+          exit 1
+        fi
+        echo "✓ installed tt-smi is the override version (${installed_smi})"
+
+        # A component without an explicit argument keeps the channel's pin.
+        if [[ -n "${golden_flash}" ]]; then
+          exported_flash=$(jq -r '.tt_python["tt-flash"]' "${schema}")
+          if [[ "${exported_flash}" != "${golden_flash}" ]]; then
+            echo "::error::tt-flash: expected golden pin '${golden_flash}', schema records '${exported_flash}'"
+            exit 1
+          fi
+          echo "✓ tt-flash kept the release channel pin (${exported_flash})"
+        else
+          echo "tt-flash has no golden pin; skipping pin assertion"
+        fi
+
   test-template-syntax:
     needs: build
     runs-on: ubuntu-latest
@@ -283,7 +383,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only run if the build workflow completed successfully AND it was triggered by a version tag
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling, test-action-container]
+    needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling, test-action-container, test-version-precedence]
 
     permissions:
       contents: write
