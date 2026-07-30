@@ -442,9 +442,9 @@ get_python_choice() {
 				# uv creates the venv (and provisions the interpreter when a
 				# version is pinned), avoiding ensurepip and the system Python.
 				if [[ -n "${_arg_python_version}" ]]; then
-					uv venv --python "${_arg_python_version}" "${_arg_new_venv_location}"
+					uv venv --allow-existing --python "${_arg_python_version}" "${_arg_new_venv_location}"
 				else
-					uv venv "${_arg_new_venv_location}"
+					uv venv --allow-existing "${_arg_new_venv_location}"
 				fi
 			else
 				python3 -m venv "${_arg_new_venv_location}"
