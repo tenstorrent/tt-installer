@@ -441,10 +441,12 @@ get_python_choice() {
 			if [[ "${_arg_use_uv}" = "on" ]]; then
 				# uv creates the venv (and provisions the interpreter when a
 				# version is pinned), avoiding ensurepip and the system Python.
+				# --seed installs pip into the venv: ttis_resolve_versions and
+				# users' own workflows expect `pip` to exist there.
 				if [[ -n "${_arg_python_version}" ]]; then
-					uv venv --allow-existing --python "${_arg_python_version}" "${_arg_new_venv_location}"
+					uv venv --seed --allow-existing --python "${_arg_python_version}" "${_arg_new_venv_location}"
 				else
-					uv venv --allow-existing "${_arg_new_venv_location}"
+					uv venv --seed --allow-existing "${_arg_new_venv_location}"
 				fi
 			else
 				python3 -m venv "${_arg_new_venv_location}"
