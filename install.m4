@@ -870,8 +870,10 @@ install_tt_repos () {
 			# Setup the keyring
 			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
 
-			# Download the key
-			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
+			# Download the key. Use curl, not wget: when wget's stdin is a tty and
+			# the terminal's foreground process group shifts mid-download, it
+			# assumes it was backgrounded and dumps its output to ./wget-log.
+			sudo curl -fsSL -o /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
 			apt_get update
 			;;
@@ -883,8 +885,10 @@ install_tt_repos () {
 			# Setup the keyring
 			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
 
-			# Download the key
-			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
+			# Download the key. Use curl, not wget: when wget's stdin is a tty and
+			# the terminal's foreground process group shifts mid-download, it
+			# assumes it was backgrounded and dumps its output to ./wget-log.
+			sudo curl -fsSL -o /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
 			apt_get update
 			;;
@@ -1161,19 +1165,19 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu")
 			apt_get update
-			apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
+			apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			apt_get update
-			apt_get install -y git python3-pip dkms pipx jq protobuf-compiler wget
+			apt_get install -y git python3-pip dkms pipx jq protobuf-compiler
 			;;
 		"fedora")
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
