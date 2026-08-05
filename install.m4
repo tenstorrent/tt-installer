@@ -41,8 +41,8 @@ exit 11 #)
 
 # ========================= String Arguments =========================
 # ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
-# ARG_OPTIONAL_BOOLEAN([use-uv],,[Use uv instead of pip for Python package installation],[off])
-# ARG_OPTIONAL_SINGLE([python-version],,[Python version for a new venv (e.g. 3.12); requires --use-uv, which provisions it via uv],[])
+# ARG_OPTIONAL_BOOLEAN([use-uv],,[Use uv instead of pip for Python package installation],[on])
+# ARG_OPTIONAL_SINGLE([python-version],,[Python version for a new venv (e.g. 3.12); requires --use-uv, which provisions it via uv],[3.12])
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 # ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[on])
 # ARG_OPTIONAL_SINGLE([github-token],,[Optional GitHub API auth token],[])
