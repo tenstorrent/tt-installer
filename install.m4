@@ -41,8 +41,8 @@ exit 11 #)
 
 # ========================= String Arguments =========================
 # ARG_OPTIONAL_SINGLE([python-choice],,[Python setup strategy: active-venv, new-venv, system-python, pipx],[new-venv])
-# ARG_OPTIONAL_BOOLEAN([use-uv],,[Use uv instead of pip for Python package installation],[off])
-# ARG_OPTIONAL_SINGLE([python-version],,[Python version for a new venv (e.g. 3.12); requires --use-uv, which provisions it via uv],[])
+# ARG_OPTIONAL_BOOLEAN([use-uv],,[Use uv instead of pip for Python package installation],[on])
+# ARG_OPTIONAL_SINGLE([python-version],,[Python version for a new venv (e.g. 3.12); requires --use-uv, which provisions it via uv],[3.12])
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 # ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[on])
 # ARG_OPTIONAL_SINGLE([github-token],,[Optional GitHub API auth token],[])
@@ -319,7 +319,13 @@ check_uv_installed() {
 # Install uv (used when --use-uv is set but uv is not already present)
 install_uv() {
 	log "Installing uv"
-	curl -LsSf https://astral.sh/uv/install.sh | sh
+	# astral.sh is unreachable from some networks (e.g. returns 403 behind
+	# restrictive egress); fall back to PyPI via pipx, which is already a
+	# base package. Both install uv into ~/.local/bin.
+	if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+		warn "Could not fetch uv from astral.sh, installing from PyPI with pipx"
+		pipx install uv
+	fi
 	# uv installs to ~/.local/bin by default; make it visible this session
 	export PATH="${HOME}/.local/bin:${PATH}"
 	check_uv_installed || error_exit "uv installation failed"
@@ -441,10 +447,12 @@ get_python_choice() {
 			if [[ "${_arg_use_uv}" = "on" ]]; then
 				# uv creates the venv (and provisions the interpreter when a
 				# version is pinned), avoiding ensurepip and the system Python.
+				# --seed installs pip into the venv: ttis_resolve_versions and
+				# users' own workflows expect `pip` to exist there.
 				if [[ -n "${_arg_python_version}" ]]; then
-					uv venv --allow-existing --python "${_arg_python_version}" "${_arg_new_venv_location}"
+					uv venv --seed --allow-existing --python "${_arg_python_version}" "${_arg_new_venv_location}"
 				else
-					uv venv --allow-existing "${_arg_new_venv_location}"
+					uv venv --seed --allow-existing "${_arg_new_venv_location}"
 				fi
 			else
 				python3 -m venv "${_arg_new_venv_location}"
@@ -870,8 +878,10 @@ install_tt_repos () {
 			# Setup the keyring
 			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
 
-			# Download the key
-			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
+			# Download the key. Use curl, not wget: when wget's stdin is a tty and
+			# the terminal's foreground process group shifts mid-download, it
+			# assumes it was backgrounded and dumps its output to ./wget-log.
+			sudo curl -fsSL -o /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
 			apt_get update
 			;;
@@ -883,8 +893,10 @@ install_tt_repos () {
 			# Setup the keyring
 			sudo mkdir -p /etc/apt/keyrings; sudo chmod 755 /etc/apt/keyrings
 
-			# Download the key
-			sudo wget -O /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
+			# Download the key. Use curl, not wget: when wget's stdin is a tty and
+			# the terminal's foreground process group shifts mid-download, it
+			# assumes it was backgrounded and dumps its output to ./wget-log.
+			sudo curl -fsSL -o /etc/apt/keyrings/tt-pkg-key.asc https://ppa.tenstorrent.com/tt-pkg-key.asc
 
 			apt_get update
 			;;
@@ -1161,19 +1173,19 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu")
 			apt_get update
-			apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler wget
+			apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
 			;;
 		"debian")
 			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			apt_get update
-			apt_get install -y git python3-pip dkms pipx jq protobuf-compiler wget
+			apt_get install -y git python3-pip dkms pipx jq protobuf-compiler
 			;;
 		"fedora")
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
 			;;
 		"rhel"|"centos")
 			sudo dnf install -y epel-release
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler wget
+			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
 			;;
 		*)
 			error "Unsupported distribution: ${DISTRO_ID}"
