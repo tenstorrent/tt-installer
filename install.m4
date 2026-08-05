@@ -319,7 +319,13 @@ check_uv_installed() {
 # Install uv (used when --use-uv is set but uv is not already present)
 install_uv() {
 	log "Installing uv"
-	curl -LsSf https://astral.sh/uv/install.sh | sh
+	# astral.sh is unreachable from some networks (e.g. returns 403 behind
+	# restrictive egress); fall back to PyPI via pipx, which is already a
+	# base package. Both install uv into ~/.local/bin.
+	if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
+		warn "Could not fetch uv from astral.sh, installing from PyPI with pipx"
+		pipx install uv
+	fi
 	# uv installs to ~/.local/bin by default; make it visible this session
 	export PATH="${HOME}/.local/bin:${PATH}"
 	check_uv_installed || error_exit "uv installation failed"
