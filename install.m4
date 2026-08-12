@@ -243,6 +243,55 @@ detect_distro() {
 	fi
 }
 
+# True when version $1 is greater than or equal to $2. Uses sort -V so that
+# 24.04 orders correctly against 24.4, and 13 against 9.
+version_ge() {
+	[[ -n "${1}" ]] && [[ "$(printf '%s\n%s\n' "${2}" "${1}" | sort -V | head -n1)" == "${2}" ]]
+}
+
+# rustup is packaged from Debian 13 (trixie) and Ubuntu 24.04 (noble) onwards.
+# Earlier suites have no rustup package at all, so callers must fall back.
+# Requires detect_distro to have run. Suites without a VERSION_ID (Debian
+# testing/unstable) report false and take the fallback path.
+has_packaged_rustup() {
+	case "${DISTRO_ID}" in
+		"debian") version_ge "${VERSION_ID:-}" "13" ;;
+		"ubuntu") version_ge "${VERSION_ID:-}" "24.04" ;;
+		*) return 1 ;;
+	esac
+}
+
+# Install a Rust toolchain on apt-based distros.
+#
+# Where rustup is packaged we prefer it: it tracks current stable, whereas the
+# distro rustc/cargo lag and on Debian are too old to build our dependencies.
+# The rustup package owns /usr/bin/cargo and /usr/bin/rustc as shims, so it
+# replaces the cargo and rustc packages rather than sitting alongside them —
+# both cannot own those paths.
+install_rust() {
+	if has_packaged_rustup; then
+		log "Installing Rust via the packaged rustup"
+		apt_get install -y rustup
+		# The shims need a toolchain behind them. Without this cargo and rustc
+		# are on PATH but refuse to run. Deliberately not run through sudo:
+		# rustup is per-user, and the toolchain belongs to whoever invoked the
+		# installer rather than to root.
+		rustup default stable
+		return
+	fi
+
+	case "${DISTRO_ID}" in
+		"ubuntu")
+			# No rustup before 24.04; the distro toolchain is current enough here.
+			apt_get install -y cargo rustc
+			;;
+		"debian")
+			warn "rustc and cargo cannot be automatically installed on Debian ${VERSION_ID:-(unknown version)}; its packaged toolchain is too old."
+			warn "Ensure recent versions are installed before continuing. If you are unsure how, use rustup: https://rustup.rs/"
+			;;
+	esac
+}
+
 # Fetch the golden .ttis schema for this distro from the pinned
 # tt-sw-manifest release. The release publishes one asset per
 # distro/version named "<distro_id>-<version_id>.ttis", so we download that file
@@ -1171,14 +1220,10 @@ main() {
 
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
-		"ubuntu")
-			apt_get update
-			apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
-			;;
-		"debian")
-			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
+		"ubuntu"|"debian")
 			apt_get update
 			apt_get install -y git python3-pip dkms pipx jq protobuf-compiler
+			install_rust
 			;;
 		"fedora")
 			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
@@ -1192,11 +1237,6 @@ main() {
 			exit 1
 			;;
 	esac
-
-	if [[ "${DISTRO_ID}" = "debian" ]]; then
-		warn "rustc and cargo cannot be automatically installed on Debian. Ensure the latest versions are installed before continuing."
-		warn "If you are unsure how to do this, use rustup: https://rustup.rs/"
-	fi
 
 	# Get Metalium container installation choice
 	get_metalium_container_choice
