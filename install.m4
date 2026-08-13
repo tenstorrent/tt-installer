@@ -67,6 +67,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
 # ARG_OPTIONAL_BOOLEAN([verbose],,[Enable verbose output for debugging])
+# ARG_OPTIONAL_BOOLEAN([dry-run],,[Preview installation plan without modifying the system],[off])
 
 # ARGBASH_GO
 
@@ -1048,7 +1049,31 @@ install_docker() {
 }
 
 # Main installation script
+handle_dry_run() {
+    if [[ "${_arg_dry_run}" = "on" ]]; then
+        echo ""
+        echo "=== DRY RUN MODE ==="
+        echo "No system changes will be made."
+        echo ""
+        echo "Platform: ${DISTRO_ID:-unknown} ${DISTRO_VERSION_ID:-unknown} $(uname -m)"
+        echo ""
+        echo "Planned actions:"
+        echo "  [PKG] Install base packages"
+        [[ "${_arg_install_kmd}" = "on" ]] && echo "  [KMD] Install Kernel-Mode-Driver"
+        [[ "${_arg_install_hugepages}" = "on" ]] && echo "  [HUGEPAGES] Configure HugePages"
+        [[ "${_arg_install_container_runtime}" != "none" ]] && echo "  [CONTAINER] Install ${_arg_install_container_runtime}"
+        echo "  [PYTHON] Install Python packages"
+        [[ "${_arg_update_firmware}" != "off" ]] && echo "  [FIRMWARE] Update firmware"
+        echo ""
+        echo "===================="
+        exit 0
+    fi
+}
+
+
 main() {
+	handle_dry_run
+
 	echo -e "${LOGO}"
 	echo # newline
 	INSTALLER_VERSION="__INSTALLER_DEVELOPMENT_BUILD__" # Set to semver at release time by GitHub Actions
