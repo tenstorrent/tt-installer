@@ -1050,30 +1050,90 @@ install_docker() {
 
 # Main installation script
 handle_dry_run() {
-    if [[ "${_arg_dry_run}" = "on" ]]; then
-        echo ""
-        echo "=== DRY RUN MODE ==="
-        echo "No system changes will be made."
-        echo ""
-        echo "Platform: ${DISTRO_ID:-unknown} ${DISTRO_VERSION_ID:-unknown} $(uname -m)"
-        echo ""
-        echo "Planned actions:"
-        echo "  [PKG] Install base packages"
-        [[ "${_arg_install_kmd}" = "on" ]] && echo "  [KMD] Install Kernel-Mode-Driver"
-        [[ "${_arg_install_hugepages}" = "on" ]] && echo "  [HUGEPAGES] Configure HugePages"
-        [[ "${_arg_install_container_runtime}" != "none" ]] && echo "  [CONTAINER] Install ${_arg_install_container_runtime}"
-        echo "  [PYTHON] Install Python packages"
-        [[ "${_arg_update_firmware}" != "off" ]] && echo "  [FIRMWARE] Update firmware"
-        echo ""
-        echo "===================="
-        exit 0
-    fi
+	[[ "${_arg_dry_run}" = "on" ]] || return 0
+
+	echo ""
+	echo "=== DRY RUN: installation plan (no system changes will be made) ==="
+	echo ""
+	echo "Platform:"
+	echo "  Distribution:    ${DISTRO_ID:-unknown} ${VERSION_ID:-unknown}"
+	echo "  Architecture:    $(uname -m)"
+	echo "  Kernel:          $(uname -r)"
+	echo "  Package manager: ${PKG_MANAGER:-unknown}"
+	echo "  Version channel: ${_arg_versions}"
+	echo ""
+
+	# Build the package registry exactly as the real install does, so the plan
+	# reflects the concrete package/version selections for this run (including
+	# any pins resolved from the selected version channel or an imported .ttis).
+	declare -A package_registry=()
+	for _ttis_entry in "${TTIS_PACKAGE_MAP[@]}"; do
+		IFS='|' read -r _ttis_pkg _ttis_type _ttis_ivar _ttis_vvar <<< "${_ttis_entry}"
+		package_registry["${_ttis_pkg}"]="${_ttis_pkg}|${!_ttis_ivar}|${!_ttis_vvar}|${_ttis_type}"
+	done
+	for _ttis_entry in "${TTIS_IMPORTED_PACKAGES[@]+"${TTIS_IMPORTED_PACKAGES[@]}"}"; do
+		IFS='|' read -r _ttis_pkg _ttis_flag _ttis_ver _ttis_type <<< "${_ttis_entry}"
+		package_registry["${_ttis_pkg}"]="${_ttis_pkg}|${_ttis_flag}|${_ttis_ver}|${_ttis_type}"
+	done
+	unset _ttis_entry _ttis_pkg _ttis_flag _ttis_ver _ttis_type _ttis_ivar _ttis_vvar
+
+	declare -a system_packages=()
+	declare -a python_packages=()
+	for key in "${!package_registry[@]}"; do
+		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[${key}]}"
+		[[ "${install_flag}" != "on" ]] && continue
+		case "${pkg_type}" in
+			system)
+				if [[ -z "${version}" ]]; then
+					system_packages+=("${pkg_name}")
+				elif [[ "${PKG_MANAGER}" = "apt-get" ]]; then
+					system_packages+=("${pkg_name}=${version}")
+				else
+					system_packages+=("${pkg_name}-${version}")
+				fi
+				;;
+			python)
+				if [[ -z "${version}" ]]; then
+					python_packages+=("${pkg_name}")
+				else
+					python_packages+=("${pkg_name}==${version}")
+				fi
+				;;
+		esac
+	done
+
+	echo "Planned actions:"
+	echo ""
+	echo "  System packages:"
+	if [[ ${#system_packages[@]} -gt 0 ]]; then
+		printf '    - %s\n' "${system_packages[@]}"
+	else
+		echo "    (none)"
+	fi
+	echo ""
+	echo "  Python packages:"
+	if [[ ${#python_packages[@]} -gt 0 ]]; then
+		printf '    - %s\n' "${python_packages[@]}"
+	else
+		echo "    (none)"
+	fi
+	echo ""
+	echo "  Kernel-Mode Driver: $([[ "${_arg_install_kmd}" = "on" ]] && echo install || echo skip)"
+	echo "  HugePages:          $([[ "${_arg_install_hugepages}" = "on" ]] && echo configure || echo skip)"
+	echo "  Container runtime:  ${_arg_install_container_runtime}"
+	echo "  Metalium container: $([[ "${_arg_install_metalium_container}" = "on" ]] && echo install || echo skip)"
+	echo "  Forge container:    $([[ "${_arg_install_forge_container}" = "on" ]] && echo install || echo skip)"
+	echo "  Firmware update:    ${_arg_update_firmware}"
+	echo "  Python strategy:    ${_arg_python_choice} (uv: ${_arg_use_uv})"
+	echo "  Privileges:         sudo required"
+	echo "  Reboot policy:      ${_arg_reboot_option}"
+	echo ""
+	echo "=============================================================="
+	exit 0
 }
 
 
 main() {
-	handle_dry_run
-
 	echo -e "${LOGO}"
 	echo # newline
 	INSTALLER_VERSION="__INSTALLER_DEVELOPMENT_BUILD__" # Set to semver at release time by GitHub Actions
@@ -1137,6 +1197,8 @@ main() {
 		log "Component versions given on the command line take precedence over channel pins"
 	fi
 	unset _ver_var user_versions
+
+	handle_dry_run
 
 	maybe_enable_default_mode
 	log "Starting installation"

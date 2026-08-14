@@ -63,6 +63,17 @@ To skip certain components:
 ./install.sh --no-install-kmd --no-install-hugepages
 ```
 
+To preview the installation plan without making any system changes:
+```bash
+./install.sh --dry-run
+```
+`--dry-run` resolves the same platform details and package selections as a real
+install (including the active [version channel](#version-channels)), then prints
+the plan — detected distribution, architecture and kernel, the system and Python
+packages that would be installed, and the actions that would be taken for
+drivers, HugePages, the container runtime, and firmware — and exits without
+touching the system.
+
 ### Container runtime selection
 
 By default (`--install-container-runtime=auto`) the installer checks whether
