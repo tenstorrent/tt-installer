@@ -214,17 +214,34 @@ jobs:
         golden_flash=$(jq -r '.tt_python["tt-flash"] // ""' golden.ttis)
         echo "Golden pins: tt-smi='${golden_smi}', tt-flash='${golden_flash}'"
 
-        test -n "${golden_smi}" || { echo "::error::golden tt-smi pin is empty"; exit 1; }
-        golden_smi_major="${golden_smi%%.*}"
+        # Newest tt-smi release on PyPI that is not the golden pin, so the
+        # test never goes stale as the golden baseline moves. tt-smi and
+        # tt-flash are coupled through pyluwen (each pins ~=0.X.0), and the
+        # installer resolves both in one uv invocation — so only consider
+        # tt-smi versions whose pyluwen series matches the golden tt-flash's,
+        # or the override itself makes the install unsatisfiable.
+        pyluwen_series() {
+          # pyluwen_series <package> <version> — prints e.g. "0.8", or ""
+          # if the release has no pyluwen requirement.
+          curl -fsSL "https://pypi.org/pypi/$1/$2/json" \
+            | jq -r '.info.requires_dist[]? | select(test("^pyluwen"))' \
+            | grep -oP '[0-9]+\.[0-9]+' | head -1 || true
+        }
+        flash_series=$(pyluwen_series tt-flash "${golden_flash}")
+        echo "tt-flash ${golden_flash} pyluwen series: '${flash_series}'"
 
-        # Stay within the golden pin's major line. A cross-major override may
-        # require a different pyluwen series than the other golden packages,
-        # testing dependency incompatibility instead of argument precedence.
-        override=$(curl -fsSL https://pypi.org/pypi/tt-smi/json \
-          | jq -r --arg g "${golden_smi}" --arg m "${golden_smi_major}" \
-              '.releases | keys[] | select(. != $g and startswith($m + "."))' \
-          | sort -V | tail -1)
-        test -n "${override}" || { echo "::error::could not pick a same-major override version"; exit 1; }
+        override=""
+        while read -r candidate; do
+          smi_series=$(pyluwen_series tt-smi "${candidate}")
+          if [[ -z "${flash_series}" || -z "${smi_series}" || "${smi_series}" == "${flash_series}" ]]; then
+            override="${candidate}"
+            break
+          fi
+          echo "Skipping tt-smi ${candidate}: pyluwen series '${smi_series}' conflicts with tt-flash's '${flash_series}'"
+        done < <(curl -fsSL https://pypi.org/pypi/tt-smi/json \
+          | jq -r --arg g "${golden_smi}" '.releases | keys[] | select(. != $g) | select(test("^[0-9]+(\\.[0-9]+)*$"))' \
+          | sort -rV | head -15)
+        test -n "${override}" || { echo "::error::could not pick an override version compatible with tt-flash ${golden_flash}"; exit 1; }
         echo "Overriding tt-smi to ${override}"
 
         echo "golden_flash=${golden_flash}" >> "$GITHUB_OUTPUT"
