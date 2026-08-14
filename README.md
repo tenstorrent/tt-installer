@@ -58,6 +58,31 @@ To install without prompting the user:
 ./install.sh --mode-non-interactive
 ```
 
+### Preview an installation
+
+Use `--dry-run` to resolve the selected version source and print an installation
+plan without changing the system:
+
+```bash
+./install.sh --dry-run
+./install.sh --versions=rolling --dry-run
+./install.sh --versions=/path/to/state.ttis --dry-run
+./install.sh --mode-container --dry-run
+```
+
+The plan includes the detected distribution, architecture and kernel, selected
+system and Python packages, HugePages handling, container runtime and images,
+and the firmware version/action. Actions that would require elevated privileges
+are identified in the output. Dry-run is non-interactive and does not run
+package-manager changes, DKMS or HugePages configuration, firmware flashing,
+container pulls, wrapper/configuration writes, schema exports, or reboots. It
+does not require Tenstorrent hardware.
+
+Dry-run is a preview, not a complete simulation. It may perform read-only host
+detection and network lookups needed for version resolution. Package
+availability, network results, and runtime behavior can change between the time
+the plan is displayed and a real installation is run.
+
 To skip certain components:
 ```bash
 ./install.sh --no-install-kmd --no-install-hugepages

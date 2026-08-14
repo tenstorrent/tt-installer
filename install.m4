@@ -66,6 +66,7 @@ exit 11 #)
 # ========================= Mode Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
+# ARG_OPTIONAL_BOOLEAN([dry-run],,[Print the installation plan without modifying the system],[off])
 # ARG_OPTIONAL_BOOLEAN([verbose],,[Enable verbose output for debugging])
 
 # ARGBASH_GO
@@ -97,6 +98,14 @@ if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_container_runtime="none" # No container runtime in container
 	_arg_install_sfpi="off"
 	_arg_reboot_option="never" # Do not reboot
+fi
+
+# A preview must be deterministic and must never pause for installation choices.
+# Imported .ttis files already enable non-interactive mode, but set it here for
+# release/rolling previews as well. Explicit command-line values and defaults
+# remain the source of the plan.
+if [[ "${_arg_dry_run}" = "on" ]]; then
+	_arg_mode_non_interactive="on"
 fi
 
 PIPX_ENSUREPATH_EXTRAS="${TT_PIPX_ENSUREPATH_EXTRAS:- }"
@@ -1047,6 +1056,240 @@ install_docker() {
 	log "Docker installation completed. You may need to log out and back in for group membership to take effect."
 }
 
+# Validate option values that argbash accepts as free-form strings. Keep this
+# separate from execution so dry-run reports invalid input without reaching any
+# privileged or write-producing operation.
+validate_option_values() {
+	case "${_arg_install_container_runtime}" in
+		auto|podman|docker|none) ;;
+		*) error_exit "Invalid container runtime option: ${_arg_install_container_runtime}. Must be 'auto', 'podman', 'docker', or 'none'" ;;
+	esac
+	case "${_arg_python_choice}" in
+		active-venv|new-venv|system-python|pipx) ;;
+		*) error_exit "Invalid Python setup strategy: ${_arg_python_choice}. Must be 'active-venv', 'new-venv', 'system-python', or 'pipx'" ;;
+	esac
+	case "${_arg_update_firmware}" in
+		on|off|force) ;;
+		*) error_exit "Invalid firmware update option: ${_arg_update_firmware}. Must be 'on', 'off', or 'force'" ;;
+	esac
+	case "${_arg_reboot_option}" in
+		ask|never|always) ;;
+		*) error_exit "Invalid reboot option: ${_arg_reboot_option}. Must be 'ask', 'never', or 'always'" ;;
+	esac
+}
+
+# Build the package lists once from the canonical TTIS_PACKAGE_MAP registry.
+# These arrays are consumed by both print_installation_plan and the real
+# executor, preventing preview output from drifting away from installation.
+build_package_plan() {
+	declare -gA package_registry=()
+	declare -ga system_packages=()
+	declare -ga system_downgrade_packages=()
+	declare -ga python_packages=()
+
+	local entry pkg_name pkg_type install_var version_var install_flag version key
+	for entry in "${TTIS_PACKAGE_MAP[@]}"; do
+		IFS='|' read -r pkg_name pkg_type install_var version_var <<< "${entry}"
+		package_registry["${pkg_name}"]="${pkg_name}|${!install_var}|${!version_var}|${pkg_type}"
+	done
+	for entry in "${TTIS_IMPORTED_PACKAGES[@]+"${TTIS_IMPORTED_PACKAGES[@]}"}"; do
+		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${entry}"
+		package_registry["${pkg_name}"]="${pkg_name}|${install_flag}|${version}|${pkg_type}"
+	done
+
+	for key in "${!package_registry[@]}"; do
+		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[${key}]}"
+		[[ "${install_flag}" != "on" ]] && continue
+
+		case "${pkg_type}" in
+			system)
+				if [[ -z "${version}" ]]; then
+					system_packages+=("${pkg_name}")
+				elif [[ "${PKG_MANAGER}" = "apt-get" ]]; then
+					system_packages+=("${pkg_name}=${version}")
+				elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
+					local installed_version=""
+					if rpm -q "${pkg_name}" &> /dev/null; then
+						installed_version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg_name}")"
+					fi
+					if [[ -n "${installed_version}" && "${version}" != "${installed_version}" && "$(printf '%s\n%s\n' "${version}" "${installed_version}" | sort -V | head -n 1)" == "${version}" ]]; then
+						system_downgrade_packages+=("${pkg_name}-${version}")
+					else
+						system_packages+=("${pkg_name}-${version}")
+					fi
+				else
+					system_packages+=("${pkg_name}")
+				fi
+				;;
+			python)
+				if [[ -z "${version}" ]]; then
+					python_packages+=("${pkg_name}")
+				else
+					python_packages+=("${pkg_name}==${version}")
+				fi
+				;;
+		esac
+	done
+}
+
+build_base_package_plan() {
+	declare -ga base_packages=()
+	case "${DISTRO_ID}" in
+		ubuntu) base_packages=(git python3-pip dkms cargo rustc pipx jq protobuf-compiler) ;;
+		debian) base_packages=(git python3-pip dkms pipx jq protobuf-compiler) ;;
+		fedora|rhel|centos) base_packages=(git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler) ;;
+	esac
+}
+
+# Resolve only the read-only portion of the automatic runtime decision.
+resolve_container_runtime_plan() {
+	PLANNED_CONTAINER_RUNTIME="${_arg_install_container_runtime}"
+	PLANNED_CONTAINER_RUNTIME_ACTION="none"
+	case "${_arg_install_container_runtime}" in
+		auto)
+			if command -v docker &> /dev/null && ! docker --version 2> /dev/null | grep -qi podman; then
+				PLANNED_CONTAINER_RUNTIME="docker"
+				PLANNED_CONTAINER_RUNTIME_ACTION="use installed Docker"
+			elif command -v podman &> /dev/null || command -v docker &> /dev/null; then
+				PLANNED_CONTAINER_RUNTIME="podman"
+				PLANNED_CONTAINER_RUNTIME_ACTION="use installed Podman"
+			else
+				PLANNED_CONTAINER_RUNTIME="docker"
+				PLANNED_CONTAINER_RUNTIME_ACTION="install Docker [elevated privileges]"
+			fi
+			;;
+		podman) PLANNED_CONTAINER_RUNTIME_ACTION="install Podman packages and configure rootless mappings [elevated privileges]" ;;
+		docker) PLANNED_CONTAINER_RUNTIME_ACTION="install Docker and configure its service/group [elevated privileges]" ;;
+		none) PLANNED_CONTAINER_RUNTIME_ACTION="skip container runtime installation" ;;
+	esac
+}
+
+prepare_python_plan() {
+	PYTHON_CHOICE="${_arg_python_choice}"
+	if [[ "${PYTHON_CHOICE}" = "pipx" && "${_arg_use_uv}" = "on" ]]; then
+		warn "--use-uv is not compatible with pipx; the plan will use pipx"
+	fi
+	case "${PYTHON_CHOICE}" in
+		active-venv) PLANNED_PYTHON_ENV="active virtual environment (${VIRTUAL_ENV:-not currently active})" ;;
+		new-venv) PLANNED_PYTHON_ENV="new virtual environment at ${_arg_new_venv_location}" ;;
+		system-python) PLANNED_PYTHON_ENV="system Python" ;;
+		pipx) PLANNED_PYTHON_ENV="isolated pipx environments" ;;
+	esac
+	if [[ "${_arg_use_uv}" = "on" && "${PYTHON_CHOICE}" != "pipx" ]]; then
+		PLANNED_PYTHON_ENV+=" using uv"
+		[[ -n "${_arg_python_version}" ]] && PLANNED_PYTHON_ENV+=" with Python ${_arg_python_version}"
+	fi
+}
+
+resolve_firmware_plan() {
+	if [[ "${_arg_update_firmware}" = "off" ]]; then
+		PLANNED_FIRMWARE_VERSION="${_arg_fw_version:-not resolved}"
+		PLANNED_FIRMWARE_ACTION="skip firmware update"
+		return
+	fi
+
+	if [[ -n "${_arg_fw_version:-}" ]]; then
+		PLANNED_FIRMWARE_VERSION="${_arg_fw_version}"
+	else
+		if ! PLANNED_FIRMWARE_VERSION=$(fetch_latest_version "tenstorrent/tt-system-firmware" "v"); then
+			error_exit "Could not resolve the latest firmware version for the installation plan"
+		fi
+	fi
+	if [[ "${_arg_update_firmware}" = "force" ]]; then
+		PLANNED_FIRMWARE_ACTION="force flash with tt-flash [elevated/device privileges]"
+	else
+		PLANNED_FIRMWARE_ACTION="flash with tt-flash if required [elevated/device privileges]"
+	fi
+}
+
+print_plan_items() {
+	local item
+	if [[ "$#" -eq 0 ]]; then
+		echo "    (none)"
+		return
+	fi
+	for item in "$@"; do
+		echo "    - ${item}"
+	done
+}
+
+print_installation_plan() {
+	local distro_name="${PRETTY_NAME:-${DISTRO_ID}}"
+	local architecture kernel_version image_action
+	architecture=$(uname -m)
+	kernel_version=$(uname -r)
+
+	echo
+	echo "======================================================================"
+	echo "TENSTORRENT INSTALLATION PLAN — DRY RUN (NO ACTIONS WILL BE EXECUTED)"
+	echo "======================================================================"
+	echo "Platform:"
+	echo "  Distribution: ${distro_name} (${DISTRO_ID} ${VERSION_ID:-unknown})"
+	echo "  Architecture: ${architecture}"
+	echo "  Kernel: ${kernel_version}"
+	echo "  Version source: ${_arg_versions}"
+	echo
+	echo "Base system packages [elevated privileges]:"
+	print_plan_items "${base_packages[@]+"${base_packages[@]}"}"
+	echo "Tenstorrent system packages [elevated privileges; package hooks may manage DKMS/system configuration]:"
+	print_plan_items "${system_packages[@]+"${system_packages[@]}"}"
+	if [[ ${#system_downgrade_packages[@]} -gt 0 ]]; then
+		echo "System package downgrades [elevated privileges]:"
+		print_plan_items "${system_downgrade_packages[@]}"
+	fi
+	echo "Python packages:"
+	print_plan_items "${python_packages[@]+"${python_packages[@]}"}"
+	echo "  Python environment: ${PLANNED_PYTHON_ENV}"
+	echo
+	echo "HugePages:"
+	if [[ "${_arg_install_hugepages}" = "on" ]]; then
+		echo "  Enabled — install tenstorrent-tools and apply its package-managed HugePages configuration [elevated privileges]"
+		echo "  Exact HugePages values are determined by the tenstorrent-tools package at installation time."
+	else
+		echo "  Disabled — no HugePages configuration will be written"
+	fi
+	echo
+	echo "Container runtime:"
+	echo "  Selected: ${PLANNED_CONTAINER_RUNTIME}"
+	echo "  Action: ${PLANNED_CONTAINER_RUNTIME_ACTION}"
+	echo "Container images:"
+	if [[ "${_arg_pull_container_images}" = "on" ]]; then
+		image_action="pull during installation"
+	else
+		image_action="do not pre-pull; wrapper pulls on first use"
+	fi
+	if [[ "${_arg_install_metalium_container}" = "on" ]]; then
+		echo "    - ${_arg_metalium_image_url}:${_arg_metalium_image_tag} (${image_action})"
+	fi
+	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
+		echo "    - ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-models-amd64:latest-rc (${image_action})"
+	fi
+	if [[ "${_arg_install_forge_container}" = "on" ]]; then
+		echo "    - ${_arg_forge_image_url}:${_arg_forge_image_tag} (${image_action})"
+	fi
+	if [[ "${_arg_install_metalium_container}" != "on" && "${_arg_install_metalium_models_container}" != "on" && "${_arg_install_forge_container}" != "on" ]]; then
+		echo "    (none)"
+	fi
+	echo
+	echo "Firmware:"
+	echo "  Version: ${PLANNED_FIRMWARE_VERSION}"
+	echo "  Action: ${PLANNED_FIRMWARE_ACTION}"
+	echo
+	echo "Other planned actions:"
+	echo "    - Configure the Tenstorrent package repository [elevated privileges]"
+	[[ "${_arg_install_kmd}" = "on" ]] && echo "    - Install/update the Tenstorrent DKMS driver [elevated privileges]"
+	[[ "${_arg_install_metalium_container}" = "on" ]] && echo "    - Write ${_arg_metalium_container_script_dir}/${_arg_metalium_container_script_name} wrapper"
+	[[ "${_arg_install_metalium_models_container}" = "on" ]] && echo "    - Write ${HOME}/.local/bin/tt-metalium-models wrapper"
+	[[ "${_arg_install_forge_container}" = "on" ]] && echo "    - Write ${_arg_forge_container_script_dir}/${_arg_forge_container_script_name} wrapper"
+	[[ "${_arg_install_inference_server}" = "on" ]] && echo "    - Clone tt-inference-server and write its wrapper"
+	[[ "${_arg_install_studio}" = "on" ]] && echo "    - Clone tt-studio and write its wrapper"
+	echo "    - Reboot: ${_arg_reboot_option}"
+	echo
+	echo "PREVIEW ONLY: no package, DKMS, HugePages, firmware, container, wrapper,"
+	echo "configuration, or reboot action was executed. Package availability, network"
+	echo "results, and runtime behavior may change after this plan is displayed."
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -1057,6 +1300,7 @@ main() {
 	log "Log is at ${LOG_FILE}"
 
 	log "This script will install drivers and tooling and properly configure your tenstorrent hardware."
+	validate_option_values
 
 	if [[ -n "${_arg_export_schema:-}" ]]; then
 		warn "--export-schema is a developer/CI feature for capturing installer state; it is not needed for a normal install."
@@ -1164,6 +1408,25 @@ main() {
 		log "uv will be used instead of pip for package installation"
 	fi
 
+	if [[ "${_arg_dry_run}" = "on" ]]; then
+		warn "DRY RUN: building an installation plan; no installation actions will be executed"
+		get_metalium_container_choice
+		get_forge_container_choice
+		if [[ "${_arg_install_metalium_container}" = "off" ]] && [[ "${_arg_install_metalium_models_container}" = "off" ]] && [[ "${_arg_install_forge_container}" = "off" ]]; then
+			_arg_install_container_runtime="none"
+		fi
+		get_inference_server_choice
+		get_studio_choice
+		prepare_python_plan
+		resolve_container_runtime_plan
+		build_base_package_plan
+		build_package_plan
+		resolve_firmware_plan
+		print_installation_plan
+		log "Dry-run plan built successfully. No installation actions were executed."
+		return 0
+	fi
+
 	log "Checking for sudo permissions... (may request password)"
 	check_has_sudo_perms
 
@@ -1266,70 +1529,8 @@ main() {
 			;;
 	esac
 
-	# 1. Build package_registry from TTIS_PACKAGE_MAP (defined in ttis.sh).
-	# Format: "package_name|install_flag|version|type"
-	# To add a package, edit TTIS_PACKAGE_MAP in ttis.sh — no changes needed here.
-	# Build package_registry from TTIS_PACKAGE_MAP + current _arg_* variables.
-	# Any extra packages imported from a .ttis file are appended from TTIS_IMPORTED_PACKAGES.
-	declare -A package_registry=()
-	for _ttis_entry in "${TTIS_PACKAGE_MAP[@]}"; do
-		IFS='|' read -r _ttis_pkg _ttis_type _ttis_ivar _ttis_vvar <<< "${_ttis_entry}"
-		package_registry["${_ttis_pkg}"]="${_ttis_pkg}|${!_ttis_ivar}|${!_ttis_vvar}|${_ttis_type}"
-	done
-	for _ttis_entry in "${TTIS_IMPORTED_PACKAGES[@]+"${TTIS_IMPORTED_PACKAGES[@]}"}"; do
-		IFS='|' read -r _ttis_pkg _ttis_flag _ttis_ver _ttis_type <<< "${_ttis_entry}"
-		package_registry["${_ttis_pkg}"]="${_ttis_pkg}|${_ttis_flag}|${_ttis_ver}|${_ttis_type}"
-	done
-	unset _ttis_entry _ttis_pkg _ttis_flag _ttis_ver _ttis_type _ttis_ivar _ttis_vvar
-
-	# 2. Parse the registry to obtain lists of packages
-	declare -a system_packages=()
-	declare -a system_downgrade_packages=()
-	declare -a python_packages=()
-
-	for key in "${!package_registry[@]}"; do
-		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[${key}]}"
-
-		# Skip if not marked for installation
-		[[ "${install_flag}" != "on" ]] && continue
-
-		# Add to appropriate list with version formatting
-		case "${pkg_type}" in
-			system)
-				if [[ -z "${version}" ]]; then
-					system_packages+=("${pkg_name}")
-				else
-					# Format based on package manager
-					if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
-						system_packages+=("${pkg_name}=${version}")
-					elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
-						# dnf "install" refuses to downgrade a package. If the
-						# pinned version (e.g. the 'release' channel after using
-						# 'rolling', or an imported .ttis file) is older than the
-						# installed one, route it through "dnf downgrade" instead.
-						installed_version=""
-						if rpm -q "${pkg_name}" &> /dev/null; then
-							installed_version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg_name}")"
-						fi
-						if [[ -n "${installed_version}" && "${version}" != "${installed_version}" && "$(printf '%s\n%s\n' "${version}" "${installed_version}" | sort -V | head -n 1)" == "${version}" ]]; then
-							system_downgrade_packages+=("${pkg_name}-${version}")
-						else
-							system_packages+=("${pkg_name}-${version}")
-						fi
-					else
-						system_packages+=("${pkg_name}")  # fallback to no version
-					fi
-				fi
-				;;
-			python)
-				if [[ -z "${version}" ]]; then
-					python_packages+=("${pkg_name}")
-				else
-					python_packages+=("${pkg_name}==${version}")
-				fi
-				;;
-		esac
-	done
+	# Build the same canonical package plan used by --dry-run.
+	build_package_plan
 
 	# 3. Act on the lists
 	# Install system packages

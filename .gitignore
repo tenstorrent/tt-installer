@@ -3,4 +3,5 @@ install.sh
 install.sh.temp
 argbash
 *.ttis
+!tests/fixtures/*.ttis
 installer-golden-versions

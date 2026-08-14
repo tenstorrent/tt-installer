@@ -312,6 +312,29 @@ jobs:
         shellcheck install.sh
         echo "✓ Script syntax is valid"
 
+  test-dry-run:
+    name: Test dry-run safety and version sources
+    needs: build
+    runs-on: ubuntu-24.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download install.sh
+      uses: actions/download-artifact@v4
+      with:
+        name: install-script
+
+    - name: Install test dependency
+      run: sudo apt-get install -y jq
+
+    - name: Check dry-run test script
+      run: shellcheck tests/test-dry-run.sh
+
+    - name: Run dry-run tests
+      run: bash tests/test-dry-run.sh
+
   test-version-fetching:
     needs: build
     runs-on: ubuntu-latest
@@ -383,7 +406,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only run if the build workflow completed successfully AND it was triggered by a version tag
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling, test-action-container, test-version-precedence]
+    needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling, test-action-container, test-version-precedence, test-dry-run]
 
     permissions:
       contents: write
