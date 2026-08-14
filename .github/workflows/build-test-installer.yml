@@ -214,12 +214,17 @@ jobs:
         golden_flash=$(jq -r '.tt_python["tt-flash"] // ""' golden.ttis)
         echo "Golden pins: tt-smi='${golden_smi}', tt-flash='${golden_flash}'"
 
-        # Newest tt-smi release on PyPI that is not the golden pin, so the
-        # test never goes stale as the golden baseline moves.
+        test -n "${golden_smi}" || { echo "::error::golden tt-smi pin is empty"; exit 1; }
+        golden_smi_major="${golden_smi%%.*}"
+
+        # Stay within the golden pin's major line. A cross-major override may
+        # require a different pyluwen series than the other golden packages,
+        # testing dependency incompatibility instead of argument precedence.
         override=$(curl -fsSL https://pypi.org/pypi/tt-smi/json \
-          | jq -r --arg g "${golden_smi}" '.releases | keys[] | select(. != $g)' \
+          | jq -r --arg g "${golden_smi}" --arg m "${golden_smi_major}" \
+              '.releases | keys[] | select(. != $g and startswith($m + "."))' \
           | sort -V | tail -1)
-        test -n "${override}" || { echo "::error::could not pick an override version"; exit 1; }
+        test -n "${override}" || { echo "::error::could not pick a same-major override version"; exit 1; }
         echo "Overriding tt-smi to ${override}"
 
         echo "golden_flash=${golden_flash}" >> "$GITHUB_OUTPUT"
