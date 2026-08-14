@@ -131,7 +131,7 @@ NC='\033[0m' # No Color
 
 # Pinned installer-golden-versions release tag. Bump here to adopt a new golden
 # matrix; the Golden Matrix CI workflow reads this value out of install.m4.
-readonly TTIS_GOLDEN_VERSIONS_TAG="v2026.06.26"
+readonly TTIS_GOLDEN_VERSIONS_TAG="v1.0.0"
 
 # ttis.sh is inlined here at build time (see scripts/inline-ttis.sh), replacing
 # the placeholder line below with the body of ttis.sh between its TTIS_INLINE

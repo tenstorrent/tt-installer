@@ -5,11 +5,14 @@ install.sh: install.m4 ttis.sh scripts/inline-ttis.sh
 	scripts/inline-ttis.sh install.sh ttis.sh
 
 GOLDEN_TAG := $(shell grep -oP '(?<=TTIS_GOLDEN_VERSIONS_TAG=")[^"]+' install.m4)
-GOLDEN_URL := https://github.com/tenstorrent/tt-sw-manifest/releases/download/$(GOLDEN_TAG)/golden.tar.gz
 
 fetch-golden:
 	mkdir -p installer-golden-versions/golden
-	curl -fsSL "$(GOLDEN_URL)" | tar -xz --strip-components=1 -C installer-golden-versions/golden/
+	curl -fsSL "https://api.github.com/repos/tenstorrent/tt-sw-manifest/releases/tags/$(GOLDEN_TAG)" \
+		| jq -r '.assets[] | select(.name | endswith(".ttis")) | [.name, .browser_download_url] | @tsv' \
+		| while IFS=$$'\t' read -r name url; do \
+			curl -fsSL -o "installer-golden-versions/golden/$${name}" "$${url}"; \
+		done
 
 clean:
 	rm -rf install.sh install.sh.temp
