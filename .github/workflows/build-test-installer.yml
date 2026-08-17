@@ -233,11 +233,16 @@ jobs:
         echo "override=${override}" >> "$GITHUB_OUTPUT"
 
     - name: Run installer with --versions=release and an explicit --smi-version
+      # --use-uv makes this job also cover the pinned uv install: install_uv
+      # downloads the pinned uv-installer.sh from GitHub and verifies it
+      # against UV_INSTALLER_SHA256, so a stale hash (e.g. a bad bump-uv) or a
+      # tampered asset fails here instead of on a user's machine.
       run: |
         set -euo pipefail
         timeout 900 bash install.sh \
           --mode-container \
           --mode-non-interactive \
+          --use-uv \
           --versions=release \
           --smi-version=${{ steps.pick.outputs.override }} \
           --update-firmware=off \

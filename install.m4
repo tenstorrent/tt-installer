@@ -133,6 +133,14 @@ NC='\033[0m' # No Color
 # matrix; the Golden Matrix CI workflow reads this value out of install.m4.
 readonly TTIS_GOLDEN_VERSIONS_TAG="v1.0.0"
 
+# Pinned uv release and the SHA-256 of that release's uv-installer.sh. The
+# installer script is verified against this hash before it runs (it in turn
+# verifies the uv binary against its own embedded checksums), so both values
+# must move together. Bump with `make bump-uv`, which cross-checks the hash
+# from two origins and refuses non-immutable upstream releases.
+readonly UV_VERSION="0.12.5"
+readonly UV_INSTALLER_SHA256="504511fbbbd811aeaba6738abc79408956b6c7da0ca35437b3dcc24a41efc111"
+
 # ttis.sh is inlined here at build time (see scripts/inline-ttis.sh), replacing
 # the placeholder line below with the body of ttis.sh between its TTIS_INLINE
 # markers. This keeps the released install.sh a single self-contained file so it
@@ -316,15 +324,25 @@ check_uv_installed() {
 	command -v uv &> /dev/null
 }
 
-# Install uv (used when --use-uv is set but uv is not already present)
+# Install uv (used when --use-uv is set but uv is not already present).
+# Fetches the pinned release's installer from GitHub (astral.sh is unreachable
+# from some networks, e.g. returns 403 behind restrictive egress) and verifies
+# it against UV_INSTALLER_SHA256 before running it; the installer then verifies
+# the uv binary against its own embedded checksums. A failed download falls
+# back to the same pinned version from PyPI via pipx (already a base package);
+# a hash mismatch means the script is not the one we pinned and is always a
+# hard error, never a fallback. Both paths install uv into ~/.local/bin.
 install_uv() {
-	log "Installing uv"
-	# astral.sh is unreachable from some networks (e.g. returns 403 behind
-	# restrictive egress); fall back to PyPI via pipx, which is already a
-	# base package. Both install uv into ~/.local/bin.
-	if ! curl -LsSf https://astral.sh/uv/install.sh | sh; then
-		warn "Could not fetch uv from astral.sh, installing from PyPI with pipx"
-		pipx install uv
+	log "Installing uv ${UV_VERSION}"
+	local uv_installer="${WORKDIR}/uv-installer.sh"
+	if curl -fsSL -o "${uv_installer}" \
+		"https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-installer.sh"; then
+		echo "${UV_INSTALLER_SHA256}  ${uv_installer}" | sha256sum --check --quiet - \
+			|| error_exit "uv installer failed SHA-256 verification (expected ${UV_INSTALLER_SHA256}); refusing to run it"
+		sh "${uv_installer}"
+	else
+		warn "Could not download the uv installer from GitHub, installing uv ${UV_VERSION} from PyPI with pipx"
+		pipx install "uv==${UV_VERSION}"
 	fi
 	# uv installs to ~/.local/bin by default; make it visible this session
 	export PATH="${HOME}/.local/bin:${PATH}"
