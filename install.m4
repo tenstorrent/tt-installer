@@ -564,7 +564,7 @@ install_metalium_models_container() {
 	log "Installing Metalium Models Container via OCI container runtime"
 	local METALIUM_MODELS_SCRIPT_DIR="${HOME}/.local/bin"
 	local METALIUM_MODELS_SCRIPT_NAME="tt-metalium-models"
-	local METALIUM_MODELS_IMAGE_TAG="latest-rc"
+	local METALIUM_MODELS_IMAGE_TAG="${_arg_metalium_image_tag}"
 	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-models-amd64"
 
 	# Create wrapper script directory
