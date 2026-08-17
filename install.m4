@@ -45,6 +45,8 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([python-version],,[Python version for a new venv (e.g. 3.12); requires --use-uv, which provisions it via uv],[3.12])
 # ARG_OPTIONAL_SINGLE([reboot-option],,[Reboot policy after install: ask, never, always],[ask])
 # ARG_OPTIONAL_SINGLE([update-firmware],,[Update TT device firmware: on, off, force],[force])
+# ARG_OPTIONAL_BOOLEAN([patch-tensix-disable-count],,[Run tt-update-tensix-disable-count on the downloaded firmware bundle before flashing (Blackhole p150 only)],[off])
+# ARG_OPTIONAL_SINGLE([tensix-disable-count],,[Tensix disable count to write into the firmware bundle],[0])
 # ARG_OPTIONAL_SINGLE([github-token],,[Optional GitHub API auth token],[])
 
 # ========================= Version Arguments =========================
@@ -1157,6 +1159,9 @@ main() {
 	if [[ "${_arg_update_firmware}" = "force" ]]; then
 		warn "Firmware will be forcibly updated"
 	fi
+	if [[ "${_arg_patch_tensix_disable_count}" = "on" ]]; then
+		warn "Firmware bundle will be patched with tt-update-tensix-disable-count (tensix disable count: ${_arg_tensix_disable_count}) before flashing"
+	fi
 	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
 		log "Metalium Models container will be installed"
 	fi
@@ -1395,6 +1400,19 @@ main() {
 		fi
 
 		verify_download "${FW_FILE}"
+
+		if [[ "${_arg_patch_tensix_disable_count}" = "on" ]]; then
+			log "Patching firmware bundle with tt-update-tensix-disable-count"
+			if ! command -v tt-update-tensix-disable-count &> /dev/null; then
+				error_exit "tt-update-tensix-disable-count is not installed or not in PATH. Please install it before attempting to patch the firmware bundle (pip install tt-update-tensix-disable-count)."
+			fi
+			# The tool is not idempotent and must not patch in place: input -> distinct
+			# output, run exactly once, then replace the bundle.
+			if ! tt-update-tensix-disable-count --input "${FW_FILE}" --output "${FW_FILE}.patched" --board P150A-1 --board P150B-1 --board P150C-1 --disable-count "${_arg_tensix_disable_count}"; then
+				error_exit "Failed to patch firmware bundle with tt-update-tensix-disable-count."
+			fi
+			mv "${FW_FILE}.patched" "${FW_FILE}"
+		fi
 
 		if [[ "${_arg_update_firmware}" = "force" ]]; then
 			tt-flash flash "${FW_FILE}" --force

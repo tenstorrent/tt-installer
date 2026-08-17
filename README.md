@@ -130,6 +130,23 @@ pinned version is below the installed one through `dnf downgrade` (dnf's
 
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages.
 
+### Tensix disable count (Blackhole p150)
+
+Firmware v19.5.0+ disables 20 Tensix cores on Blackhole p150 boards by default.
+To keep all cores enabled, the downloaded firmware bundle can be patched with
+[tt-update-tensix-disable-count](https://pypi.org/project/tt-update-tensix-disable-count/)
+before it is flashed (the tool must already be installed and on `PATH`:
+`pip install tt-update-tensix-disable-count`):
+
+```bash
+./install.sh --patch-tensix-disable-count --tensix-disable-count=0
+```
+
+`--tensix-disable-count` defaults to `0` (all cores enabled). The patch is
+applied once to the downloaded bundle, for the p150 board images (`P150A-1`,
+`P150B-1`, `P150C-1`), before flashing; it requires `--update-firmware` to not
+be `off`.
+
 ## Using in CI
 
 tt-installer ships a composite GitHub Action that installs the stack at a
