@@ -61,7 +61,9 @@ TTIS_IMPORTED_PACKAGES=()
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
-_ttis_log()  { echo "[ttis] $*"; }
+# Informational output is silent by default so the installer's console stays
+# clean; the standalone CLI entry point sets TTIS_VERBOSE=1 to re-enable it.
+_ttis_log()  { if [[ -n "${TTIS_VERBOSE:-}" ]]; then echo "[ttis] $*"; fi; }
 _ttis_warn() { echo "[ttis] WARNING: $*" >&2; }
 _ttis_err()  { echo "[ttis] ERROR: $*" >&2; }
 
@@ -560,6 +562,7 @@ ttis_import_versions() {
 
 # ── CLI entry point ────────────────────────────────────────────────────────────
 if [[ "${BASH_SOURCE[0]:-}" == "${0}" ]]; then
+	TTIS_VERBOSE=1
 	case "${1:-}" in
 		validate) ttis_validate "${2:?Usage: ttis.sh validate <file>}" ;;
 		*) echo "Usage: ttis.sh validate <file>" >&2; exit 1 ;;
