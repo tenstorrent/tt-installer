@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "installer_version": "test",
+    "created_at": "2026-01-01T00:00:00Z",
+    "distro_id": "ubuntu",
+    "distro_version": "24.04",
+    "distro_family": "apt"
+  },
+  "tt_system": {
+    "sfpi": "1.2.3",
+    "tenstorrent-dkms": "1.2.3",
+    "tenstorrent-tools": "1.2.3",
+    "extra-system": "2.3.4"
+  },
+  "tt_python": {
+    "tt-flash": "1.2.3",
+    "tt-smi": "1.2.3",
+    "extra-python": "2.3.4"
+  },
+  "firmware": {"version": "1.2.3"},
+  "container_runtime": {"runtime": "docker"},
+  "python_env": {"method": "venv", "location": "", "python_version": ""}
+}

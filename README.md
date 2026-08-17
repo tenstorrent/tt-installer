@@ -58,6 +58,28 @@ To install without prompting the user:
 ./install.sh --mode-non-interactive
 ```
 
+To preview the resolved installation plan without changing the host:
+```bash
+./install.sh --dry-run --mode-non-interactive
+```
+Dry-run suppresses package-manager operations, privileged commands, Python
+environment creation, installation payload downloads, repository clones,
+wrapper creation, firmware flashing, state export, and reboot. Read-only
+detection, release metadata lookup, and validation still run so the preview
+reflects the selected distribution, channel, packages, runtime, and firmware
+policy.
+
+Dry-run uses the installer's existing channel tools. `jq` is required for
+the `release` channel and imported `.ttis` files; `curl` is required for
+release and rolling metadata lookups.
+
+For a local multi-distro smoke test in Docker, run `make test-docker`.
+It rebuilds `install.sh`, runs the dry-run/test harnesses in Ubuntu, Debian,
+and Fedora containers, and removes the pulled images at the end.
+
+For the full dry-run reference and compatibility notes, see
+[`docs/tt-installer.md`](docs/tt-installer.md).
+
 To skip certain components:
 ```bash
 ./install.sh --no-install-kmd --no-install-hugepages
