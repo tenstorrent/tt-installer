@@ -1,0 +1,17 @@
+# Keeps the SHA-pinned GitHub Actions current: Dependabot opens PRs that bump
+# each pin to the new release's commit SHA and updates the "# vX.Y.Z" comment,
+# so pinning stays reviewable instead of going stale.
+#
+# NOT covered here: the argbash build-container digest pin in
+# scripts/build-install-sh.sh — Dependabot does not watch `docker run` lines.
+# Update that pin manually and deliberately.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"
