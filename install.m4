@@ -254,7 +254,6 @@ fetch_golden_schema() {
 	local dest="${WORKDIR}/${asset}"
 	local url="https://github.com/tenstorrent/tt-sw-manifest/releases/download/${TTIS_GOLDEN_VERSIONS_TAG}/${asset}"
 
-	log "Fetching golden versions from ${url}"
 	if ! curl -fsSL "${url}" -o "${dest}"; then
 		warn "No golden versions file for ${DISTRO_ID} ${VERSION_ID} in release ${TTIS_GOLDEN_VERSIONS_TAG}"
 		return 1
@@ -294,6 +293,19 @@ set_non_interactive_defaults() {
 	if [[ "${_arg_mode_non_interactive}" = "on" ]] && [[ "${_arg_reboot_option}" = "ask" ]]; then
 		_arg_reboot_option="never" # Do not reboot in non-interactive mode
 	fi
+}
+
+# True when the user explicitly passed the given option on the command line
+# (matches both "--opt" and "--opt=value" forms). Used to decide whether to
+# announce settings that happen to match the installer's defaults.
+arg_was_passed() {
+	local opt="$1" arg
+	for arg in "${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}"; do
+		if [[ "${arg}" == "${opt}" || "${arg}" == "${opt}="* ]]; then
+			return 0
+		fi
+	done
+	return 1
 }
 
 maybe_enable_default_mode() {
@@ -1085,13 +1097,13 @@ main() {
 		fi
 	done
 
-	# Select the version channel.
+	# Select the version channel. The default ('release') is applied silently;
+	# explicit non-default selections are logged.
 	case "${_arg_versions}" in
 		rolling)
 			log "Version channel: rolling — installing the latest available version of each component"
 			;;
 		release)
-			log "Version channel: release — pinning component versions to this installer's golden baseline (${TTIS_GOLDEN_VERSIONS_TAG})"
 			if fetch_golden_schema; then
 				ttis_import_versions "${GOLDEN_SCHEMA_FILE}"
 			else
@@ -1101,6 +1113,8 @@ main() {
 		*)
 			# A path to a .ttis file: full non-interactive import (used by CI/automation).
 			log "Version channel: importing state from ${_arg_versions}"
+			# shellcheck disable=SC2034
+			TTIS_VERBOSE=1
 			ttis_import "${_arg_versions}"
 			;;
 	esac
@@ -1113,11 +1127,15 @@ main() {
 	fi
 	unset _ver_var user_versions
 
+	# Remember whether non-interactive mode was requested explicitly, before
+	# maybe_enable_default_mode can turn it on as part of the default path.
+	user_non_interactive="${_arg_mode_non_interactive}"
 	maybe_enable_default_mode
 	log "Starting installation"
 
-	# Log special mode settings
-	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+	# Log special mode settings. Values that merely match the installer's
+	# defaults are not announced; explicit user selections are.
+	if [[ "${user_non_interactive}" = "on" ]]; then
 		warn "Running in non-interactive mode"
 	fi
 	if [[ "${_arg_mode_container}" = "on" ]]; then
@@ -1135,7 +1153,7 @@ main() {
 	if [[ "${_arg_install_metalium_container}" = "off" ]]; then
 		warn "Metalium container installation will be skipped"
 	fi
-	if [[ "${_arg_install_forge_container}" = "off" ]]; then
+	if [[ "${_arg_install_forge_container}" = "off" ]] && arg_was_passed "--no-install-forge-container"; then
 		warn "Forge container installation will be skipped"
 	fi
 	if [[ "${_arg_install_sfpi}" = "off" ]]; then
@@ -1154,13 +1172,13 @@ main() {
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
 		warn "Firmware update will be skipped"
 	fi
-	if [[ "${_arg_update_firmware}" = "force" ]]; then
+	if [[ "${_arg_update_firmware}" = "force" ]] && arg_was_passed "--update-firmware"; then
 		warn "Firmware will be forcibly updated"
 	fi
 	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
 		log "Metalium Models container will be installed"
 	fi
-	if [[ "${_arg_use_uv}" = "on" ]]; then
+	if [[ "${_arg_use_uv}" = "on" ]] && arg_was_passed "--use-uv"; then
 		log "uv will be used instead of pip for package installation"
 	fi
 
@@ -1473,8 +1491,10 @@ main() {
 		log "Usage: tt-studio [arguments]"
 	fi
 
-	# Export state file if requested
+	# Export state file if requested (an explicit selection, so ttis output is shown)
 	if [[ -n "${_arg_export_schema:-}" ]]; then
+		# shellcheck disable=SC2034
+		TTIS_VERBOSE=1
 		ttis_resolve_versions
 		ttis_export "${_arg_export_schema}"
 	fi
@@ -1497,6 +1517,7 @@ main() {
 }
 
 # Start installation
+ORIGINAL_ARGS=("$@")
 main
 
 # ] <-- needed because of Argbash
