@@ -130,6 +130,22 @@ pinned version is below the installed one through `dnf downgrade` (dnf's
 
 Note that the installer requires superuser (sudo) permisssions to install packages, add DKMS modules, and configure hugepages.
 
+### Verifying release assets
+
+Every release asset (`install.sh`, `ttis.sh`, `SHA256SUMS`) is published with a
+signed [build provenance attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations)
+that cryptographically binds the asset to this repository, its release
+workflow, and the tagged commit it was built from. To verify a download before
+running it:
+
+```bash
+curl -fsSLO https://github.com/tenstorrent/tt-installer/releases/latest/download/install.sh
+gh attestation verify install.sh --repo tenstorrent/tt-installer
+```
+
+Verification fails if the asset was modified after the release workflow built
+it, or was built anywhere other than this repository's release pipeline.
+
 ## Using in CI
 
 tt-installer ships a composite GitHub Action that installs the stack at a

@@ -393,7 +393,10 @@ jobs:
     needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling, test-action-container, test-version-precedence]
 
     permissions:
-      contents: write
+      contents: write      # create the release and upload assets
+      id-token: write      # sign the provenance attestation (Sigstore)
+      attestations: write  # store the attestation on the repo
+      pull-requests: read  # changelog builder lists merged PRs
     steps:
       - name: Checkout code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -406,6 +409,23 @@ jobs:
         with:
           name: install-script
 
+      - name: Generate SHA256SUMS
+        run: |
+          sha256sum install.sh ttis.sh > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        # Binds each asset's SHA-256 to this repo, commit, and workflow run via
+        # Sigstore, so `gh attestation verify <asset> --repo <this repo>` proves
+        # the asset was built here from the tagged commit — and a silently
+        # replaced release asset fails verification.
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            install.sh
+            ttis.sh
+            SHA256SUMS
+
       - name: Build Changelog
         id: build_changelog
         uses: mikepenz/release-changelog-builder-action@c9dc8369bccbc41e0ac887f8fd674f5925d315f7 # v5.4.1
@@ -413,7 +433,7 @@ jobs:
           mode: "HYBRID" # Include both PRs and direct commits
           configurationJSON: |
             {
-              "template": "#{{CHANGELOG}}\n\n## Contributors\n#{{CONTRIBUTORS}}\n\n## Installation\n\nInstall this version with:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh)\"\n```\n\nLatest version can always be installed using:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh)\"\n```",
+              "template": "#{{CHANGELOG}}\n\n## Contributors\n#{{CONTRIBUTORS}}\n\n## Installation\n\nInstall this version with:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh)\"\n```\n\nLatest version can always be installed using:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh)\"\n```\n\n## Verifying assets\n\nEvery asset carries a signed [build provenance attestation](https://github.com/${{ github.repository }}/attestations) binding it to this repository, the release workflow, and the tagged commit. To verify a downloaded asset:\n```bash\ngh attestation verify install.sh --repo ${{ github.repository }}\nsha256sum --check --ignore-missing SHA256SUMS\n```",
               "categories": [
                 {
                   "title": "## 🔄 Changes",
@@ -433,6 +453,7 @@ jobs:
           files: |
             install.sh
             ttis.sh
+            SHA256SUMS
           body: ${{ steps.build_changelog.outputs.changelog }}
           draft: false
           prerelease: false
