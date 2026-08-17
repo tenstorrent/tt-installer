@@ -1074,6 +1074,20 @@ main() {
 	# Detect distro early so PKG_MANAGER is set before ttis_import needs it.
 	detect_distro
 
+	# tenstorrent-dkms < 2.9.0 does not build on RHEL 9.4+ kernels: those
+	# kernels backport the one-argument class_create() and the removal of
+	# pci_enable/disable_pcie_error_reporting() while LINUX_VERSION_CODE still
+	# reports 5.14, so tt-kmd's version guards select the pre-6.x API path and
+	# the DKMS build fails (issue #93). tt-kmd 2.9.0 added TT_RHEL_RELEASE_GE
+	# guards for this; refuse older pins on RHEL/CentOS up front instead of
+	# letting dkms fail deep inside the install.
+	if [[ "${_arg_install_kmd}" != "off" && -n "${_arg_kmd_version}" ]] \
+		&& { [[ "${DISTRO_ID}" = "rhel" ]] || [[ "${DISTRO_ID}" = "centos" ]]; } \
+		&& [[ "${_arg_kmd_version}" != "2.9.0" \
+			&& "$(printf '%s\n2.9.0\n' "${_arg_kmd_version}" | sort -V | head -n 1)" = "${_arg_kmd_version}" ]]; then
+		error_exit "--kmd-version ${_arg_kmd_version} cannot be installed on ${DISTRO_ID}: tenstorrent-dkms < 2.9.0 does not build on RHEL 9.4+ kernels (issue #93). Use --kmd-version 2.9.0 or newer."
+	fi
+
 	# Version arguments given on the command line take precedence over versions
 	# pinned by the 'release' channel or imported from a .ttis file: capture
 	# them before the import and re-apply them afterwards.
