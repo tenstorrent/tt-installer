@@ -146,6 +146,16 @@ gh attestation verify install.sh --repo tenstorrent/tt-installer
 Verification fails if the asset was modified after the release workflow built
 it, or was built anywhere other than this repository's release pipeline.
 
+The build is also reproducible: the release pipeline compiles `install.m4`
+with a digest-pinned argbash image via `scripts/build-install-sh.sh`, so the
+assets can be rebuilt byte-for-byte from the tagged source and compared
+against the published release — no trust in GitHub's release storage or
+attestation infrastructure required:
+
+```bash
+scripts/reproduce-release.sh v<version>
+```
+
 ## Using in CI
 
 tt-installer ships a composite GitHub Action that installs the stack at a
