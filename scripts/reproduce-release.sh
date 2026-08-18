@@ -38,16 +38,17 @@ fi
 
 echo "[INFO] Rebuilding install.sh from source"
 (cd "${workdir}/src" && scripts/build-install-sh.sh "${TAG#v}")
+(cd "${workdir}/src" && sha256sum install.sh ttis.sh > SHA256SUMS)
 
 echo "[INFO] Downloading published release assets"
 mkdir -p "${workdir}/released"
-for asset in install.sh ttis.sh; do
+for asset in install.sh ttis.sh SHA256SUMS; do
 	curl -fsSL -o "${workdir}/released/${asset}" \
 		"https://github.com/${REPO}/releases/download/${TAG}/${asset}"
 done
 
 errors=0
-for asset in install.sh ttis.sh; do
+for asset in install.sh ttis.sh SHA256SUMS; do
 	rebuilt_sum="$(sha256sum "${workdir}/src/${asset}" | cut -d' ' -f1)"
 	released_sum="$(sha256sum "${workdir}/released/${asset}" | cut -d' ' -f1)"
 	if [[ "${rebuilt_sum}" == "${released_sum}" ]]; then
