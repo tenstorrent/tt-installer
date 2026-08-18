@@ -243,6 +243,11 @@ detect_distro() {
 	fi
 }
 
+# True when dotted version ${1} (e.g. VERSION_ID "24.04" or "13") is at least ${2}.
+version_at_least() {
+	[[ "$(printf '%s\n%s\n' "${2}" "${1}" | sort -V | head -n 1)" = "${2}" ]]
+}
+
 # Fetch the golden .ttis schema for this distro from the pinned
 # tt-sw-manifest release. The release publishes one asset per
 # distro/version named "<distro_id>-<version_id>.ttis", so we download that file
@@ -1191,12 +1196,22 @@ main() {
 	case "${DISTRO_ID}" in
 		"ubuntu")
 			apt_get update
-			apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
+			if version_at_least "${VERSION_ID:-0}" 24.04; then
+				# rustup is packaged from noble on and conflicts with cargo/rustc, so it replaces them.
+				apt_get install -y git python3-pip dkms rustup pipx jq protobuf-compiler
+			else
+				apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
+			fi
 			;;
 		"debian")
-			# On Debian, packaged cargo and rustc are very old. Users must install them another way.
 			apt_get update
-			apt_get install -y git python3-pip dkms pipx jq protobuf-compiler
+			if version_at_least "${VERSION_ID:-0}" 13; then
+				# From trixie on, rustup is packaged (and conflicts with the very old cargo/rustc).
+				apt_get install -y git python3-pip dkms rustup pipx jq protobuf-compiler
+			else
+				# On older Debian, packaged cargo and rustc are very old. Users must install them another way.
+				apt_get install -y git python3-pip dkms pipx jq protobuf-compiler
+			fi
 			;;
 		"fedora")
 			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
@@ -1211,7 +1226,7 @@ main() {
 			;;
 	esac
 
-	if [[ "${DISTRO_ID}" = "debian" ]]; then
+	if [[ "${DISTRO_ID}" = "debian" ]] && ! version_at_least "${VERSION_ID:-0}" 13; then
 		warn "rustc and cargo cannot be automatically installed on Debian. Ensure the latest versions are installed before continuing."
 		warn "If you are unsure how to do this, use rustup: https://rustup.rs/"
 	fi
