@@ -874,7 +874,7 @@ tt_apt_suite () {
 	# newest published suite instead of writing a dead apt source.
 	# ponytail: hardcoded suite lists; refresh when the repo adds suites.
 	local suite
-	suite=$( cat /etc/os-release | grep "^VERSION_CODENAME=" | sed 's/^VERSION_CODENAME=//; s/"//g' )
+	suite=$( grep "^VERSION_CODENAME=" /etc/os-release | sed 's/^VERSION_CODENAME=//; s/"//g' )
 	case "${1}:${suite}" in
 		ubuntu:jammy|ubuntu:noble|debian:trixie)
 			echo "${suite}" ;;
@@ -895,7 +895,6 @@ install_tt_repos () {
 	case "${DISTRO_ID}" in
 		"ubuntu")
 			# Add the apt listing
-			# shellcheck disable=2002
 			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/ubuntu/ $( tt_apt_suite ubuntu ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
 
 			# Setup the keyring
@@ -910,7 +909,6 @@ install_tt_repos () {
 			;;
 		"debian")
 			# Add the apt listing
-			# shellcheck disable=2002
 			echo "deb [signed-by=/etc/apt/keyrings/tt-pkg-key.asc] https://ppa.tenstorrent.com/debian/ $( tt_apt_suite debian ) main" | sudo tee /etc/apt/sources.list.d/tenstorrent.list > /dev/null
 
 			# Setup the keyring

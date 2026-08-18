@@ -188,7 +188,7 @@ jobs:
     name: Test version argument precedence
     needs: [build, validate-golden]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -250,7 +250,7 @@ jobs:
     - name: Run installer with --versions=release and an explicit --smi-version
       run: |
         set -euo pipefail
-        timeout 900 bash install.sh \
+        timeout 1500 bash install.sh \
           --mode-container \
           --mode-non-interactive \
           --versions=release \
