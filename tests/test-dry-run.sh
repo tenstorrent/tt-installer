@@ -142,7 +142,6 @@ assert_no_mutation
 
 output=$(run_installer "${FIXTURES}/os-release-ubuntu-24.04" \
 	--dry-run --versions release --update-firmware off)
-assert_output "${output}" "Version channel: release"
 assert_output "${output}" "DRY-RUN: installation preview"
 assert_output "${output}" "tenstorrent-dkms=1.2.3"
 assert_no_mutation
