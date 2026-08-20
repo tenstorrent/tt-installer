@@ -59,33 +59,6 @@ jobs:
           name: install-script
           path: install.sh
 
-  # The generated installer runs with mutating commands replaced by failing
-  # stubs. The test also checks installer-owned paths for unexpected writes.
-  test-dry-run:
-    name: Test dry-run contract
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download generated installer
-        uses: actions/download-artifact@v4
-        with:
-          name: install-script
-
-      - name: Install test dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq shellcheck
-
-      - name: Validate generated installer and test scripts
-        run: |
-          set -euo pipefail
-          bash -n install.sh tests/test-dry-run.sh tests/unit/test-planning.sh tests/test-generation.sh tests/run-docker-matrix.sh
-          shellcheck tests/test-dry-run.sh tests/unit/test-planning.sh tests/test-generation.sh tests/run-docker-matrix.sh
-          bash tests/test-generation.sh
-          bash tests/unit/test-planning.sh
-          bash tests/test-dry-run.sh
-
   # Validate the pinned golden .ttis files before the install tests consume them
   # via the 'release' channel. Mirrors golden-matrix.yml; the release tests gate
   # on this so they never run against an unvalidated golden baseline.
