@@ -86,7 +86,10 @@ install_container_deps '${image}'
 bash tests/test-generation.sh
 bash tests/unit/test-planning.sh
 bash tests/test-dry-run.sh
-bash install.sh --dry-run --versions '${fixture}' --no-install-studio --no-install-inference-server | grep -qF '${platform}'
+out=\$(mktemp)
+bash install.sh --dry-run --versions '${fixture}' --no-install-studio --no-install-inference-server > \"\${out}\" 2>&1
+grep -qF '${platform}' \"\${out}\"
+rm -f \"\${out}\"
 "
 }
 
