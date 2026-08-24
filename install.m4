@@ -89,7 +89,8 @@ if [[ "${_arg_install_container_runtime}" = "no" ]]; then
 	_arg_install_container_runtime="none"
 fi
 
-# If container mode is enabled, disable KMD, HugePages, and SFPI
+# If container mode is enabled, disable KMD, HugePages, SFPI, and firmware
+# updates -- none of these are host-oriented actions a container should take
 # shellcheck disable=SC2154
 if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_kmd="off"
@@ -97,6 +98,7 @@ if [[ "${_arg_mode_container}" = "on" ]]; then
 	_arg_install_container_runtime="none" # No container runtime in container
 	_arg_install_sfpi="off"
 	_arg_reboot_option="never" # Do not reboot
+	_arg_update_firmware="off" # Firmware lives on the host, not the container
 fi
 
 PIPX_ENSUREPATH_EXTRAS="${TT_PIPX_ENSUREPATH_EXTRAS:- }"
