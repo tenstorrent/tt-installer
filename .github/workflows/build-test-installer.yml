@@ -7,15 +7,17 @@ on:
   pull_request:
     branches: [ main ]
 
+# Read-only by default; jobs that need more (create-release) grant it explicitly.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build installer
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -30,31 +32,14 @@ jobs:
           echo "tag_version=$TAG_VERSION" >> $GITHUB_OUTPUT
           echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Set version in install.m4
-        run: |
-          # Replace the placeholder with actual version
-          # Use | as a delimited because / can sometimes show up in the input
-          sed -i "s|__INSTALLER_DEVELOPMENT_BUILD__|${{ steps.version.outputs.clean_version }}|g" install.m4
-          # Display the change for verification in workflow logs
-          echo "Updated install.m4 with version ${{ steps.version.outputs.clean_version }}"
-
-      - name: Generate install.sh from install.m4
-        run: |
-          docker run --rm \
-            -e PROGRAM=argbash \
-            -v "$(pwd):/work" \
-            -u "$(id -u):$(id -g)" \
-            matejak/argbash \
-            install.m4 -o install.sh
-
-      - name: Inline ttis.sh into install.sh
-        run: |
-          # The released install.sh must be self-contained so it runs via
-          # `bash -c "$(curl ... install.sh)"` with no second file to fetch.
-          scripts/inline-ttis.sh install.sh ttis.sh
+      - name: Build install.sh
+        # Stamps the version, compiles with a digest-pinned argbash image, and
+        # inlines ttis.sh. Kept in a script so scripts/reproduce-release.sh can
+        # rebuild release assets byte-for-byte from the tagged source.
+        run: scripts/build-install-sh.sh "${{ steps.version.outputs.clean_version }}"
 
       - name: Upload install.sh as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: install-script
           path: install.sh
@@ -67,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install jq
         run: sudo apt-get install -y jq
@@ -147,10 +132,10 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Download install.sh
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         name: install-script
 
@@ -191,10 +176,10 @@ jobs:
     timeout-minutes: 30
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Download install.sh
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         name: install-script
 
@@ -248,11 +233,16 @@ jobs:
         echo "override=${override}" >> "$GITHUB_OUTPUT"
 
     - name: Run installer with --versions=release and an explicit --smi-version
+      # --use-uv makes this job also cover the pinned uv install: install_uv
+      # downloads the pinned uv-installer.sh from GitHub and verifies it
+      # against UV_INSTALLER_SHA256, so a stale hash (e.g. a bad bump-uv) or a
+      # tampered asset fails here instead of on a user's machine.
       run: |
         set -euo pipefail
         timeout 900 bash install.sh \
           --mode-container \
           --mode-non-interactive \
+          --use-uv \
           --versions=release \
           --smi-version=${{ steps.pick.outputs.override }} \
           --update-firmware=off \
@@ -307,7 +297,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Test template syntax
       run: |
@@ -320,10 +310,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Download install.sh
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         name: install-script
 
@@ -340,10 +330,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     - name: Download install.sh
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         name: install-script
 
@@ -408,27 +398,50 @@ jobs:
     needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling, test-action-container, test-version-precedence]
 
     permissions:
-      contents: write
+      contents: write      # create the release and upload assets
+      id-token: write      # sign the provenance attestation (Sigstore)
+      attestations: write  # store the attestation on the repo
+      pull-requests: read  # changelog builder lists merged PRs
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Checkout the tag that triggered the original workflow
-          ref: ${{ github.event.workflow_run.head_sha }}
+          # Pin the checkout to the exact commit the triggering tag pointed at
+          # when the run started. (The previous `workflow_run.head_sha` here was
+          # always empty on this push-triggered workflow, silently falling back
+          # to the default ref.)
+          ref: ${{ github.sha }}
 
       - name: Download artifacts from build workflow
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: install-script
 
+      - name: Generate SHA256SUMS
+        run: |
+          sha256sum install.sh ttis.sh > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        # Binds each asset's SHA-256 to this repo, commit, and workflow run via
+        # Sigstore, so `gh attestation verify <asset> --repo <this repo>` proves
+        # the asset was built here from the tagged commit — and a silently
+        # replaced release asset fails verification.
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            install.sh
+            ttis.sh
+            SHA256SUMS
+
       - name: Build Changelog
         id: build_changelog
-        uses: mikepenz/release-changelog-builder-action@v5
+        uses: mikepenz/release-changelog-builder-action@c9bcd8238b6f41e05561348339429d360b1c0247 # v6.2.3
         with:
           mode: "HYBRID" # Include both PRs and direct commits
           configurationJSON: |
             {
-              "template": "#{{CHANGELOG}}\n\n## Contributors\n#{{CONTRIBUTORS}}\n\n## Installation\n\nInstall this version with:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh)\"\n```\n\nLatest version can always be installed using:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh)\"\n```",
+              "template": "#{{CHANGELOG}}\n\n## Contributors\n#{{CONTRIBUTORS}}\n\n## Installation\n\nInstall this version with:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/install.sh)\"\n```\n\nLatest version can always be installed using:\n```bash\n/bin/bash -c \"$(curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/install.sh)\"\n```\n\n## Verifying assets\n\nEvery asset carries a signed [build provenance attestation](https://github.com/${{ github.repository }}/attestations) binding it to this repository, the release workflow, and the tagged commit. To verify a downloaded asset:\n```bash\ngh attestation verify install.sh --repo ${{ github.repository }}\nsha256sum --check --ignore-missing SHA256SUMS\n```",
               "categories": [
                 {
                   "title": "## 🔄 Changes",
@@ -443,11 +456,12 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: |
             install.sh
             ttis.sh
+            SHA256SUMS
           body: ${{ steps.build_changelog.outputs.changelog }}
           draft: false
           prerelease: false

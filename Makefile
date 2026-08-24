@@ -14,6 +14,11 @@ fetch-golden:
 			curl -fsSL -o "installer-golden-versions/golden/$${name}" "$${url}"; \
 		done
 
+# Update the pinned uv version + installer hash in install.m4 (latest release
+# by default, or `make bump-uv UV_VERSION=0.12.5` for a specific one).
+bump-uv:
+	scripts/bump-uv.sh $(UV_VERSION)
+
 clean:
 	rm -rf install.sh install.sh.temp
 
