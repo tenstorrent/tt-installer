@@ -83,20 +83,29 @@ _arg_mode_container=off
 normalize_options
 [[ "${_arg_install_container_runtime}" = none ]]
 
+expect_fail() {
+	echo "expected failure: $1"
+	shift
+	if "$@"; then
+		echo "did not fail as expected: $*" >&2
+		exit 1
+	fi
+}
+
 _arg_install_container_runtime=invalid
-if normalize_options; then exit 1; fi
+expect_fail "invalid container runtime" normalize_options
 _arg_install_container_runtime=auto
 
 _arg_update_firmware=invalid
-if normalize_options; then exit 1; fi
+expect_fail "invalid firmware option" normalize_options
 _arg_update_firmware=force
 
 _arg_python_choice=conda
-if normalize_options; then exit 1; fi
+expect_fail "invalid Python strategy" normalize_options
 _arg_python_choice=new-venv
 
 _arg_reboot_option=maybe
-if normalize_options; then exit 1; fi
+expect_fail "invalid reboot option" normalize_options
 _arg_reboot_option=ask
 
 # --- resolve_base_packages: every distro branch ---
@@ -112,7 +121,7 @@ for d in ubuntu debian fedora rhel centos; do
 	fi
 done
 DISTRO_ID=arch
-if resolve_base_packages; then exit 1; fi
+expect_fail "unsupported distribution" resolve_base_packages
 DISTRO_ID=ubuntu
 resolve_base_packages
 
@@ -246,4 +255,4 @@ CONTAINER_CLI=""
 plan=$(TT_INSTALLER_ARCH=x86_64 TT_INSTALLER_KERNEL=6.0.0-test render_install_plan)
 [[ "${plan}" == *"Metalium image: ghcr.io/tenstorrent/tt-metal:latest (disabled)"* ]]
 
-echo "planning unit tests passed"
+echo -e "\033[0;32mTests passed!\033[0m"

@@ -128,7 +128,7 @@ output=$(run_installer "${FIXTURES}/os-release-ubuntu-24.04" \
 	--dry-run --versions "${FIXTURES}/dry-run-apt.ttis" --export-schema "${home}/export.ttis" \
 	--metalium-container-script-dir "${home}/custom-metalium" \
 	--forge-container-script-dir "${home}/custom-forge")
-assert_output "${output}" "DRY-RUN: installation preview"
+assert_output "${output}" "==== DRY-RUN: Installation Preview ===="
 assert_output "${output}" "Action execution: suppressed"
 assert_output "${output}" "Platform: ubuntu 24.04 (apt-get)"
 assert_output "${output}" "Architecture:"
@@ -142,7 +142,7 @@ assert_no_mutation
 
 output=$(run_installer "${FIXTURES}/os-release-ubuntu-24.04" \
 	--dry-run --versions release --update-firmware off)
-assert_output "${output}" "DRY-RUN: installation preview"
+assert_output "${output}" "==== DRY-RUN: Installation Preview ===="
 assert_output "${output}" "tenstorrent-dkms=1.2.3"
 assert_no_mutation
 
@@ -181,8 +181,9 @@ assert_output "${output}" "Containers: runtime=none"
 assert_no_mutation
 
 expect_failure() {
+	echo "expected failure: $*"
 	if run_installer "${FIXTURES}/os-release-ubuntu-24.04" "$@" >/dev/null 2>&1; then
-		echo "expected failure: $*" >&2
+		echo "did not fail as expected: $*" >&2
 		return 1
 	fi
 }
@@ -198,11 +199,16 @@ expect_failure --dry-run --versions "${FIXTURES}/invalid-runtime.ttis"
 expect_failure --dry-run --versions "${FIXTURES}/invalid-python-strategy.ttis"
 [[ -z "$(find "${tmp_dir}" -mindepth 1 -maxdepth 1 -name 'tenstorrent_install_*' -print -quit)" ]]
 
+echo "expected failure: invalid JSON fixture"
 if bash "${ROOT}/ttis.sh" validate "${FIXTURES}/invalid-json.ttis" >/dev/null 2>&1; then exit 1; fi
+echo "expected failure: future schema fixture"
 if bash "${ROOT}/ttis.sh" validate "${FIXTURES}/future-schema.ttis" >/dev/null 2>&1; then exit 1; fi
+echo "expected failure: invalid runtime fixture"
 if bash "${ROOT}/ttis.sh" validate "${FIXTURES}/invalid-runtime.ttis" >/dev/null 2>&1; then exit 1; fi
+echo "expected failure: invalid Python strategy fixture"
 if bash "${ROOT}/ttis.sh" validate "${FIXTURES}/invalid-python-strategy.ttis" >/dev/null 2>&1; then exit 1; fi
 
+echo "expected failure: INSTALLER_SOURCE_ONLY must not run the installer"
 if INSTALLER_SOURCE_ONLY=1 bash "${INSTALLER}" --dry-run >/dev/null 2>&1; then exit 1; fi
 
-echo "dry-run contract, safety, fixture, and negative tests passed"
+echo -e "\033[0;32mTests passed!\033[0m"

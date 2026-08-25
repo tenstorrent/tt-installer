@@ -468,7 +468,7 @@ render_install_plan() {
 		models_image_action="disabled"
 		forge_image_action="disabled"
 	fi
-	echo "DRY-RUN: installation preview"
+	echo -e "${YELLOW}==== DRY-RUN: Installation Preview ====${NC}"
 	echo "Action execution: suppressed"
 	echo "Platform: ${DISTRO_ID} ${VERSION_ID:-unknown} (${PKG_MANAGER})"
 	echo "Architecture: ${arch}"
@@ -1381,14 +1381,22 @@ main() {
 	fi
 	unset _ver_var user_versions
 
+	# Post-import defaults so dry-run and a real install resolve the same plan.
+	# A .ttis import can overwrite earlier normalization, and non-interactive
+	# mode must map reboot=ask to never before either path continues.
+	if [[ "${_arg_dry_run}" = "on" ]]; then
+		_arg_mode_non_interactive="on"
+	fi
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+		set_non_interactive_defaults
+	fi
+	normalize_options || return 1
+	disable_unused_container_runtime
+
 	# Dry-run deliberately stops before prompts, sudo, package managers, Python
 	# environment creation, payload downloads, clones, wrapper creation, export,
 	# or reboot. Read-only release metadata may be fetched to resolve the plan.
 	if [[ "${_arg_dry_run}" = "on" ]]; then
-		_arg_mode_non_interactive="on"
-		set_non_interactive_defaults
-		normalize_options || return 1
-		disable_unused_container_runtime
 		resolve_container_runtime
 		resolve_firmware_action
 		if [[ "${RESOLVED_FIRMWARE_ACTION}" != "skip" && -z "${_arg_fw_version:-}" ]]; then

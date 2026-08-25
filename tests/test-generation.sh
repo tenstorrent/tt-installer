@@ -49,4 +49,4 @@ awk '
 diff -u "${tmp_root}/expected.body" "${tmp_root}/actual.body" \
 	|| fail "inlined ttis body differs from ttis.sh"
 
-echo "generation checks passed"
+echo -e "\033[0;32mTests passed!\033[0m"

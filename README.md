@@ -71,14 +71,13 @@ policy.
 
 Dry-run uses the installer's existing channel tools. `jq` is required for
 the `release` channel and imported `.ttis` files; `curl` is required for
-release and rolling metadata lookups.
+release and rolling metadata lookups. The preview is not a full simulation:
+package availability, network results, and runtime behavior can still change
+after the plan is shown.
 
 For a local multi-distro smoke test in Docker, run `make test-docker`.
-It rebuilds `install.sh`, runs the dry-run/test harnesses in Ubuntu, Debian,
-and Fedora containers, and removes the pulled images at the end.
-
-For the full dry-run reference and compatibility notes, see
-[`docs/tt-installer.md`](docs/tt-installer.md).
+It rebuilds `install.sh` with the same `make` target used for a local build,
+then runs the dry-run harnesses in Ubuntu, Debian, and Fedora containers.
 
 To skip certain components:
 ```bash

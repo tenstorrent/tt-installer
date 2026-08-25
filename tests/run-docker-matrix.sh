@@ -2,8 +2,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-INSTALLER="${ROOT}/install.sh"
-IMAGES=(matejak/argbash ubuntu:22.04 ubuntu:24.04 debian:13 fedora:41 fedora:42 fedora:43)
+IMAGES=(ubuntu:22.04 ubuntu:24.04 debian:13 fedora:41 fedora:42 fedora:43)
 declare -A EXISTING_IMAGES=()
 
 docker_cmd() {
@@ -28,10 +27,18 @@ cleanup() {
 	done
 }
 
-build_with_argbash() {
-	docker_cmd pull matejak/argbash >/dev/null
-	docker_cmd run --rm -u "$(id -u):$(id -g)" -e PROGRAM=argbash -v "${ROOT}:/work" -w /work matejak/argbash install.m4 -o install.sh
-	bash -lc "sed 's/\r//g' '${ROOT}/ttis.sh' > /tmp/ttis-inline.sh; sed 's/\r//g' '${ROOT}/scripts/inline-ttis.sh' | bash -s -- '${INSTALLER}' /tmp/ttis-inline.sh"
+build_installer() {
+	if command -v make >/dev/null 2>&1; then
+		make -C "${ROOT}" install.sh
+		return
+	fi
+	# Same recipe as the Makefile install.sh target.
+	cp "${ROOT}/install.m4" "${ROOT}/install.sh.temp"
+	sed "s|__INSTALLER_DEVELOPMENT_BUILD__|$(date +%Y.%m.%d-%H.%M.%S)-$(git -C "${ROOT}" log --format="%h" -n 1)|g" \
+		"${ROOT}/install.sh.temp" > "${ROOT}/install.sh.temp2"
+	mv "${ROOT}/install.sh.temp2" "${ROOT}/install.sh.temp"
+	argbash "${ROOT}/install.sh.temp" -o "${ROOT}/install.sh"
+	"${ROOT}/scripts/inline-ttis.sh" "${ROOT}/install.sh" "${ROOT}/ttis.sh"
 }
 
 install_container_deps() {
@@ -96,7 +103,7 @@ rm -f \"\${out}\"
 main() {
 	record_existing_images
 	trap cleanup EXIT
-	build_with_argbash
+	build_installer
 	for image in ubuntu:22.04 ubuntu:24.04 debian:13 fedora:41 fedora:42 fedora:43; do
 		run_image "${image}"
 	done
