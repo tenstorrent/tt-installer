@@ -66,6 +66,7 @@ exit 11 #)
 # ========================= Mode Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
+# ARG_OPTIONAL_BOOLEAN([dry-run],,[Preview the installation plan without executing mutations],[off])
 # ARG_OPTIONAL_BOOLEAN([verbose],,[Enable verbose output for debugging])
 
 # ARGBASH_GO
@@ -106,24 +107,41 @@ PIPX_INSTALL_EXTRAS="${TT_PIPX_INSTALL_EXTRAS:- }"
 
 # ========================= Main Script =========================
 
-# Create working directory
-TMP_DIR_TEMPLATE="tenstorrent_install_XXXXXX"
-# Use mktemp to get a temporary directory
-WORKDIR=$(mktemp -d -p /tmp "${TMP_DIR_TEMPLATE}")
+# A source-only load is used by the unit tests. It must not create a temporary
+# directory, redirect the caller's file descriptors, or invoke main.
+INSTALLER_SOURCE_ONLY="${INSTALLER_SOURCE_ONLY:-0}"
+if [[ "${INSTALLER_SOURCE_ONLY}" = "1" && "${BASH_SOURCE[0]}" = "$0" ]]; then
+	printf '%s\n' "INSTALLER_SOURCE_ONLY is only valid when sourcing install.sh" >&2
+	exit 2
+fi
+if [[ "${INSTALLER_SOURCE_ONLY}" = "1" ]]; then
+	WORKDIR="${TMPDIR:-/tmp}/tt-installer-source"
+	LOG_FILE="/dev/null"
+else
+	# Create working directory
+	TMP_DIR_TEMPLATE="tenstorrent_install_XXXXXX"
+	WORKDIR=$(mktemp -d -p "${TMPDIR:-/tmp}" "${TMP_DIR_TEMPLATE}")
 
-# Initialize logging
-LOG_FILE="${WORKDIR}/install.log"
-# Redirect stdout to the logfile.
-# Removes color codes and prepends the date
-exec > >( \
-		tee >( \
-				stdbuf -o0 \
-						sed 's/\x1B\[[0-9;]*[A-Za-z]//g' | \
-						xargs -d '\n' -I {} date '+[%F %T] {}' \
-				> "${LOG_FILE}" \
-				) \
-		)
-exec 2>&1
+	# Initialize logging
+	LOG_FILE="${WORKDIR}/install.log"
+	# Redirect stdout to the logfile.
+	# Removes color codes and prepends the date
+	exec > >( \
+			tee >( \
+					stdbuf -o0 \
+							sed 's/\x1B\[[0-9;]*[A-Za-z]//g' | \
+							xargs -d '\n' -I {} date '+[%F %T] {}' \
+						> "${LOG_FILE}" \
+						) \
+			)
+	exec 2>&1
+	cleanup_dry_run_workdir() {
+		if [[ "${_arg_dry_run:-off}" = "on" ]]; then
+			rm -rf -- "${WORKDIR}"
+		fi
+	}
+	trap cleanup_dry_run_workdir EXIT
+fi
 
 # Color codes for output
 RED='\033[0;31m'
@@ -134,6 +152,8 @@ NC='\033[0m' # No Color
 # Pinned installer-golden-versions release tag. Bump here to adopt a new golden
 # matrix; the Golden Matrix CI workflow reads this value out of install.m4.
 readonly TTIS_GOLDEN_VERSIONS_TAG="v1.0.0"
+readonly METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-models-amd64"
+readonly METALIUM_MODELS_IMAGE_TAG="latest-rc"
 
 # Pinned uv release and the SHA-256 of that release's uv-installer.sh. The
 # installer script is verified against this hash before it runs (it in turn
@@ -213,8 +233,10 @@ apt_get() {
 
 detect_distro() {
 	# shellcheck disable=SC1091 # Always present
-	if [[ -f /etc/os-release ]]; then
-		. /etc/os-release
+local os_release_file="${TT_INSTALLER_OS_RELEASE:-/etc/os-release}"
+	if [[ -f "${os_release_file}" ]]; then
+		# shellcheck source=/etc/os-release
+		. "${os_release_file}"
 		DISTRO_ID=${ID}
 		case ${DISTRO_ID} in
 			ubuntu|debian|fedora|rhel|centos)
@@ -251,6 +273,232 @@ detect_distro() {
 		error "Cannot detect Linux distribution"
 		exit 1
 	fi
+}
+
+# Normalize and validate option values before any operation can be selected.
+# This function intentionally only changes _arg_* values and returns an error.
+normalize_options() {
+	case "${_arg_install_container_runtime}" in
+		no) _arg_install_container_runtime="none" ;;
+		auto|podman|docker|none) ;;
+		*) error "Invalid container runtime option: ${_arg_install_container_runtime}"; return 1 ;;
+	esac
+	case "${_arg_update_firmware}" in
+		on|off|force) ;;
+		*) error "Invalid firmware option: ${_arg_update_firmware}"; return 1 ;;
+	esac
+	case "${_arg_python_choice}" in
+		active-venv|new-venv|system-python|pipx) ;;
+		*) error "Invalid Python strategy: ${_arg_python_choice}"; return 1 ;;
+	esac
+	case "${_arg_reboot_option}" in
+		ask|never|always) ;;
+		*) error "Invalid reboot option: ${_arg_reboot_option}"; return 1 ;;
+	esac
+
+	if [[ "${_arg_mode_container}" = "on" ]]; then
+		_arg_install_kmd="off"
+		_arg_install_hugepages="off"
+		_arg_install_container_runtime="none"
+		_arg_install_sfpi="off"
+		_arg_reboot_option="never"
+	fi
+}
+
+# Resolve the distro-specific base package set without installing anything.
+resolve_base_packages() {
+	BASE_BOOTSTRAP_PACKAGES=()
+	BASE_SYSTEM_PACKAGES=()
+	case "${DISTRO_ID}" in
+		ubuntu)
+			if version_at_least "${VERSION_ID:-0}" 24.04; then
+				# rustup is packaged from noble on and conflicts with cargo/rustc, so it replaces them.
+				BASE_SYSTEM_PACKAGES=(git python3-pip dkms rustup pipx jq protobuf-compiler)
+			else
+				BASE_SYSTEM_PACKAGES=(git python3-pip dkms cargo rustc pipx jq protobuf-compiler)
+			fi
+			;;
+		debian)
+			if version_at_least "${VERSION_ID:-0}" 13; then
+				# From trixie on, rustup is packaged (and conflicts with the very old cargo/rustc).
+				BASE_SYSTEM_PACKAGES=(git python3-pip dkms rustup pipx jq protobuf-compiler)
+			else
+				# On older Debian, packaged cargo and rustc are very old. Users must install them another way.
+				BASE_SYSTEM_PACKAGES=(git python3-pip dkms pipx jq protobuf-compiler)
+			fi
+			;;
+		fedora)
+			BASE_SYSTEM_PACKAGES=(git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler) ;;
+		rhel|centos)
+			BASE_BOOTSTRAP_PACKAGES=(epel-release)
+			BASE_SYSTEM_PACKAGES=(git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler) ;;
+		*) error "Unsupported distribution: ${DISTRO_ID}"; return 1 ;;
+	esac
+}
+
+# Build the package registry from the single package map and imported extras.
+build_package_registry() {
+	declare -gA package_registry=()
+	local entry pkg type install_var version_var
+	for entry in "${TTIS_PACKAGE_MAP[@]}"; do
+		IFS='|' read -r pkg type install_var version_var <<< "${entry}"
+		package_registry["${pkg}"]="${pkg}|${!install_var}|${!version_var}|${type}"
+	done
+	for entry in "${TTIS_IMPORTED_PACKAGES[@]+${TTIS_IMPORTED_PACKAGES[@]}}"; do
+		IFS='|' read -r pkg install_var version type <<< "${entry}"
+		package_registry["${pkg}"]="${pkg}|${install_var}|${version}|${type}"
+	done
+}
+
+# Convert the registry into package-manager and Python action lists. This is a
+# formatting step only; package managers are invoked later by main.
+resolve_package_actions() {
+	SYSTEM_PACKAGES=()
+	PYTHON_PACKAGES=()
+	local key pkg install_flag version type
+	for key in "${!package_registry[@]}"; do
+		IFS='|' read -r pkg install_flag version type <<< "${package_registry[${key}]}"
+		[[ "${install_flag}" = "on" ]] || continue
+		case "${type}" in
+			system)
+				if [[ -z "${version}" ]]; then
+					SYSTEM_PACKAGES+=("${pkg}")
+				elif [[ "${PKG_MANAGER}" = "apt-get" ]]; then
+					SYSTEM_PACKAGES+=("${pkg}=${version}")
+				elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
+					SYSTEM_PACKAGES+=("${pkg}-${version}")
+				else
+					SYSTEM_PACKAGES+=("${pkg}")
+				fi
+				;;
+			python)
+				if [[ -z "${version}" ]]; then
+					PYTHON_PACKAGES+=("${pkg}")
+				else
+					PYTHON_PACKAGES+=("${pkg}==${version}")
+				fi
+				;;
+		esac
+	done
+	if [[ ${#SYSTEM_PACKAGES[@]} -gt 0 ]]; then
+		mapfile -t SYSTEM_PACKAGES < <(printf '%s\n' "${SYSTEM_PACKAGES[@]}" | LC_ALL=C sort)
+	fi
+	if [[ ${#PYTHON_PACKAGES[@]} -gt 0 ]]; then
+		mapfile -t PYTHON_PACKAGES < <(printf '%s\n' "${PYTHON_PACKAGES[@]}" | LC_ALL=C sort)
+	fi
+}
+
+disable_unused_container_runtime() {
+	if [[ "${_arg_install_metalium_container}" = "off" \
+		&& "${_arg_install_metalium_models_container}" = "off" \
+		&& "${_arg_install_forge_container}" = "off" ]]; then
+		_arg_install_container_runtime="none"
+	fi
+}
+
+# Resolve the requested runtime using read-only command discovery only.
+resolve_container_runtime() {
+	RESOLVED_CONTAINER_RUNTIME="${_arg_install_container_runtime}"
+	CONTAINER_RUNTIME_PRESENT=0
+	CONTAINER_PULL_PREFIX=""
+	CONTAINER_CLI=""
+	if [[ "${RESOLVED_CONTAINER_RUNTIME}" = "auto" ]]; then
+		if command -v docker >/dev/null 2>&1; then
+			local docker_version
+			docker_version=$(docker --version 2>/dev/null || true)
+			if [[ "${docker_version,,}" == *podman* ]]; then
+				RESOLVED_CONTAINER_RUNTIME="podman"
+			else
+				RESOLVED_CONTAINER_RUNTIME="docker"
+			fi
+			CONTAINER_RUNTIME_PRESENT=1
+		elif command -v podman >/dev/null 2>&1; then
+			RESOLVED_CONTAINER_RUNTIME="podman"
+			CONTAINER_RUNTIME_PRESENT=1
+		else
+			RESOLVED_CONTAINER_RUNTIME="docker"
+		fi
+	elif command -v "${RESOLVED_CONTAINER_RUNTIME}" >/dev/null 2>&1; then
+		CONTAINER_RUNTIME_PRESENT=1
+	fi
+	case "${RESOLVED_CONTAINER_RUNTIME}" in
+		docker) CONTAINER_CLI="docker" ;;
+		podman) CONTAINER_CLI="podman" ;;
+		none)
+			if command -v docker >/dev/null 2>&1; then
+				local docker_version
+				docker_version=$(docker --version 2>/dev/null || true)
+				if [[ "${docker_version,,}" == *podman* ]]; then
+					CONTAINER_CLI="podman"
+				else
+					CONTAINER_CLI="docker"
+				fi
+				CONTAINER_RUNTIME_PRESENT=1
+			elif command -v podman >/dev/null 2>&1; then
+				CONTAINER_CLI="podman"
+				CONTAINER_RUNTIME_PRESENT=1
+			fi
+			;;
+	esac
+	if [[ "${CONTAINER_CLI}" = "docker" && "${CONTAINER_RUNTIME_PRESENT}" = "1" ]]; then
+		if ! docker info >/dev/null 2>&1; then CONTAINER_PULL_PREFIX="sudo"; fi
+	fi
+}
+
+# Resolve firmware policy independently from firmware download/flash actions.
+resolve_firmware_action() {
+	case "${_arg_update_firmware}" in
+		off) RESOLVED_FIRMWARE_ACTION="skip" ;;
+		on) RESOLVED_FIRMWARE_ACTION="update" ;;
+		force) RESOLVED_FIRMWARE_ACTION="force-flash" ;;
+		*) error "Invalid firmware option: ${_arg_update_firmware}"; return 1 ;;
+	esac
+}
+
+render_install_plan() {
+	local arch="${TT_INSTALLER_ARCH:-$(uname -m)}"
+	local kernel="${TT_INSTALLER_KERNEL:-$(uname -r)}"
+	local metalium_image_action="disabled"
+	local models_image_action="disabled"
+	local forge_image_action="disabled"
+	if [[ "${_arg_install_metalium_container}" = "on" ]]; then
+		metalium_image_action="deferred until first wrapper run"
+		[[ "${_arg_pull_container_images}" = "on" ]] && metalium_image_action="pull during install"
+	fi
+	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
+		models_image_action="deferred until first wrapper run"
+		[[ "${_arg_pull_container_images}" = "on" ]] && models_image_action="pull during install"
+	fi
+	if [[ "${_arg_install_forge_container}" = "on" ]]; then
+		forge_image_action="deferred until first wrapper run"
+		[[ "${_arg_pull_container_images}" = "on" ]] && forge_image_action="pull during install"
+	fi
+	if [[ -z "${CONTAINER_CLI}" ]]; then
+		metalium_image_action="disabled"
+		models_image_action="disabled"
+		forge_image_action="disabled"
+	fi
+	echo -e "${YELLOW}==== DRY-RUN: Installation Preview ====${NC}"
+	echo "Action execution: suppressed"
+	echo "Platform: ${DISTRO_ID} ${VERSION_ID:-unknown} (${PKG_MANAGER})"
+	echo "Architecture: ${arch}"
+	echo "Kernel: ${kernel}"
+	echo "Bootstrap packages: ${BASE_BOOTSTRAP_PACKAGES[*]:-none}"
+	echo "System packages: ${BASE_SYSTEM_PACKAGES[*]}"
+	echo "TT system packages: ${SYSTEM_PACKAGES[*]:-none}"
+	echo "Python packages: ${PYTHON_PACKAGES[*]:-none}"
+	echo "HugePages: ${_arg_install_hugepages}"
+	echo "Firmware: ${RESOLVED_FIRMWARE_ACTION} ${_arg_fw_version:-latest}"
+	echo "Privileged operations: suppressed (sudo, package manager, DKMS, modprobe, tt-flash, reboot)"
+	echo "Containers: runtime=${RESOLVED_CONTAINER_RUNTIME} present=${CONTAINER_RUNTIME_PRESENT} command=${CONTAINER_CLI:-none}"
+	echo "Metalium image: ${_arg_metalium_image_url}:${_arg_metalium_image_tag} (${metalium_image_action})"
+	echo "Metalium Models image: ${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG} (${models_image_action})"
+	echo "Forge image: ${_arg_forge_image_url}:${_arg_forge_image_tag} (${forge_image_action})"
+	echo "Inference Server: ${_arg_install_inference_server}"
+	echo "Studio: ${_arg_install_studio}"
+	echo "Python strategy: ${_arg_python_choice}"
+	echo "Reboot: suppressed (${_arg_reboot_option})"
+	echo "Export: suppressed${_arg_export_schema:+ (${_arg_export_schema})}"
 }
 
 # True when dotted version ${1} (e.g. VERSION_ID "24.04" or "13") is at least ${2}.
@@ -528,7 +776,7 @@ get_python_choice() {
 
 # Function to check if a container runtime is installed
 check_container_runtime_installed() {
-	command -v docker &> /dev/null
+	command -v docker &> /dev/null || command -v podman &> /dev/null
 }
 
 # Function to setup rootless Podman
@@ -558,7 +806,7 @@ METALIUM_IMAGE="${_arg_metalium_image_url}:${_arg_metalium_image_tag}"
 
 # Run the command using container runtime
 
-docker run --rm -it \\
+${CONTAINER_CLI} run --rm -it \\
   --privileged \\
   --log-driver none \\
   --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
@@ -587,7 +835,7 @@ EOF
 	if [[ "${_arg_pull_container_images}" == "on" ]]; then
 		log "Pulling the tt-metalium image (this may take a while)..."
 		# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
-		${CONTAINER_PULL_PREFIX} docker pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
+		${CONTAINER_PULL_PREFIX} "${CONTAINER_CLI}" pull "${_arg_metalium_image_url}:${_arg_metalium_image_tag}" || error "Failed to pull image"
 	else
 		log "Skipping tt-metalium image pull (--no-pull-container-images); the ${_arg_metalium_container_script_name} wrapper will pull it on first run"
 	fi
@@ -601,8 +849,6 @@ install_metalium_models_container() {
 	log "Installing Metalium Models Container via OCI container runtime"
 	local METALIUM_MODELS_SCRIPT_DIR="${HOME}/.local/bin"
 	local METALIUM_MODELS_SCRIPT_NAME="tt-metalium-models"
-	local METALIUM_MODELS_IMAGE_TAG="latest-rc"
-	local METALIUM_MODELS_IMAGE_URL="ghcr.io/tenstorrent/tt-metal/tt-metalium-ubuntu-22.04-release-models-amd64"
 
 	# Create wrapper script directory
 	mkdir -p "${METALIUM_MODELS_SCRIPT_DIR}" || error_exit "Failed to create script directory"
@@ -636,7 +882,7 @@ METALIUM_IMAGE="${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}"
 #
 #  addition of --entrypoint /bin/bash: The current upstream container needs to
 #  override the entrypoint. Why not just corral users into /bin/bash?
-docker run --rm -it \\
+${CONTAINER_CLI} run --rm -it \\
   --privileged \\
   --log-driver none \\
   --volume=/dev/hugepages-1G:/dev/hugepages-1G \\
@@ -663,7 +909,7 @@ EOF
 	if [[ "${_arg_pull_container_images}" == "on" ]]; then
 		log "Pulling the tt-metalium-models image (this may take a while)..."
 		# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
-		${CONTAINER_PULL_PREFIX} docker pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
+		${CONTAINER_PULL_PREFIX} "${CONTAINER_CLI}" pull "${METALIUM_MODELS_IMAGE_URL}:${METALIUM_MODELS_IMAGE_TAG}" || error "Failed to pull image"
 	else
 		log "Skipping tt-metalium-models image pull (--no-pull-container-images); the ${METALIUM_MODELS_SCRIPT_NAME} wrapper will pull it on first run"
 	fi
@@ -729,7 +975,7 @@ FORGE_IMAGE="${_arg_forge_image_url}:${_arg_forge_image_tag}"
 
 # Run the command using container runtime
 
-docker run --rm -it \\
+${CONTAINER_CLI} run --rm -it \\
   --privileged \\
   --log-driver none \\
   --volume=/dev/hugepages:/dev/hugepages \\
@@ -760,7 +1006,7 @@ EOF
 	if [[ "${_arg_pull_container_images}" == "on" ]]; then
 		log "Pulling the tt-forge image (this may take a while)..."
 		# shellcheck disable=2086 # CONTAINER_PULL_PREFIX is empty or "sudo"; must word-split
-		${CONTAINER_PULL_PREFIX} docker pull "${_arg_forge_image_url}:${_arg_forge_image_tag}" || error "Failed to pull image"
+		${CONTAINER_PULL_PREFIX} "${CONTAINER_CLI}" pull "${_arg_forge_image_url}:${_arg_forge_image_tag}" || error "Failed to pull image"
 	else
 		log "Skipping tt-forge image pull (--no-pull-container-images); the ${_arg_forge_container_script_name} wrapper will pull it on first run"
 	fi
@@ -1099,6 +1345,8 @@ main() {
 		warn "--export-schema is a developer/CI feature for capturing installer state; it is not needed for a normal install."
 	fi
 
+	normalize_options || return 1
+
 	# Resolve state file paths to absolute now, before any cd changes the working directory.
 	if [[ -n "${_arg_export_schema:-}" && "${_arg_export_schema}" != /* ]]; then
 		_arg_export_schema="$(pwd)/${_arg_export_schema}"
@@ -1110,6 +1358,7 @@ main() {
 
 	# Detect distro early so PKG_MANAGER is set before ttis_import needs it.
 	detect_distro
+	resolve_base_packages
 
 	# Version arguments given on the command line take precedence over versions
 	# pinned by the 'release' channel or imported from a .ttis file: capture
@@ -1151,6 +1400,36 @@ main() {
 		log "Component versions given on the command line take precedence over channel pins"
 	fi
 	unset _ver_var user_versions
+
+	# Post-import defaults so dry-run and a real install resolve the same plan.
+	# A .ttis import can overwrite earlier normalization, and non-interactive
+	# mode must map reboot=ask to never before either path continues.
+	if [[ "${_arg_dry_run}" = "on" ]]; then
+		_arg_mode_non_interactive="on"
+	fi
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+		set_non_interactive_defaults
+	fi
+	normalize_options || return 1
+	disable_unused_container_runtime
+
+	# Dry-run deliberately stops before prompts, sudo, package managers, Python
+	# environment creation, payload downloads, clones, wrapper creation, export,
+	# or reboot. Read-only release metadata may be fetched to resolve the plan.
+	if [[ "${_arg_dry_run}" = "on" ]]; then
+		resolve_container_runtime
+		resolve_firmware_action
+		if [[ "${RESOLVED_FIRMWARE_ACTION}" != "skip" && -z "${_arg_fw_version:-}" ]]; then
+			_arg_fw_version=$(fetch_latest_version "tenstorrent/tt-system-firmware" "v") || return 1
+		fi
+		build_package_registry
+		resolve_package_actions
+		render_install_plan
+		if [[ "${INSTALLER_SOURCE_ONLY}" != "1" ]]; then
+			rm -rf -- "${WORKDIR}"
+		fi
+		return 0
+	fi
 
 	# Remember whether non-interactive mode was requested explicitly, before
 	# maybe_enable_default_mode can turn it on as part of the default path.
@@ -1214,36 +1493,18 @@ main() {
 
 	log "Installing base packages"
 	case "${DISTRO_ID}" in
-		"ubuntu")
+		ubuntu|debian)
 			apt_get update
-			if version_at_least "${VERSION_ID:-0}" 24.04; then
-				# rustup is packaged from noble on and conflicts with cargo/rustc, so it replaces them.
-				apt_get install -y git python3-pip dkms rustup pipx jq protobuf-compiler
-			else
-				apt_get install -y git python3-pip dkms cargo rustc pipx jq protobuf-compiler
-			fi
+			apt_get install -y "${BASE_SYSTEM_PACKAGES[@]}"
 			;;
-		"debian")
-			apt_get update
-			if version_at_least "${VERSION_ID:-0}" 13; then
-				# From trixie on, rustup is packaged (and conflicts with the very old cargo/rustc).
-				apt_get install -y git python3-pip dkms rustup pipx jq protobuf-compiler
-			else
-				# On older Debian, packaged cargo and rustc are very old. Users must install them another way.
-				apt_get install -y git python3-pip dkms pipx jq protobuf-compiler
-			fi
+		fedora)
+			sudo dnf install -y "${BASE_SYSTEM_PACKAGES[@]}"
 			;;
-		"fedora")
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
+		rhel|centos)
+			sudo dnf install -y "${BASE_BOOTSTRAP_PACKAGES[@]}"
+			sudo dnf install -y "${BASE_SYSTEM_PACKAGES[@]}"
 			;;
-		"rhel"|"centos")
-			sudo dnf install -y epel-release
-			sudo dnf install -y git python3-pip python3-devel dkms cargo rust pipx jq protobuf-compiler
-			;;
-		*)
-			error "Unsupported distribution: ${DISTRO_ID}"
-			exit 1
-			;;
+		*) error "Unsupported distribution: ${DISTRO_ID}"; return 1 ;;
 	esac
 
 	if [[ "${DISTRO_ID}" = "debian" ]] && ! version_at_least "${VERSION_ID:-0}" 13; then
@@ -1257,10 +1518,7 @@ main() {
 	# Get Forge container installation choice
 	get_forge_container_choice
 
-	# Disable container runtime install if both Metalium and Forge containers are disabled
-	if [[ "${_arg_install_metalium_container}" = "off" ]] && [[ "${_arg_install_metalium_models_container}" = "off" ]] && [[ "${_arg_install_forge_container}" = "off" ]]; then
-		_arg_install_container_runtime="none"
-	fi
+	disable_unused_container_runtime
 
 	# Get tt-inference-server installation choice
 	get_inference_server_choice
@@ -1276,113 +1534,49 @@ main() {
 	# is not active in the current session, so same-session pulls must use sudo.
 	# Podman is rootless, so sudo would push images into root's storage where the
 	# user's wrapper scripts could not see them; leave the prefix empty there.
-	CONTAINER_PULL_PREFIX=""
-	case "${_arg_install_container_runtime}" in
-		"auto")
-			if command -v docker &> /dev/null || command -v podman &> /dev/null; then
-				warn "A container runtime is already installed; skipping container runtime installation to avoid reinstalling it or creating package conflicts."
-				# Record which runtime we found so it round-trips through
-				# --export-schema (podman may provide the docker CLI via the
-				# podman-docker shim), and use sudo for same-session pulls only
-				# if the docker CLI needs it.
-				if command -v docker &> /dev/null && ! docker --version 2> /dev/null | grep -qi podman; then
-					_arg_install_container_runtime="docker"
-					if ! docker info &> /dev/null; then
-						CONTAINER_PULL_PREFIX="sudo"
-					fi
-				else
-					_arg_install_container_runtime="podman"
-					if ! command -v docker &> /dev/null; then
-						warn "Podman is installed but the 'docker' CLI shim is not. The tt-metalium/tt-forge wrapper scripts invoke 'docker'; install the podman-docker package if they fail."
-					fi
-				fi
-			else
-				log "No container runtime found, installing Docker"
-				install_docker
-				_arg_install_container_runtime="docker"
-				CONTAINER_PULL_PREFIX="sudo"
-			fi
-			;;
-		"podman")
-			install_podman
-			setup_rootless_podman
-			;;
-		"docker")
-			install_docker
-			CONTAINER_PULL_PREFIX="sudo"
-			;;
-		"none")
-			log "Skipping container runtime installation"
-			;;
-		*)
-			error_exit "Invalid container runtime option: ${_arg_install_container_runtime}. Must be 'auto', 'podman', 'docker', or 'none'"
-			;;
-	esac
+	requested_container_runtime="${_arg_install_container_runtime}"
+	resolve_container_runtime
+	_arg_install_container_runtime="${RESOLVED_CONTAINER_RUNTIME}"
+	if [[ "${requested_container_runtime}" = "auto" && "${CONTAINER_RUNTIME_PRESENT}" = "1" ]]; then
+		warn "A container runtime is already installed; skipping container runtime installation to avoid reinstalling it or creating package conflicts."
+	else
+		case "${RESOLVED_CONTAINER_RUNTIME}" in
+			podman) install_podman; setup_rootless_podman ;;
+			docker) log "No container runtime found, installing Docker"; install_docker; CONTAINER_PULL_PREFIX="sudo" ;;
+			none) log "Skipping container runtime installation" ;;
+		esac
+	fi
 
 	# 1. Build package_registry from TTIS_PACKAGE_MAP (defined in ttis.sh).
 	# Format: "package_name|install_flag|version|type"
 	# To add a package, edit TTIS_PACKAGE_MAP in ttis.sh — no changes needed here.
 	# Build package_registry from TTIS_PACKAGE_MAP + current _arg_* variables.
 	# Any extra packages imported from a .ttis file are appended from TTIS_IMPORTED_PACKAGES.
-	declare -A package_registry=()
-	for _ttis_entry in "${TTIS_PACKAGE_MAP[@]}"; do
-		IFS='|' read -r _ttis_pkg _ttis_type _ttis_ivar _ttis_vvar <<< "${_ttis_entry}"
-		package_registry["${_ttis_pkg}"]="${_ttis_pkg}|${!_ttis_ivar}|${!_ttis_vvar}|${_ttis_type}"
-	done
-	for _ttis_entry in "${TTIS_IMPORTED_PACKAGES[@]+"${TTIS_IMPORTED_PACKAGES[@]}"}"; do
-		IFS='|' read -r _ttis_pkg _ttis_flag _ttis_ver _ttis_type <<< "${_ttis_entry}"
-		package_registry["${_ttis_pkg}"]="${_ttis_pkg}|${_ttis_flag}|${_ttis_ver}|${_ttis_type}"
-	done
-	unset _ttis_entry _ttis_pkg _ttis_flag _ttis_ver _ttis_type _ttis_ivar _ttis_vvar
+	build_package_registry
+	resolve_package_actions
+	local -a system_packages=("${SYSTEM_PACKAGES[@]+${SYSTEM_PACKAGES[@]}}")
+	local -a system_downgrade_packages=()
+	local -a python_packages=("${PYTHON_PACKAGES[@]+${PYTHON_PACKAGES[@]}}")
 
-	# 2. Parse the registry to obtain lists of packages
-	declare -a system_packages=()
-	declare -a system_downgrade_packages=()
-	declare -a python_packages=()
-
-	for key in "${!package_registry[@]}"; do
-		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[${key}]}"
-
-		# Skip if not marked for installation
-		[[ "${install_flag}" != "on" ]] && continue
-
-		# Add to appropriate list with version formatting
-		case "${pkg_type}" in
-			system)
-				if [[ -z "${version}" ]]; then
-					system_packages+=("${pkg_name}")
-				else
-					# Format based on package manager
-					if [[ "${PKG_MANAGER}" = "apt-get" ]]; then
-						system_packages+=("${pkg_name}=${version}")
-					elif [[ "${PKG_MANAGER}" = "dnf" ]]; then
-						# dnf "install" refuses to downgrade a package. If the
-						# pinned version (e.g. the 'release' channel after using
-						# 'rolling', or an imported .ttis file) is older than the
-						# installed one, route it through "dnf downgrade" instead.
-						installed_version=""
-						if rpm -q "${pkg_name}" &> /dev/null; then
-							installed_version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg_name}")"
-						fi
-						if [[ -n "${installed_version}" && "${version}" != "${installed_version}" && "$(printf '%s\n%s\n' "${version}" "${installed_version}" | sort -V | head -n 1)" == "${version}" ]]; then
-							system_downgrade_packages+=("${pkg_name}-${version}")
-						else
-							system_packages+=("${pkg_name}-${version}")
-						fi
-					else
-						system_packages+=("${pkg_name}")  # fallback to no version
-					fi
-				fi
-				;;
-			python)
-				if [[ -z "${version}" ]]; then
-					python_packages+=("${pkg_name}")
-				else
-					python_packages+=("${pkg_name}==${version}")
-				fi
-				;;
-		esac
-	done
+	# dnf cannot downgrade through install. Keep this environment-dependent
+	# check outside resolve_package_actions so that the planner remains pure.
+	if [[ "${PKG_MANAGER}" = "dnf" ]]; then
+		for key in "${!package_registry[@]}"; do
+			IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[${key}]}"
+			[[ "${install_flag}" = "on" && "${pkg_type}" = "system" && -n "${version}" ]] || continue
+			installed_version=""
+			if rpm -q "${pkg_name}" &>/dev/null; then
+				installed_version="$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg_name}")"
+			fi
+			if [[ -n "${installed_version}" && "${version}" != "${installed_version}" && "$(printf '%s\n%s\n' "${version}" "${installed_version}" | sort -V | head -n 1)" = "${version}" ]]; then
+				for i in "${!system_packages[@]}"; do
+					[[ "${system_packages[${i}]}" = "${pkg_name}-${version}" ]] && unset 'system_packages[i]'
+				 done
+				system_downgrade_packages+=("${pkg_name}-${version}")
+			fi
+		done
+		system_packages=("${system_packages[@]}")
+	fi
 
 	# 3. Act on the lists
 	# Install system packages
@@ -1551,9 +1745,19 @@ main() {
 	fi
 }
 
-# Start installation
+# Export only deterministic planning functions for source-based unit tests.
+if [[ "${INSTALLER_SOURCE_ONLY}" = "1" ]]; then
+	export -f normalize_options resolve_base_packages build_package_registry \
+		resolve_package_actions disable_unused_container_runtime \
+		resolve_container_runtime resolve_firmware_action \
+		render_install_plan
+fi
+
+# Start installation unless the generated script is being sourced by a test.
 ORIGINAL_ARGS=("$@")
-main
+if [[ "${INSTALLER_SOURCE_ONLY}" != "1" ]]; then
+	main "$@"
+fi
 
 # ] <-- needed because of Argbash
 
