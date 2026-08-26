@@ -234,3 +234,12 @@ For more information, please see this compatibility matrix:
 | Other RPM-based distros  | N/A          | N/A     | Unsupported but may work |
 | Arch Linux | N/A     | No       | Unsupported  |
 | NixOS      | N/A     | No       | Unsupported, but some TT software is in nixpkgs (unofficial, use at own risk) |
+
+
+
+### Dry-Run Mode
+
+To preview all actions the installer would perform without actually modifying your system, use the `--dry-run` flag:
+
+```bash
+./install.sh --dry-run
