@@ -291,6 +291,66 @@ jobs:
           echo "tt-flash has no golden pin; skipping pin assertion"
         fi
 
+  # Dry-run test suite: proves `install.sh --dry-run` prints an accurate plan
+  # and is side-effect-free (every mutating command stubbed to a forbidden
+  # log), plus the generation round-trip and planning unit tests. Runs against
+  # the same built artifact as the other test jobs and the release.
+  test-dry-run:
+    name: Test dry-run
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Download install.sh
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: install-script
+
+    - name: Install test dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq shellcheck
+
+    - name: Run dry-run test suite
+      run: |
+        set -euo pipefail
+        bash -n install.sh tests/test-dry-run.sh tests/unit/test-planning.sh tests/test-generation.sh tests/run-docker-matrix.sh
+        shellcheck tests/test-dry-run.sh tests/unit/test-planning.sh tests/test-generation.sh tests/run-docker-matrix.sh
+        bash tests/test-generation.sh
+        bash tests/unit/test-planning.sh
+        bash tests/test-dry-run.sh
+
+  # Same suite plus a real --dry-run inside six distro containers
+  # (ubuntu 22.04/24.04, debian 13, fedora 41/42/43).
+  test-dry-run-matrix:
+    name: Test dry-run (Docker matrix)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - name: Download install.sh
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: install-script
+
+    - name: Mark install.sh current
+      # run-docker-matrix.sh runs `make install.sh`; make must see the
+      # downloaded artifact as newer than its prerequisites so it doesn't
+      # rebuild with argbash, which isn't installed on the runner.
+      run: touch install.sh
+
+    - name: Install test dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y jq shellcheck
+
+    - name: Run multi-distro matrix
+      run: bash tests/run-docker-matrix.sh
+
   test-template-syntax:
     needs: build
     runs-on: ubuntu-latest
@@ -395,7 +455,7 @@ jobs:
     runs-on: ubuntu-latest
     # Only run if the build workflow completed successfully AND it was triggered by a version tag
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling, test-action-container, test-version-precedence]
+    needs: [build, validate-golden, test-debian-ubuntu, test-fedora, test-hosted-n150, test-debian-ubuntu-rolling, test-action-container, test-version-precedence, test-dry-run, test-dry-run-matrix]
 
     permissions:
       contents: write      # create the release and upload assets
