@@ -24,15 +24,15 @@ clean:
 
 test: install.sh
 	bash tests/unit/test-planning.sh
+	bash tests/unit/test-ttis-roundtrip.sh
 	bash tests/test-dry-run.sh
 	bash tests/test-generation.sh
 
 test-docker: install.sh
 	bash tests/run-docker-matrix.sh
 
-TEST_SCRIPTS := tests/test-dry-run.sh tests/unit/test-planning.sh tests/test-generation.sh tests/run-docker-matrix.sh
+TEST_SCRIPTS := tests/test-dry-run.sh tests/unit/test-planning.sh tests/unit/test-ttis-roundtrip.sh tests/test-generation.sh tests/run-docker-matrix.sh
 
 test-static:
 	bash -n $(TEST_SCRIPTS)
 	shellcheck $(TEST_SCRIPTS)
-
