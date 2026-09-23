@@ -31,7 +31,7 @@ tt-installer performs the following actions on your system:
    - Kernel-Mode Driver (KMD)
    - System tools and HugePages configuration
    - Python packages (tt-flash, tt-smi, etc.)
-4. Updates your card's firmware using tt-flash
+4. Updates your card's firmware using tt-flash (or, with `--prepare-offline-bundle`, saves the firmware for a later `--offline-bundle` run; see [Offline installation](#offline-installation-two-phase))
 5. Installs a container runtime if one is not already present (Docker by default, Podman optional)
 6. Installs tt-metalium as a container and configures the wrapper script for convenient access
 7. Installs tt-studio and tt-inference-server, our user-friendly model runtime systems
@@ -83,6 +83,55 @@ To skip certain components:
 ```bash
 ./install.sh --no-install-kmd --no-install-hugepages
 ```
+
+### Offline installation (two-phase)
+
+Some machines cannot reach the network, or have no Tenstorrent card yet, when
+the software is installed. A common case is building a machine image on a
+CPU-only host and deploying it to hardware later. The installer supports this
+with two flags that split the install from the firmware flash:
+
+```bash
+# Phase 1, on the build host (network access, no card needed):
+# install everything, download the firmware bundle into DIR, do not flash.
+./install.sh --mode-non-interactive --pull-container-images \
+    --prepare-offline-bundle /opt/tenstorrent/offline-bundle
+
+# Phase 2, on the target hardware (no network needed):
+# flash the recorded bundle and nothing else.
+./install.sh --offline-bundle /opt/tenstorrent/offline-bundle
+```
+
+Phase 1 is an ordinary install: base packages, the Tenstorrent repositories,
+KMD (built by DKMS against the installed kernel), HugePages, SFPI, tt-smi,
+tt-flash and any containers or clones you selected. None of these need a card
+to be present. The firmware step is replaced by a download-only step, and the
+bundle directory ends up holding two files:
+
+- `fw_pack-<version>.fwbundle`, the firmware that would have been flashed. The
+  version follows the usual rules: `--fw-version`, the version channel pin, or
+  the latest release. `--update-firmware=off` is ignored in this phase.
+- `tt-installer-state.ttis`, the same [state export](#version-channels) that
+  `--export-schema` writes. It records the firmware version, the installed
+  package versions, and the Python environment tt-flash was installed into.
+
+Phase 2 imports the state file (which also refuses a bundle prepared on a
+different distro family), expects `fw_pack-<firmware.version>.fwbundle` next
+to it, activates the recorded Python environment so `tt-flash` is found, and
+flashes. It skips the version channel, package managers, repositories, Python
+setup, container runtime, containers and clones. `--update-firmware` controls
+the flash policy (`force` by default, `on` to keep tt-flash's version checks),
+and `--reboot-option` applies as usual. `--dry-run --offline-bundle DIR`
+prints what would be flashed without touching the device.
+
+Because the state file is an ordinary `.ttis`, it can also be passed to
+`--versions` to reproduce the phase 1 install on another networked machine.
+
+Two things to plan for when baking an image: the Python environment, uv, the
+wrapper scripts, and the tt-studio / tt-inference-server clones all live in
+the home directory of the user who ran phase 1, so run it as the user that
+will exist on the deployed machine. And the bundle directory must be inside
+the image (or otherwise reachable) at the same path in phase 2.
 
 ### Container runtime selection
 

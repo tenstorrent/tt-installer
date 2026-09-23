@@ -63,6 +63,10 @@ exit 11 #)
 # ARG_OPTIONAL_SINGLE([export-schema],,[(Developer/CI) Export installer state to .ttis file after installation],[])
 
 
+# ========================= Offline Arguments =========================
+# ARG_OPTIONAL_SINGLE([prepare-offline-bundle],,[Directory to write an offline firmware bundle to: install everything as usual but download the firmware bundle there instead of flashing it, for a later --offline-bundle run on the target hardware],[])
+# ARG_OPTIONAL_SINGLE([offline-bundle],,[Directory prepared with --prepare-offline-bundle: flash the recorded firmware bundle from it and skip every step that needs network access],[])
+
 # ========================= Mode Arguments =========================
 # ARG_OPTIONAL_BOOLEAN([mode-container],,[Enable container mode (skips KMD, HugePages, and SFPI, never reboots)],[off])
 # ARG_OPTIONAL_BOOLEAN([mode-non-interactive],,[Enable non-interactive mode (no user prompts)],[off])
@@ -162,6 +166,18 @@ readonly METALIUM_MODELS_IMAGE_TAG="latest-rc"
 # from two origins and refuses non-immutable upstream releases.
 readonly UV_VERSION="0.12.5"
 readonly UV_INSTALLER_SHA256="504511fbbbd811aeaba6738abc79408956b6c7da0ca35437b3dcc24a41efc111"
+
+# Firmware bundle sources. The primary repo publishes fw_pack-<ver>.fwbundle
+# per release; the backup repo is tried when the primary lacks the asset.
+readonly FW_REPO="tenstorrent/tt-system-firmware"
+readonly BACKUP_FW_REPO="tenstorrent/tt-firmware"
+readonly FW_RELEASE_URL="https://github.com/${FW_REPO}/releases/download"
+readonly BACKUP_FW_RELEASE_URL="https://github.com/${BACKUP_FW_REPO}/releases/download"
+
+# An offline bundle directory (--prepare-offline-bundle / --offline-bundle)
+# holds the installer's exported .ttis state file under this name next to the
+# fw_pack-<version>.fwbundle it records in firmware.version.
+readonly OFFLINE_BUNDLE_STATE_FILE="tt-installer-state.ttis"
 
 # ttis.sh is inlined here at build time (see scripts/inline-ttis.sh), replacing
 # the placeholder line below with the body of ttis.sh between its TTIS_INLINE
@@ -295,6 +311,14 @@ normalize_options() {
 		ask|never|always) ;;
 		*) error "Invalid reboot option: ${_arg_reboot_option}"; return 1 ;;
 	esac
+	if [[ -n "${_arg_prepare_offline_bundle}" && -n "${_arg_offline_bundle}" ]]; then
+		error "--prepare-offline-bundle and --offline-bundle are mutually exclusive"
+		return 1
+	fi
+	if [[ -n "${_arg_offline_bundle}" && "${_arg_update_firmware}" = "off" ]]; then
+		error "--offline-bundle flashes firmware from the bundle; --update-firmware=off leaves nothing to do"
+		return 1
+	fi
 
 	if [[ "${_arg_mode_container}" = "on" ]]; then
 		_arg_install_kmd="off"
@@ -447,6 +471,12 @@ resolve_container_runtime() {
 
 # Resolve firmware policy independently from firmware download/flash actions.
 resolve_firmware_action() {
+	# Preparing an offline bundle always downloads the firmware and never
+	# flashes it; the flash policy is decided by the later --offline-bundle run.
+	if [[ -n "${_arg_prepare_offline_bundle}" ]]; then
+		RESOLVED_FIRMWARE_ACTION="download-only"
+		return 0
+	fi
 	case "${_arg_update_firmware}" in
 		off) RESOLVED_FIRMWARE_ACTION="skip" ;;
 		on) RESOLVED_FIRMWARE_ACTION="update" ;;
@@ -489,6 +519,11 @@ render_install_plan() {
 	echo "Python packages: ${PYTHON_PACKAGES[*]:-none}"
 	echo "HugePages: ${_arg_install_hugepages}"
 	echo "Firmware: ${RESOLVED_FIRMWARE_ACTION} ${_arg_fw_version:-latest}"
+	local offline_bundle_action="none"
+	if [[ -n "${_arg_prepare_offline_bundle}" ]]; then
+		offline_bundle_action="prepare (${_arg_prepare_offline_bundle})"
+	fi
+	echo "Offline bundle: ${offline_bundle_action}"
 	echo "Privileged operations: suppressed (sudo, package manager, DKMS, modprobe, tt-flash, reboot)"
 	echo "Containers: runtime=${RESOLVED_CONTAINER_RUNTIME} present=${CONTAINER_RUNTIME_PRESENT} command=${CONTAINER_CLI:-none}"
 	echo "Metalium image: ${_arg_metalium_image_url}:${_arg_metalium_image_tag} (${metalium_image_action})"
@@ -1330,6 +1365,174 @@ install_docker() {
 	log "Docker installation completed. You may need to log out and back in for group membership to take effect."
 }
 
+# ========================= Firmware =========================
+
+# Resolve FW_VERSION from --fw-version (or a channel pin) or the latest
+# tt-system-firmware release. Read-only apart from the GitHub API lookup.
+resolve_firmware_version() {
+	if [[ -n "${_arg_fw_version:-}" ]]; then
+		FW_VERSION="${_arg_fw_version}"
+	else
+		FW_VERSION=$(fetch_latest_version "${FW_REPO}" "v") \
+			|| error_exit "Could not determine the latest firmware version. Pass --fw-version explicitly."
+	fi
+}
+
+# Download fw_pack-${FW_VERSION}.fwbundle into the given directory. Sets
+# FW_FILE (basename) and FW_BUNDLE_PATH (full path). Requires FW_VERSION.
+download_firmware_bundle() {
+	local dest_dir="${1:?download_firmware_bundle: destination directory required}"
+	FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
+	FW_BUNDLE_PATH="${dest_dir}/${FW_FILE}"
+
+	log "Downloading firmware bundle ${FW_FILE}"
+	if ! curl -fsSL -o "${FW_BUNDLE_PATH}" "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+		warn "Tried URL ${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"
+		warn "Could not find firmware bundle at main URL- trying backup URL"
+		if ! curl -fsSL -o "${FW_BUNDLE_PATH}" "${BACKUP_FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
+			rm -f -- "${FW_BUNDLE_PATH}"
+			error_exit "Could not download firmware bundle. Ensure firmware version is valid."
+		fi
+	fi
+	verify_download "${FW_BUNDLE_PATH}"
+}
+
+# Flash a local firmware bundle with tt-flash. Honors --update-firmware:
+# "force" bypasses tt-flash's version and board checks, "on" does not.
+flash_firmware() {
+	local bundle="${1:?flash_firmware: bundle path required}"
+	if ! command -v tt-flash &> /dev/null; then
+		error_exit "tt-flash is not installed or not in PATH. Please install tt-flash before attempting firmware update."
+	fi
+	log "Flashing ${bundle} with $(command -v tt-flash)"
+	if [[ "${_arg_update_firmware}" = "force" ]]; then
+		tt-flash flash "${bundle}" --force
+	else
+		tt-flash flash "${bundle}"
+	fi
+}
+
+# ========================= Offline bundle =========================
+#
+# Two-phase install for machines that cannot reach the network (or have no
+# Tenstorrent card yet) when the software is installed, e.g. building a
+# machine image on a CPU-only host and flashing after deployment. A bundle
+# directory is nothing new: it is the installer's own .ttis state export
+# (${OFFLINE_BUNDLE_STATE_FILE}) plus the firmware bundle it records.
+#
+#   1. --prepare-offline-bundle DIR  runs the normal install (packages, KMD,
+#      HugePages, tt-smi, tt-flash, containers — none of which need a card)
+#      but downloads fw_pack-<version>.fwbundle into DIR instead of flashing
+#      it, then exports the .ttis state file into DIR.
+#   2. --offline-bundle DIR          on the target hardware: imports the .ttis
+#      (validation and distro-family check included), expects
+#      DIR/fw_pack-<firmware.version>.fwbundle, activates the Python
+#      environment the export recorded so tt-flash is found, and flashes.
+#      Nothing else runs — no package manager, no repos, no network.
+
+render_offline_plan() {
+	local tt_flash_path
+	tt_flash_path=$(command -v tt-flash 2>/dev/null || echo "not found")
+	echo -e "${YELLOW}==== DRY-RUN: Offline Flash Preview ====${NC}"
+	echo "Action execution: suppressed"
+	echo "Platform: ${DISTRO_ID} ${VERSION_ID:-unknown} (${PKG_MANAGER})"
+	echo "Offline bundle: ${_arg_offline_bundle}"
+	echo "State file: ${_arg_offline_bundle}/${OFFLINE_BUNDLE_STATE_FILE}"
+	echo "Firmware: ${RESOLVED_FIRMWARE_ACTION} ${_arg_fw_version} (${OFFLINE_FW_FILE})"
+	echo "Python strategy: ${_arg_python_choice}${_arg_new_venv_location:+ (${_arg_new_venv_location})}"
+	echo "tt-flash: ${tt_flash_path}"
+	echo "Skipped: package manager, repositories, Python setup, container runtime, containers, clones"
+	echo "Network access: none"
+	echo "Reboot: suppressed (${_arg_reboot_option})"
+}
+
+# Entry point for --offline-bundle. Called from main after option
+# normalization and distro detection, before anything touches the network.
+run_offline_bundle() {
+	local dir="${_arg_offline_bundle}"
+	local state_file="${dir}/${OFFLINE_BUNDLE_STATE_FILE}"
+	local user_non_interactive="${_arg_mode_non_interactive}"
+
+	if [[ -n "${_arg_export_schema:-}" ]]; then
+		warn "--export-schema is ignored with --offline-bundle (nothing is installed to export)"
+	fi
+	if [[ ! -d "${dir}" ]]; then
+		error_exit "Offline bundle directory not found: ${dir}"
+	fi
+	if [[ ! -f "${state_file}" ]]; then
+		error_exit "No ${OFFLINE_BUNDLE_STATE_FILE} in ${dir}. Create the bundle with --prepare-offline-bundle ${dir}"
+	fi
+
+	# The state file carries the firmware version and Python environment. A
+	# full import also validates it and refuses a bundle from another distro
+	# family. The import forces non-interactive mode; keep the user's choice so
+	# an interactive run on the hardware still gets the reboot prompt.
+	# shellcheck disable=SC2034
+	TTIS_VERBOSE=1
+	ttis_import "${state_file}" || error_exit "Offline bundle at ${dir} is unusable"
+	_arg_mode_non_interactive="${user_non_interactive}"
+	if [[ -z "${_arg_fw_version:-}" ]]; then
+		error_exit "${state_file} records no firmware version; it was not produced by --prepare-offline-bundle"
+	fi
+	OFFLINE_FW_FILE="${dir}/fw_pack-${_arg_fw_version}.fwbundle"
+	if [[ ! -f "${OFFLINE_FW_FILE}" ]]; then
+		error_exit "Firmware bundle for version ${_arg_fw_version} not found at ${OFFLINE_FW_FILE}"
+	fi
+
+	if [[ "${_arg_dry_run}" = "on" ]]; then
+		_arg_mode_non_interactive="on"
+	fi
+	if [[ "${_arg_mode_non_interactive}" = "on" ]]; then
+		set_non_interactive_defaults
+	fi
+	resolve_firmware_action
+
+	# tt-flash was installed in phase 1 but lives in the venv the export
+	# recorded, which is not on PATH; re-activate it. pipx/uv installs land in
+	# ~/.local/bin.
+	if [[ "${_arg_python_choice}" = "new-venv" ]]; then
+		if [[ -f "${_arg_new_venv_location}/bin/activate" ]]; then
+			log "Activating Python environment recorded in the bundle: ${_arg_new_venv_location}"
+			# shellcheck disable=SC1091 # Path comes from the .ttis state file
+			source "${_arg_new_venv_location}/bin/activate"
+		else
+			warn "Python environment recorded in the bundle was not found at ${_arg_new_venv_location}; looking for tt-flash on PATH"
+		fi
+	fi
+	export PATH="${PATH}:${HOME}/.local/bin"
+
+	if [[ "${_arg_dry_run}" = "on" ]]; then
+		render_offline_plan
+		if [[ "${INSTALLER_SOURCE_ONLY}" != "1" ]]; then
+			rm -rf -- "${WORKDIR}"
+		fi
+		return 0
+	fi
+
+	warn "Running from offline bundle ${dir}: only the firmware flash will run"
+	log "Firmware ${_arg_fw_version} from ${OFFLINE_FW_FILE}"
+	flash_firmware "${OFFLINE_FW_FILE}"
+
+	log "Please reboot your system to complete the setup."
+	log "After rebooting, try running 'tt-smi' to see the status of your hardware."
+	log "✅ Firmware flash completed successfully."
+	log "Installation log saved to: ${LOG_FILE}"
+	handle_reboot
+}
+
+# Reboot policy shared by the full install and the offline flash.
+handle_reboot() {
+	if [[ "${_arg_reboot_option}" = "always" ]]; then
+		log "Auto-reboot enabled. Rebooting now..."
+		sudo reboot
+	elif [[ "${_arg_reboot_option}" = "ask" ]]; then
+		if confirm "Would you like to reboot now?"; then
+			log "Rebooting..."
+			sudo reboot
+		fi
+	fi
+}
+
 # Main installation script
 main() {
 	echo -e "${LOGO}"
@@ -1355,10 +1558,23 @@ main() {
 	if [[ "${_arg_versions}" != "release" && "${_arg_versions}" != "rolling" && "${_arg_versions}" != /* ]]; then
 		_arg_versions="$(pwd)/${_arg_versions}"
 	fi
+	if [[ -n "${_arg_prepare_offline_bundle:-}" && "${_arg_prepare_offline_bundle}" != /* ]]; then
+		_arg_prepare_offline_bundle="$(pwd)/${_arg_prepare_offline_bundle}"
+	fi
+	if [[ -n "${_arg_offline_bundle:-}" && "${_arg_offline_bundle}" != /* ]]; then
+		_arg_offline_bundle="$(pwd)/${_arg_offline_bundle}"
+	fi
 
 	# Detect distro early so PKG_MANAGER is set before ttis_import needs it.
 	detect_distro
 	resolve_base_packages
+
+	# An offline flash needs nothing below this point: no version channel (the
+	# 'release' channel fetches the golden file), no packages, no network.
+	if [[ -n "${_arg_offline_bundle:-}" ]]; then
+		run_offline_bundle
+		return
+	fi
 
 	# Version arguments given on the command line take precedence over versions
 	# pinned by the 'release' channel or imported from a .ttis file: capture
@@ -1473,11 +1689,17 @@ main() {
 	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
 		warn "TT-Flash installation will be skipped"
 	fi
-	if [[ "${_arg_update_firmware}" = "off" ]]; then
+	if [[ "${_arg_update_firmware}" = "off" && -z "${_arg_prepare_offline_bundle}" ]]; then
 		warn "Firmware update will be skipped"
 	fi
-	if [[ "${_arg_update_firmware}" = "force" ]] && arg_was_passed "--update-firmware"; then
+	if [[ "${_arg_update_firmware}" = "force" ]] && arg_was_passed "--update-firmware" && [[ -z "${_arg_prepare_offline_bundle}" ]]; then
 		warn "Firmware will be forcibly updated"
+	fi
+	if [[ -n "${_arg_prepare_offline_bundle}" ]]; then
+		warn "Preparing an offline bundle in ${_arg_prepare_offline_bundle}: firmware will be downloaded but not flashed"
+		if [[ "${_arg_update_firmware}" = "off" ]]; then
+			warn "--update-firmware=off is ignored while preparing a bundle; the --offline-bundle run decides the flash policy"
+		fi
 	fi
 	if [[ "${_arg_install_metalium_models_container}" = "on" ]]; then
 		log "Metalium Models container will be installed"
@@ -1605,49 +1827,26 @@ main() {
 		${PYTHON_INSTALL_CMD} "${python_packages[@]}"
 	fi
 
-	# Update firmware using tt-flash
-	if [[ "${_arg_update_firmware}" = "off" ]]; then
+	# Firmware: download into an offline bundle, flash, or skip. The offline
+	# bundle's .ttis state file is exported at the end of main, once every
+	# package version can be resolved from what was installed.
+	if [[ -n "${_arg_prepare_offline_bundle}" ]]; then
+		log "Preparing offline firmware bundle in ${_arg_prepare_offline_bundle}"
+		mkdir -p "${_arg_prepare_offline_bundle}" || error_exit "Failed to create offline bundle directory ${_arg_prepare_offline_bundle}"
+		resolve_firmware_version
+		download_firmware_bundle "${_arg_prepare_offline_bundle}"
+		log "Firmware ${FW_VERSION} downloaded to ${FW_BUNDLE_PATH}; it was NOT flashed"
+	elif [[ "${_arg_update_firmware}" = "off" ]]; then
 		log "Skipping firmware update"
 	else
 		log "Updating firmware"
-
-		# Check if tt-flash is installed and available
+		# Fail before downloading anything if tt-flash is missing.
 		if ! command -v tt-flash &> /dev/null; then
 			error_exit "tt-flash is not installed or not in PATH. Please install tt-flash before attempting firmware update."
 		fi
-
-		FW_REPO="tenstorrent/tt-system-firmware"
-		BACKUP_FW_REPO="tenstorrent/tt-firmware"
-		FW_RELEASE_URL="https://github.com/${FW_REPO}/releases/download"
-		BACKUP_FW_RELEASE_URL="https://github.com/${BACKUP_FW_REPO}/releases/download"
-
-		if [[ -n "${_arg_fw_version:-}" ]]; then
-			FW_VERSION=${_arg_fw_version}
-		else
-			FW_VERSION=$(fetch_latest_version "${FW_REPO}" "v");
-		fi
-
-		cd "${WORKDIR}"
-
-		# Create FW_FILE based on FW_VERSION
-		FW_FILE="fw_pack-${FW_VERSION}.fwbundle"
-
-		# Download from GitHub releases
-		if ! curl -fsSLO "${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
-			warn "Tried URL ${FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"
-			warn "Could not find firmware bundle at main URL- trying backup URL"
-			if ! curl -fsSLO "${BACKUP_FW_RELEASE_URL}/v${FW_VERSION}/${FW_FILE}"; then
-				error_exit "Could not download firmware bundle. Ensure firmware version is valid."
-			fi
-		fi
-
-		verify_download "${FW_FILE}"
-
-		if [[ "${_arg_update_firmware}" = "force" ]]; then
-			tt-flash flash "${FW_FILE}" --force
-		else
-			tt-flash flash "${FW_FILE}"
-		fi
+		resolve_firmware_version
+		download_firmware_bundle "${WORKDIR}"
+		flash_firmware "${FW_BUNDLE_PATH}"
 	fi
 
 	if [[ "${_arg_install_inference_server}" = "on" ]]; then
@@ -1720,6 +1919,19 @@ main() {
 		log "Usage: tt-studio [arguments]"
 	fi
 
+	# Complete the offline bundle: the exported state records the firmware
+	# version that was downloaded and the Python environment holding tt-flash,
+	# which is everything --offline-bundle needs.
+	if [[ -n "${_arg_prepare_offline_bundle}" ]]; then
+		# shellcheck disable=SC2034
+		TTIS_VERBOSE=1
+		ttis_resolve_versions
+		ttis_export "${_arg_prepare_offline_bundle}/${OFFLINE_BUNDLE_STATE_FILE}" --force
+		log "Offline bundle ready in ${_arg_prepare_offline_bundle} (firmware ${FW_VERSION})"
+		log "On the target hardware, run:"
+		log "  install.sh --offline-bundle ${_arg_prepare_offline_bundle}"
+	fi
+
 	# Export state file if requested (an explicit selection, so ttis output is shown)
 	if [[ -n "${_arg_export_schema:-}" ]]; then
 		# shellcheck disable=SC2034
@@ -1732,17 +1944,7 @@ main() {
 	log "✅ Installation completed successfully."
 	log "Installation log saved to: ${LOG_FILE}"
 
-	# Auto-reboot if specified
-	if [[ "${_arg_reboot_option}" = "always" ]]; then
-		log "Auto-reboot enabled. Rebooting now..."
-		sudo reboot
-	# Otherwise, ask if specified
-	elif [[ "${_arg_reboot_option}" = "ask" ]]; then
-		if confirm "Would you like to reboot now?"; then
-			log "Rebooting..."
-			sudo reboot
-		fi
-	fi
+	handle_reboot
 }
 
 # Export only deterministic planning functions for source-based unit tests.
@@ -1750,7 +1952,7 @@ if [[ "${INSTALLER_SOURCE_ONLY}" = "1" ]]; then
 	export -f normalize_options resolve_base_packages build_package_registry \
 		resolve_package_actions disable_unused_container_runtime \
 		resolve_container_runtime resolve_firmware_action \
-		render_install_plan
+		render_install_plan render_offline_plan
 fi
 
 # Start installation unless the generated script is being sourced by a test.
