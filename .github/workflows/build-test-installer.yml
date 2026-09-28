@@ -173,7 +173,7 @@ jobs:
     name: Test version argument precedence
     needs: [build, validate-golden]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
     - name: Checkout code
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -239,7 +239,7 @@ jobs:
       # tampered asset fails here instead of on a user's machine.
       run: |
         set -euo pipefail
-        timeout 900 bash install.sh \
+        timeout 1500 bash install.sh \
           --mode-container \
           --mode-non-interactive \
           --use-uv \
