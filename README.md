@@ -31,6 +31,7 @@ tt-installer performs the following actions on your system:
    - Kernel-Mode Driver (KMD)
    - System tools and HugePages configuration
    - Python packages (tt-flash, tt-smi, etc.)
+   - tt-cli (the `tt` command), as an isolated [uv](https://github.com/astral-sh/uv) tool
 4. Updates your card's firmware using tt-flash
 5. Installs a container runtime if one is not already present (Docker by default, Podman optional)
 6. Installs tt-metalium as a container and configures the wrapper script for convenient access
@@ -115,6 +116,24 @@ argument keep the channel's behavior.
 By default, we install your distro's python3. If you want to specify a different Python version (e.g. 3.10 on Fedora 43), you can use [uv](https://github.com/astral-sh/uv) and specify a version like so:
 ```bash
 ./install.sh --use-uv --python-version 3.10
+```
+
+### tt-cli
+
+The installer installs [tt-cli](https://github.com/tenstorrent/tt-cli) (the
+`tt` command, PyPI package `tenstorrent`) as an isolated
+[uv tool](https://docs.astral.sh/uv/guides/tools/), not into the Tenstorrent
+venv. It gets its own virtual environment under uv's tool directory and the
+`tt` executable is linked into `~/.local/bin`, so it is available globally
+whichever `--python-choice` you pick and can manage its own environment
+(`tt self update`). uv is installed for this if it is not already present,
+even with `--no-use-uv`.
+
+tt-cli is pinned per installer release (like uv): each release installs the
+exact version recorded in `install.m4`, bumped with `make bump-tt-cli`. To
+skip it:
+```bash
+./install.sh --no-install-tt-cli
 ```
 
 ### Version channels

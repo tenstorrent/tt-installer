@@ -138,6 +138,8 @@ assert_output "${output}" "extra-python==2.3.4"
 assert_output "${output}" "Firmware: force-flash 1.2.3"
 assert_output "${output}" "Privileged operations: suppressed"
 assert_output "${output}" "Export: suppressed"
+assert_output "${output}" "tt-cli: on (tenstorrent=="
+assert_output "${output}" ", isolated uv tool)"
 assert_no_mutation
 
 output=$(run_installer "${FIXTURES}/os-release-ubuntu-24.04" \
@@ -164,6 +166,11 @@ assert_output "${output}" "Metalium Models image:"
 assert_output "${output}" "Forge image:"
 assert_output "${output}" "pull during install"
 assert_output "${output}" "Reboot: suppressed (always)"
+assert_no_mutation
+
+output=$(run_installer "${FIXTURES}/os-release-ubuntu-24.04" \
+	--dry-run --versions rolling --update-firmware off --no-install-tt-cli)
+assert_output "${output}" "tt-cli: off"
 assert_no_mutation
 
 output=$(run_installer "${FIXTURES}/os-release-ubuntu-24.04" \

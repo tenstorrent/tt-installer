@@ -21,6 +21,7 @@ exit 11 #)
 # ARG_OPTIONAL_BOOLEAN([install-tt-flash],,[Install tt-flash for updating device firmware],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-smi],,[Install tt-smi for device monitoring],[on])
 # ARG_OPTIONAL_BOOLEAN([install-tt-topology],,[Install tt-topology (Wormhole only)],[off])
+# ARG_OPTIONAL_BOOLEAN([install-tt-cli],,[Install tt-cli (the 'tt' command) as an isolated uv tool, pinned per installer release],[on])
 # ARG_OPTIONAL_BOOLEAN([install-sfpi],,[Install SFPI],[on])
 # ARG_OPTIONAL_BOOLEAN([install-inference-server],,[Install tt-inference-server],[on])
 # ARG_OPTIONAL_BOOLEAN([install-studio],,[Install tt-studio],[on])
@@ -162,6 +163,13 @@ readonly METALIUM_MODELS_IMAGE_TAG="latest-rc"
 # from two origins and refuses non-immutable upstream releases.
 readonly UV_VERSION="0.12.5"
 readonly UV_INSTALLER_SHA256="504511fbbbd811aeaba6738abc79408956b6c7da0ca35437b3dcc24a41efc111"
+
+# Pinned tt-cli release. tt-cli is the PyPI package "tenstorrent" (it provides
+# the `tt` command) and is installed as an isolated uv tool, never into the
+# Tenstorrent venv, so it can manage its own environment (`tt self update`).
+# Bump with `make bump-tt-cli`, which checks the release exists on PyPI.
+readonly TT_CLI_PACKAGE="tenstorrent"
+readonly TT_CLI_VERSION="1.0.1"
 
 # ttis.sh is inlined here at build time (see scripts/inline-ttis.sh), replacing
 # the placeholder line below with the body of ttis.sh between its TTIS_INLINE
@@ -473,6 +481,10 @@ render_install_plan() {
 		forge_image_action="deferred until first wrapper run"
 		[[ "${_arg_pull_container_images}" = "on" ]] && forge_image_action="pull during install"
 	fi
+	local tt_cli_detail=""
+	if [[ "${_arg_install_tt_cli}" = "on" ]]; then
+		tt_cli_detail=" (${TT_CLI_PACKAGE}==${TT_CLI_VERSION}, isolated uv tool)"
+	fi
 	if [[ -z "${CONTAINER_CLI}" ]]; then
 		metalium_image_action="disabled"
 		models_image_action="disabled"
@@ -487,6 +499,7 @@ render_install_plan() {
 	echo "System packages: ${BASE_SYSTEM_PACKAGES[*]}"
 	echo "TT system packages: ${SYSTEM_PACKAGES[*]:-none}"
 	echo "Python packages: ${PYTHON_PACKAGES[*]:-none}"
+	echo "tt-cli: ${_arg_install_tt_cli}${tt_cli_detail}"
 	echo "HugePages: ${_arg_install_hugepages}"
 	echo "Firmware: ${RESOLVED_FIRMWARE_ACTION} ${_arg_fw_version:-latest}"
 	echo "Privileged operations: suppressed (sudo, package manager, DKMS, modprobe, tt-flash, reboot)"
@@ -607,6 +620,9 @@ install_uv() {
 		echo "${UV_INSTALLER_SHA256}  ${uv_installer}" | sha256sum --check --quiet - \
 			|| error_exit "uv installer failed SHA-256 verification (expected ${UV_INSTALLER_SHA256}); refusing to run it"
 		sh "${uv_installer}"
+		# uv-installer.sh adds ~/.local/bin to the shell RC files itself; remember
+		# that so install_tt_cli does not append a second, redundant snippet.
+		UV_INSTALLER_MODIFIED_SHELL=1
 	else
 		warn "Could not download the uv installer from GitHub, installing uv ${UV_VERSION} from PyPI with pipx"
 		pipx install "uv==${UV_VERSION}"
@@ -614,6 +630,38 @@ install_uv() {
 	# uv installs to ~/.local/bin by default; make it visible this session
 	export PATH="${HOME}/.local/bin:${PATH}"
 	check_uv_installed || error_exit "uv installation failed"
+}
+
+# Install tt-cli as an isolated uv tool, pinned to TT_CLI_VERSION.
+# uv is required here regardless of --use-uv (which only governs how the
+# tt-smi/tt-flash Python packages are installed): the tool gets its own venv
+# under uv's tool directory and the `tt` entry point is linked into uv's tool
+# bin directory (~/.local/bin by default), so it is available globally and is
+# independent of the Python environment chosen in get_python_choice. uv
+# replaces an existing tool environment whose pinned version differs, so
+# re-running the installer always converges on the pinned release.
+install_tt_cli() {
+	log "Installing tt-cli ${TT_CLI_VERSION} as a uv tool"
+	# PATH as the user started with; install_uv exports ~/.local/bin for this
+	# session only, which would mask a shell RC that still lacks it.
+	local path_before="${PATH}"
+	if ! check_uv_installed; then
+		install_uv
+	fi
+	uv tool install "${TT_CLI_PACKAGE}==${TT_CLI_VERSION}" || error_exit "tt-cli installation failed"
+
+	local tool_bin_dir
+	tool_bin_dir="$(uv tool dir --bin 2>/dev/null || echo "${HOME}/.local/bin")"
+	if [[ ":${path_before}:" != *":${tool_bin_dir}:"* ]]; then
+		if [[ "${UV_INSTALLER_MODIFIED_SHELL:-0}" != "1" ]]; then
+			# uv tool update-shell no-ops when the directory is already on the
+			# current PATH, so evaluate it against the user's original PATH.
+			PATH="${path_before}" "$(command -v uv)" tool update-shell \
+				|| warn "Could not update your shell configuration; add ${tool_bin_dir} to your PATH manually"
+		fi
+		warn "${tool_bin_dir} was not in your PATH. Restart your shell before running 'tt'."
+	fi
+	log "tt-cli installation completed"
 }
 
 # Get Python installation choice interactively or use default
@@ -1490,6 +1538,9 @@ main() {
 	if [[ "${_arg_install_studio}" = "off" ]]; then
 		warn "tt-studio installation will be skipped"
 	fi
+	if [[ "${_arg_install_tt_cli}" = "off" ]]; then
+		warn "tt-cli installation will be skipped"
+	fi
 	# shellcheck disable=SC2154
 	if [[ "${_arg_install_tt_flash}" = "off" ]]; then
 		warn "TT-Flash installation will be skipped"
@@ -1626,6 +1677,11 @@ main() {
 		${PYTHON_INSTALL_CMD} "${python_packages[@]}"
 	fi
 
+	# Install tt-cli as an isolated uv tool (pinned to TT_CLI_VERSION)
+	if [[ "${_arg_install_tt_cli}" = "on" ]]; then
+		install_tt_cli
+	fi
+
 	# Update firmware using tt-flash
 	if [[ "${_arg_update_firmware}" = "off" ]]; then
 		log "Skipping firmware update"
@@ -1739,6 +1795,10 @@ main() {
 		log "Use 'tt-studio' to launch tt-studio"
 		log "tt-studio has been installed to ~/.local/lib/tt-studio"
 		log "Usage: tt-studio [arguments]"
+	fi
+	if [[ "${_arg_install_tt_cli}" = "on" ]]; then
+		log "Use 'tt' for everything Tenstorrent (tt-cli ${TT_CLI_VERSION}, installed as a uv tool)"
+		log "Usage: tt --help"
 	fi
 
 	# Export state file if requested (an explicit selection, so ttis output is shown)
