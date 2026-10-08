@@ -23,13 +23,15 @@ grep -qF 'TTIS_PACKAGE_MAP' "${INSTALLER}" || fail "TTIS_PACKAGE_MAP not inlined
 grep -qF '# --- begin inlined ttis.sh' "${INSTALLER}" || fail "inlined ttis begin marker missing"
 grep -qF '# --- end inlined ttis.sh' "${INSTALLER}" || fail "inlined ttis end marker missing"
 grep -qF -- '--dry-run' "${INSTALLER}" || fail "dry-run flag missing"
+grep -qF -- '--offline-bundle' "${INSTALLER}" || fail "offline-bundle flag missing"
+grep -qF -- '--prepare-offline-bundle' "${INSTALLER}" || fail "prepare-offline-bundle flag missing"
 grep -q '_arg_dry_run' "${INSTALLER}" || fail "_arg_dry_run parser variable missing"
 grep -qF 'main "$@"' "${INSTALLER}" || fail "main invocation missing"
 grep -q 'INSTALLER_SOURCE_ONLY' "${INSTALLER}" || fail "source-only guard missing"
 for fn in normalize_options resolve_base_packages build_package_registry \
 		resolve_package_actions disable_unused_container_runtime \
 		resolve_container_runtime resolve_firmware_action \
-		render_install_plan; do
+		render_install_plan render_offline_plan; do
 	grep -qE "^${fn}\(\)" "${INSTALLER}" || fail "planning function ${fn} missing"
 done
 

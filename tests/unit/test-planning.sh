@@ -255,4 +255,37 @@ CONTAINER_CLI=""
 plan=$(TT_INSTALLER_ARCH=x86_64 TT_INSTALLER_KERNEL=6.0.0-test render_install_plan)
 [[ "${plan}" == *"Metalium image: ghcr.io/tenstorrent/tt-metal:latest (disabled)"* ]]
 
+# --- offline bundle planning ---
+_arg_prepare_offline_bundle=""
+_arg_offline_bundle=""
+_arg_update_firmware=off
+resolve_firmware_action
+[[ "${RESOLVED_FIRMWARE_ACTION}" = skip ]]
+# Preparing a bundle downloads regardless of the flash policy.
+_arg_prepare_offline_bundle=/tmp/bundle
+resolve_firmware_action
+[[ "${RESOLVED_FIRMWARE_ACTION}" = download-only ]]
+plan=$(TT_INSTALLER_ARCH=x86_64 TT_INSTALLER_KERNEL=6.0.0-test render_install_plan)
+[[ "${plan}" == *"Firmware: download-only 1.2.3"* ]]
+[[ "${plan}" == *"Offline bundle: prepare (/tmp/bundle)"$'\n'* ]]
+_arg_prepare_offline_bundle=""
+plan=$(TT_INSTALLER_ARCH=x86_64 TT_INSTALLER_KERNEL=6.0.0-test render_install_plan)
+[[ "${plan}" == *"Offline bundle: none"$'\n'* ]]
+
+echo "expected failure: both offline flags"
+_arg_install_container_runtime=auto
+_arg_update_firmware=force
+_arg_python_choice=new-venv
+_arg_reboot_option=never
+_arg_prepare_offline_bundle=/tmp/a
+_arg_offline_bundle=/tmp/b
+if normalize_options; then exit 1; fi
+echo "expected failure: offline bundle with firmware off"
+_arg_prepare_offline_bundle=""
+_arg_update_firmware=off
+if normalize_options; then exit 1; fi
+_arg_update_firmware=force
+normalize_options
+_arg_offline_bundle=""
+
 echo -e "\033[0;32mTests passed!\033[0m"
