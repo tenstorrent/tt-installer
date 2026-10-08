@@ -653,7 +653,7 @@ install_tt_cli() {
 	local tool_bin_dir
 	tool_bin_dir="$(uv tool dir --bin 2>/dev/null || echo "${HOME}/.local/bin")"
 	if [[ ":${path_before}:" != *":${tool_bin_dir}:"* ]]; then
-		if [[ "${UV_INSTALLER_MODIFIED_SHELL:-0}" != "1" ]]; then
+		if [[ "${UV_INSTALLER_MODIFIED_SHELL:-0}" != "1" || "${tool_bin_dir}" != "${HOME}/.local/bin" ]]; then
 			# uv tool update-shell no-ops when the directory is already on the
 			# current PATH, so evaluate it against the user's original PATH.
 			PATH="${path_before}" "$(command -v uv)" tool update-shell \
