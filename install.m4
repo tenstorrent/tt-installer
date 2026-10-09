@@ -1211,7 +1211,7 @@ name=Tenstorrent
 baseurl=https://ppa.tenstorrent.com/fedora
 enabled=1
 gpgcheck=1
-gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
+gpgkey=https://ppa.tenstorrent.com/tt-pkg-key.asc
 EOF'
 			;;
 		"rhel"|"centos")
@@ -1222,7 +1222,7 @@ name=Tenstorrent
 baseurl=https://ppa.tenstorrent.com/fedora
 enabled=1
 gpgcheck=1
-gpgkey=http://ppa.tenstorrent.com/tt-pkg-key.asc
+gpgkey=https://ppa.tenstorrent.com/tt-pkg-key.asc
 EOF'
 			;;
 		*)
