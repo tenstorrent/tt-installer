@@ -19,6 +19,11 @@ fetch-golden:
 bump-uv:
 	scripts/bump-uv.sh $(UV_VERSION)
 
+# Update the pinned tt-cli version in install.m4 (latest PyPI release by
+# default, or `make bump-tt-cli TT_CLI_VERSION=1.0.1` for a specific one).
+bump-tt-cli:
+	scripts/bump-tt-cli.sh $(TT_CLI_VERSION)
+
 clean:
 	rm -rf install.sh install.sh.temp
 
