@@ -310,6 +310,7 @@ normalize_options() {
 		_arg_install_container_runtime="none"
 		_arg_install_sfpi="off"
 		_arg_reboot_option="never"
+		_arg_update_firmware="off"
 	fi
 }
 
@@ -1439,6 +1440,22 @@ main() {
 			user_versions["${_ver_var}"]="${!_ver_var}"
 		fi
 	done
+
+	# Ensure jq is present before parsing a golden release or .ttis file on
+	# fresh hosts where BASE_SYSTEM_PACKAGES has not run yet (skip in dry-run).
+	if [[ "${_arg_dry_run}" != "on" && "${_arg_versions}" != "rolling" ]] && ! command -v jq &>/dev/null; then
+		log "Installing jq required to parse version schema"
+		check_has_sudo_perms
+		case "${PKG_MANAGER}" in
+			"apt-get")
+				apt_get update
+				apt_get install -y jq
+				;;
+			"dnf")
+				sudo dnf install -y jq
+				;;
+		esac
+	fi
 
 	# Select the version channel. The default ('release') is applied silently;
 	# explicit non-default selections are logged.
