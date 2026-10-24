@@ -174,8 +174,9 @@ assert_output "${output}" "tt-cli: off"
 assert_no_mutation
 
 output=$(run_installer "${FIXTURES}/os-release-ubuntu-24.04" \
-	--dry-run --versions rolling --mode-container --update-firmware off)
+	--dry-run --versions rolling --mode-container)
 assert_output "${output}" "HugePages: off"
+assert_output "${output}" "Firmware: skip"
 assert_output "${output}" "Containers: runtime=none"
 assert_output "${output}" "Reboot: suppressed (never)"
 assert_no_mutation
