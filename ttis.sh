@@ -306,6 +306,13 @@ ttis_export() {
 	local py_json='{}'
 	for key in "${!package_registry[@]}"; do
 		IFS='|' read -r pkg_name install_flag version pkg_type <<< "${package_registry[${key}]}"
+		# A disabled package can still carry a version pin (for example after
+		# --no-install-kmd --kmd-version 2.9.0). Schema v1 records "not installed"
+		# as an empty version string and ttis_import treats any non-empty value as
+		# installed, so exporting the pin would silently re-enable the package.
+		if [[ "${install_flag}" != "on" ]]; then
+			version=""
+		fi
 		if [[ "${pkg_type}" == "system" ]]; then
 			sys_json=$(jq --arg k "${pkg_name}" --arg v "${version}" '. + {($k): $v}' <<< "${sys_json}")
 		else

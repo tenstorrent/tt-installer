@@ -316,10 +316,11 @@ jobs:
     - name: Run dry-run test suite
       run: |
         set -euo pipefail
-        bash -n install.sh tests/test-dry-run.sh tests/unit/test-planning.sh tests/test-generation.sh tests/run-docker-matrix.sh
-        shellcheck tests/test-dry-run.sh tests/unit/test-planning.sh tests/test-generation.sh tests/run-docker-matrix.sh
+        bash -n install.sh tests/test-dry-run.sh tests/unit/test-planning.sh tests/unit/test-ttis-roundtrip.sh tests/test-generation.sh tests/run-docker-matrix.sh
+        shellcheck tests/test-dry-run.sh tests/unit/test-planning.sh tests/unit/test-ttis-roundtrip.sh tests/test-generation.sh tests/run-docker-matrix.sh
         bash tests/test-generation.sh
         bash tests/unit/test-planning.sh
+        bash tests/unit/test-ttis-roundtrip.sh
         bash tests/test-dry-run.sh
 
   # Same suite plus a real --dry-run inside six distro containers
