@@ -512,6 +512,9 @@ render_install_plan() {
 	echo "Python strategy: ${_arg_python_choice}"
 	echo "Reboot: suppressed (${_arg_reboot_option})"
 	echo "Export: suppressed${_arg_export_schema:+ (${_arg_export_schema})}"
+	if [[ "${_arg_mode_container}" = "off" ]]; then
+		render_qb2_fix_plan
+	fi
 }
 
 # True when dotted version ${1} (e.g. VERSION_ID "24.04" or "13") is at least ${2}.
@@ -1400,6 +1403,129 @@ install_docker() {
 }
 
 # Main installation script
+# ---- QuietBox 2 preinstaller ISO <= v1.2.0 repairs ----
+# Those ISOs have two defects that together break the desktop: they leave
+# Ubuntu's release-upgrade prompt on, and their welcome-video user unit
+# (tt-hello-world.service) activates graphical-session.target ahead of GNOME,
+# which gnome-session on Ubuntu 26.04 refuses to start under. ISO v1.2.1 fixes
+# both for new installs; these functions repair units already in the field.
+# Detection is file tests only (no sudo, D-Bus or network), and nothing is
+# touched on a machine that was not installed from such an ISO.
+
+# Test hook: prefix for the system files below. Empty on a real system.
+QB2_FIX_ROOT="${TT_QB2_FIX_ROOT:-}"
+readonly QB2_HELLO_WORLD_UNIT="tt-hello-world.service"
+readonly QB2_HELLO_WORLD_UNIT_PATH="/etc/systemd/user/${QB2_HELLO_WORLD_UNIT}"
+readonly QB2_RELEASE_UPGRADES_PATH="/etc/update-manager/release-upgrades"
+
+# Gate: this system was installed from a preinstaller ISO <= v1.2.0. Only the
+# ISO creates this unit file, and the Wants= line was removed in v1.2.1.
+qb2_legacy_iso_install() {
+	local unit="${QB2_FIX_ROOT}${QB2_HELLO_WORLD_UNIT_PATH}"
+	[[ -f "${unit}" && ! -L "${unit}" ]] || return 1
+	grep -qx 'ExecStart=/usr/local/bin/tt-hello-world.sh' "${unit}" || return 1
+	grep -qx 'Wants=graphical-session.target' "${unit}" || return 1
+}
+
+# The welcome video is still wired to start early for the current user: the
+# ISO's hand-made default.target.wants link exists and the unit is not masked.
+qb2_hello_world_fix_needed() {
+	local cfg="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
+	local link="${cfg}/default.target.wants/${QB2_HELLO_WORLD_UNIT}"
+	local mask="${cfg}/${QB2_HELLO_WORLD_UNIT}"
+
+	qb2_legacy_iso_install || return 1
+	[[ "$(id -u)" -ne 0 ]] || return 1
+	[[ -L "${link}" ]] || return 1
+	[[ "$(readlink "${link}")" = "${QB2_HELLO_WORLD_UNIT_PATH}" ]] || return 1
+	if [[ -L "${mask}" && "$(readlink "${mask}")" = "/dev/null" ]]; then
+		return 1
+	fi
+	return 0
+}
+
+# The release-upgrade prompt is not yet turned off. A missing file or a
+# missing Prompt= line counts as needed.
+qb2_upgrade_prompt_fix_needed() {
+	local conf="${QB2_FIX_ROOT}${QB2_RELEASE_UPGRADES_PATH}"
+	qb2_legacy_iso_install || return 1
+	! grep -qx 'Prompt=never' "${conf}" 2>/dev/null
+}
+
+# File-only equivalent of `systemctl --user disable` + `mask`, for when there
+# is no user bus (cloud-init, sudo -u). Removes only the one named link.
+qb2_hello_world_fix_files() {
+	local cfg="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
+	local mask="${cfg}/${QB2_HELLO_WORLD_UNIT}"
+	rm -f -- "${cfg}/default.target.wants/${QB2_HELLO_WORLD_UNIT}" || return 1
+	# Like `systemctl mask`, do not replace a unit file the user put there.
+	if [[ -L "${mask}" || ! -e "${mask}" ]]; then
+		ln -sfn /dev/null "${mask}" || return 1
+	fi
+}
+
+# Set Prompt=never in release-upgrades file ${1}, as ISO v1.2.1 does at
+# install time. Remaining arguments are a command prefix (sudo on a real
+# system, nothing in tests).
+qb2_write_upgrade_prompt() {
+	local conf="$1"
+	shift
+	local -a run=("$@")
+	if grep -q '^Prompt=' "${conf}" 2>/dev/null; then
+		"${run[@]+"${run[@]}"}" sed -i 's/^Prompt=.*/Prompt=never/' "${conf}"
+	else
+		"${run[@]+"${run[@]}"}" mkdir -p "$(dirname "${conf}")" || return 1
+		printf '%s\n' '[DEFAULT]' 'Prompt=never' | "${run[@]+"${run[@]}"}" tee "${conf}" > /dev/null
+	fi
+}
+
+# Dry-run plan lines: name each repair that a real run would apply. Prints
+# nothing on a system that needs neither.
+render_qb2_fix_plan() {
+	if qb2_hello_world_fix_needed; then
+		echo "QuietBox 2 ISO repair: suppressed (disable and mask ${QB2_HELLO_WORLD_UNIT})"
+	fi
+	if qb2_upgrade_prompt_fix_needed; then
+		echo "QuietBox 2 ISO repair: suppressed (set Prompt=never in ${QB2_RELEASE_UPGRADES_PATH})"
+	fi
+}
+
+# Disable and mask the welcome video for the current user. Needs no sudo.
+# Never fatal: a failure here must not abort an otherwise good install.
+apply_qb2_hello_world_fix() {
+	qb2_hello_world_fix_needed || return 0
+
+	log "This QuietBox was set up from an installer ISO (v1.2.0 or earlier) whose welcome video (${QB2_HELLO_WORLD_UNIT}) breaks the desktop login after an upgrade to Ubuntu 26.04."
+	log "Disabling and masking the welcome video for user $(id -un)"
+	if ! { systemctl --user disable "${QB2_HELLO_WORLD_UNIT}" && systemctl --user mask "${QB2_HELLO_WORLD_UNIT}"; }; then
+		# No user bus, most likely: get the same result with plain files.
+		qb2_hello_world_fix_files || true
+	fi
+
+	if qb2_hello_world_fix_needed; then
+		warn "Could not disable the welcome video. To do it by hand, run:"
+		warn "  systemctl --user disable ${QB2_HELLO_WORLD_UNIT}"
+		warn "  systemctl --user mask ${QB2_HELLO_WORLD_UNIT}"
+		return 0
+	fi
+	log "The welcome video is now off. If the screen currently goes blank after login, reboot to get the desktop back."
+}
+
+# Turn off Ubuntu's release-upgrade prompt. Needs sudo. Never fatal.
+apply_qb2_upgrade_prompt_fix() {
+	local conf="${QB2_FIX_ROOT}${QB2_RELEASE_UPGRADES_PATH}"
+	qb2_upgrade_prompt_fix_needed || return 0
+
+	log "Turning off Ubuntu release-upgrade prompts: the Tenstorrent stack on this QuietBox is validated on Ubuntu 24.04 only."
+	log "Setting Prompt=never in ${conf}. To be offered upgrades again, set Prompt=lts there; note that tt-installer sets it back to never each time it runs on this system."
+	qb2_write_upgrade_prompt "${conf}" sudo || true
+
+	if qb2_upgrade_prompt_fix_needed; then
+		warn "Could not turn off release-upgrade prompts. To do it by hand, run:"
+		warn "  sudo sed -i 's/^Prompt=.*/Prompt=never/' ${conf}"
+	fi
+}
+
 main() {
 	echo -e "${LOGO}"
 	echo # newline
@@ -1558,8 +1684,19 @@ main() {
 		log "uv will be used instead of pip for package installation"
 	fi
 
+	# Repairs for QuietBox 2 units installed from a preinstaller ISO <= v1.2.0.
+	# The welcome-video one needs neither sudo nor network, so it goes first
+	# and lands even if a later step fails.
+	if [[ "${_arg_mode_container}" = "off" ]]; then
+		apply_qb2_hello_world_fix
+	fi
+
 	log "Checking for sudo permissions... (may request password)"
 	check_has_sudo_perms
+
+	if [[ "${_arg_mode_container}" = "off" ]]; then
+		apply_qb2_upgrade_prompt_fix
+	fi
 
 	# Install base packages (distro already detected above)
 
@@ -1831,7 +1968,8 @@ if [[ "${INSTALLER_SOURCE_ONLY}" = "1" ]]; then
 	export -f normalize_options resolve_base_packages build_package_registry \
 		resolve_package_actions disable_unused_container_runtime \
 		resolve_container_runtime resolve_firmware_action \
-		render_install_plan
+		render_install_plan render_qb2_fix_plan qb2_legacy_iso_install \
+		qb2_hello_world_fix_needed qb2_upgrade_prompt_fix_needed
 fi
 
 # Start installation unless the generated script is being sourced by a test.
