@@ -169,7 +169,7 @@ readonly UV_INSTALLER_SHA256="504511fbbbd811aeaba6738abc79408956b6c7da0ca35437b3
 # Tenstorrent venv, so it can manage its own environment (`tt self update`).
 # Bump with `make bump-tt-cli`, which checks the release exists on PyPI.
 readonly TT_CLI_PACKAGE="tenstorrent"
-readonly TT_CLI_VERSION="1.0.1"
+readonly TT_CLI_VERSION="1.2.2"
 
 # ttis.sh is inlined here at build time (see scripts/inline-ttis.sh), replacing
 # the placeholder line below with the body of ttis.sh between its TTIS_INLINE
