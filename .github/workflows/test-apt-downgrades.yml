@@ -1,0 +1,20 @@
+name: Test apt downgrade handling
+
+# Host unit test for issue #137: apt_get() must pass --allow-downgrades when
+# pinned versions are older than installed firmware. Runs on every PR and on
+# pushes to main; the test is self-contained (no network, no root).
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test-apt-downgrades:
+    name: apt downgrade unit test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run allow-downgrades regression test
+        run: bash tests/test-apt-downgrades.sh
