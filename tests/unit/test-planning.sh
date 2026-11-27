@@ -23,6 +23,7 @@ normalize_options
 [[ "${_arg_install_hugepages}" = off ]]
 [[ "${_arg_install_sfpi}" = off ]]
 [[ "${_arg_reboot_option}" = never ]]
+[[ "${_arg_update_firmware}" = off ]]
 
 _arg_install_container_runtime=none
 _arg_mode_container=off
